@@ -44,5 +44,26 @@
     "confirm_booking": "Confirm Booking",
     "booking_success": "Appointment booked successfully!",
     "no_doctors": "No doctors available at the moment."
+  },
+  "Onboarding": {
+    "title": "Welcome to Medilab",
+    "subtitle": "Before we begin, please tell us who you are.",
+    "select_role": "Select your role",
+    "doctor": "Doctor",
+    "nurse": "Nurse",
+    "patient": "Patient",
+    "doctor_description": "I provide clinical care and manage patient queues.",
+    "nurse_description": "I assist doctors and manage the overall clinic flow.",
+    "patient_description": "I want to book appointments and track my care.",
+    "select_doctor": "Choose your primary doctor",
+    "select_doctor_description": "Select the doctor you want to follow in this clinic.",
+    "completing": "Completing onboarding...",
+    "finish": "Finish Setup",
+    "error": "Something went wrong. Please try again."
+  },
+  "Authorization": {
+    "pending_title": "Account Pending Authorization",
+    "pending_msg": "Your account as a {role} is waiting for administrative approval. You will receive access once the clinic administrator verifies your credentials.",
+    "back_to_login": "Back to Login"
   }
 }
