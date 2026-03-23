@@ -1,0 +1,48 @@
+{
+  "Index": {
+    "title": "Medilab - Clinic Management System"
+  },
+  "Auth": {
+    "login": "Login",
+    "email": "Email Address",
+    "password": "Password",
+    "google": "Continue with Google"
+  },
+  "Dashboard": {
+    "welcome": "Welcome back, {name}",
+    "role_patient": "Patient Portal",
+    "role_doctor": "Doctor Dashboard",
+    "role_nurse": "Nurse Dashboard",
+    "role_admin": "Admin Panel",
+    "logout": "Log Out",
+    "live_queue": "Live Queue Status",
+    "current_serving": "Currently Serving",
+    "your_turn": "Your Position",
+    "est_wait": "Est. Wait Time",
+    "mins": "mins",
+    "pay_instapay": "Pay with InstaPay",
+    "scan_qr": "Scan to pay {fees} EGP",
+    "no_appointment": "You don't have an active appointment today.",
+    "book_now": "Book Appointment",
+    "todays_queue": "Today's Queue",
+    "call_next": "Call Next Patient",
+    "mark_completed": "Mark Completed",
+    "write_prescription": "Prescribe",
+    "no_patients": "No patients scheduled for today.",
+    "patient_name": "Patient Name",
+    "status": "Status",
+    "actions": "Actions",
+    "tts_next": "Next patient, {name}, please proceed to the examination room.",
+    "view_prescription": "View Prescription",
+    "print_prescription": "Print",
+    "book_appointment": "Book Appointment",
+    "select_doctor": "Select Doctor",
+    "select_date": "Select Date",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "available_slots": "Available Slots",
+    "confirm_booking": "Confirm Booking",
+    "booking_success": "Appointment booked successfully!",
+    "no_doctors": "No doctors available at the moment."
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "Index": {
+    "title": "ميديلاب - نظام إدارة العيادات"
+  },
+  "Auth": {
+    "login": "تسجيل الدخول",
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور",
+    "google": "المتابعة باستخدام جوجل"
+  },
+  "Dashboard": {
+    "welcome": "مرحباً بك، {name}",
+    "role_patient": "بوابة المريض",
+    "role_doctor": "لوحة الطبيب",
+    "role_nurse": "لوحة التمريض",
+    "role_admin": "لوحة الإدارة",
+    "logout": "تسجيل خروج",
+    "live_queue": "حالة الطابور المباشر",
+    "current_serving": "الدور الحالي",
+    "your_turn": "دورك",
+    "est_wait": "الوقت المقدر",
+    "mins": "دقيقة",
+    "pay_instapay": "الدفع عبر إنستاباي",
+    "scan_qr": "امسح للدفع {fees} جنيه",
+    "no_appointment": "ليس لديك موعد نشط اليوم.",
+    "book_now": "احجز موعداً",
+    "todays_queue": "قائمة انتظار اليوم",
+    "call_next": "النداء على المريض التالي",
+    "mark_completed": "إكتمال الكشف",
+    "write_prescription": "وصفة طبية",
+    "no_patients": "لا يوجد مرضى مجدولون اليوم.",
+    "patient_name": "اسم المريض",
+    "status": "الحالة",
+    "actions": "الإجراءات",
+    "tts_next": "المريض التالي، {name}، تفضل بالدخول إلى غرفة الفحص.",
+    "view_prescription": "عرض الوصفة الطبية",
+    "print_prescription": "طباعة",
+    "book_appointment": "حجز موعد",
+    "select_doctor": "اختر الطبيب",
+    "select_date": "اختر التاريخ",
+    "today": "اليوم",
+    "tomorrow": "غداً",
+    "available_slots": "المواعيد المتاحة",
+    "confirm_booking": "تأكيد الحجز",
+    "booking_success": "تم حجز الموعد بنجاح!",
+    "no_doctors": "لا يوجد أطباء متاحون حالياً."
+  }
+}
