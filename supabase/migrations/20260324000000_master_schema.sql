@@ -64,10 +64,22 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   fees_home_visit numeric(10,2) DEFAULT 1000.00,
   
   -- Step 7: Appointment Settings
-  auto_confirm_appointments boolean DEFAULT false
+  auto_confirm_appointments boolean DEFAULT false,
+  
+  -- Step 8: Multi-SaaS Data
+  email text,
+  assigned_doctor_id uuid REFERENCES public.profiles(id) -- Keep for backward compatibility, but we use patient_doctors now
 );
 
--- 3. Create Appointments Table
+-- 3. Create Patient-Doctor Relationship Table
+CREATE TABLE IF NOT EXISTS public.patient_doctors (
+  patient_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
+  doctor_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
+  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+  PRIMARY KEY (patient_id, doctor_id)
+);
+
+-- 4. Create Appointments Table
 CREATE TABLE IF NOT EXISTS public.appointments (
   id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
   patient_id uuid REFERENCES public.profiles(id) NOT NULL,
@@ -110,8 +122,13 @@ CREATE TABLE IF NOT EXISTS public.certifications (
 CREATE OR REPLACE FUNCTION public.handle_new_user() 
 RETURNS trigger AS $$
 BEGIN
-  INSERT INTO public.profiles (id, full_name, role)
-  VALUES (new.id, new.raw_user_meta_data->>'full_name', 'patient');
+  INSERT INTO public.profiles (id, full_name, email, role)
+  VALUES (
+    new.id, 
+    new.raw_user_meta_data->>'full_name', 
+    new.email,
+    'patient'
+  );
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -148,6 +165,18 @@ ON public.profiles FOR UPDATE USING (
   (auth.uid() = id) OR 
   (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'))
 );
+
+-- Patient-Doctor Policies
+ALTER TABLE public.patient_doctors ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Patients can view their own doctor list."
+ON public.patient_doctors FOR SELECT USING (auth.uid() = patient_id);
+
+CREATE POLICY "Patients can manage their own doctor list."
+ON public.patient_doctors FOR ALL USING (auth.uid() = patient_id);
+
+CREATE POLICY "Doctors can see who added them."
+ON public.patient_doctors FOR SELECT USING (auth.uid() = doctor_id);
 
 -- Appointments Policies
 DO $$ BEGIN

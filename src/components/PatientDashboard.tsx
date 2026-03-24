@@ -36,17 +36,21 @@ type Certification = {
 
 export default function PatientDashboard({
   initialAppointment,
-  doctorId
+  initialDoctors
 }: {
   initialAppointment: AppointmentProps | null
-  doctorId?: string | null
+  initialDoctors: DoctorInfo[]
 }) {
   const t = useTranslations('Dashboard')
   const [appointment, setAppointment] = useState(initialAppointment)
   const [currentServing, setCurrentServing] = useState(1)
   const [showBooking, setShowBooking] = useState(false)
-  const [activeTab, setActiveTab] = useState<'queue' | 'doctor' | 'certs'>('queue')
-  const [doctor, setDoctor] = useState<DoctorInfo | null>(null)
+  const [activeTab, setActiveTab] = useState<'queue' | 'doctors' | 'certs'>('queue')
+  const [doctors, setDoctors] = useState<DoctorInfo[]>(initialDoctors)
+  const [selectedDoctor, setSelectedDoctor] = useState<DoctorInfo | null>(initialDoctors[0] || null)
+  const [allDoctors, setAllDoctors] = useState<DoctorInfo[]>([])
+  const [showAddDoctor, setShowAddDoctor] = useState(false)
+  const [searching, setSearching] = useState(false)
   const [certs, setCerts] = useState<Certification[]>([])
   const [loadingCerts, setLoadingCerts] = useState(false)
   const [updatingPayment, setUpdatingPayment] = useState(false)
@@ -73,21 +77,40 @@ export default function PatientDashboard({
     return () => { supabase.removeChannel(channel) }
   }, [appointment?.doctor_id, appointment?.id])
 
-  // Fetch doctor info
+  // Fetch all authorized doctors for searching
   useEffect(() => {
-    const fetchDoctor = async () => {
-      const did = appointment?.doctor_id || doctorId
-      if (!did) return
+    if (!showAddDoctor) return
+    const fetchAllDocs = async () => {
+      setSearching(true)
       const supabase = createClient()
-      const { data } = await supabase
-        .from('profiles')
-        .select('id, full_name, specialization, clinic_location, working_hours, phone_number')
-        .eq('id', did)
-        .single()
-      if (data) setDoctor(data)
+      const { data } = await supabase.from('profiles').select('id, full_name, specialization, clinic_location, working_hours, phone_number').eq('role', 'doctor').eq('is_authorized', true)
+      if (data) setAllDoctors(data)
+      setSearching(false)
     }
-    fetchDoctor()
-  }, [appointment?.doctor_id, doctorId])
+    fetchAllDocs()
+  }, [showAddDoctor])
+
+  const handleAddDoctor = async (docId: string) => {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { error } = await supabase.from('patient_doctors').insert({ patient_id: user.id, doctor_id: docId })
+    if (!error) {
+      const newDoc = allDoctors.find(d => d.id === docId)
+      if (newDoc) setDoctors(prev => [...prev, newDoc])
+      setShowAddDoctor(false)
+    }
+  }
+
+  const handleRemoveDoctor = async (docId: string) => {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { error } = await supabase.from('patient_doctors').delete().eq('patient_id', user.id).eq('doctor_id', docId)
+    if (!error) setDoctors(prev => prev.filter(d => d.id !== docId))
+  }
 
   // Fetch certifications
   useEffect(() => {
@@ -129,46 +152,44 @@ export default function PatientDashboard({
 
   const DAYS: Record<string, string> = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' }
 
-  if (!appointment) {
+  if (!appointment && doctors.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 animate-in fade-in duration-700 space-y-6">
-        {doctor && (
-          <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-3xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-14 h-14 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-2xl font-black">
-                {doctor.full_name?.charAt(0)}
-              </div>
-              <div>
-                <p className="font-bold text-lg">Dr. {doctor.full_name}</p>
-                {doctor.specialization && <p className="text-sm text-blue-600 font-medium">{doctor.specialization}</p>}
-              </div>
-            </div>
-            {doctor.clinic_location && <p className="text-xs text-gray-500">📍 {doctor.clinic_location}</p>}
-          </div>
+      <div className="flex flex-col items-center justify-center py-20 animate-in fade-in duration-700 space-y-6 text-center">
+        <div className="w-20 h-20 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-6 mx-auto text-4xl">👨‍⚕️</div>
+        <h3 className="text-2xl font-black">{t('no_appointment')}</h3>
+        <p className="text-gray-500 max-w-sm">You haven't added any doctors to your list yet. Start by adding a doctor to book your first appointment.</p>
+        <button
+          onClick={() => setShowAddDoctor(true)}
+          className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-2xl transition-all shadow-md font-bold"
+        >
+          Add My First Doctor
+        </button>
+        {showAddDoctor && (
+           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+             <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 w-full max-w-md shadow-2xl">
+               <div className="flex justify-between items-center mb-6">
+                 <h3 className="text-xl font-black">Add Doctor</h3>
+                 <button onClick={() => setShowAddDoctor(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+               </div>
+               <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
+                 {searching ? <p className="text-center py-4">Searching...</p> : allDoctors.map(doc => (
+                   <button key={doc.id} onClick={() => handleAddDoctor(doc.id)} className="w-full p-4 rounded-2xl border-2 border-gray-100 dark:border-gray-800 hover:border-blue-500 text-left transition-all">
+                     <p className="font-bold">Dr. {doc.full_name}</p>
+                     <p className="text-xs text-blue-600">{doc.specialization}</p>
+                   </button>
+                 ))}
+               </div>
+             </div>
+           </div>
         )}
-        <div className="text-center">
-          <div className="w-20 h-20 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-6 mx-auto">
-            <svg className="w-10 h-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <h3 className="text-2xl font-semibold mb-2">{t('no_appointment')}</h3>
-          <button
-            onClick={() => setShowBooking(true)}
-            className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-full transition-all shadow-md font-bold"
-          >
-            {t('book_now')}
-          </button>
-        </div>
-        {showBooking && <BookingModal onClose={() => setShowBooking(false)} onSuccess={() => window.location.reload()} />}
       </div>
     )
   }
 
-  const patientsAhead = Math.max(0, appointment.queue_position - currentServing)
+  const patientsAhead = appointment ? Math.max(0, appointment.queue_position - currentServing) : 0
   const waitTimeMins = patientsAhead * 20
-  const instapayAddress = appointment.instapay_address || 'placeholder@instapay'
-  const qrData = `instapay://payment?address=${instapayAddress}&amount=${appointment.fees}`
+  const instapayAddress = appointment?.instapay_address || 'placeholder@instapay'
+  const qrData = appointment ? `instapay://payment?address=${instapayAddress}&amount=${appointment.fees}` : ''
 
   return (
     <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-700">
@@ -176,7 +197,7 @@ export default function PatientDashboard({
       <div className="flex gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-2xl w-fit">
         {[
           { key: 'queue', label: 'My Queue' },
-          { key: 'doctor', label: 'My Doctor' },
+          { key: 'doctors', label: 'My Doctors' },
           { key: 'certs', label: 'Certificates' },
         ].map(tab => (
           <button key={tab.key} onClick={() => setActiveTab(tab.key as any)}
@@ -190,7 +211,14 @@ export default function PatientDashboard({
       {/* Queue Tab */}
       {activeTab === 'queue' && (
         <div className="space-y-6">
-          {appointment.payment_status === 'pending' ? (
+          {!appointment ? (
+            <div className="text-center py-20 bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800">
+               <div className="text-5xl mb-4">📅</div>
+               <h3 className="text-xl font-bold">{t('no_appointment')}</h3>
+               <p className="text-gray-500 mt-2 mb-6">Choose one of your doctors to book a visit.</p>
+               <button onClick={() => setActiveTab('doctors')} className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold">Go to My Doctors</button>
+            </div>
+          ) : appointment.payment_status === 'pending' ? (
             <div className="bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-200 dark:border-amber-900/50 rounded-3xl p-8 text-center animate-in fade-in zoom-in duration-500">
               <div className="w-16 h-16 bg-amber-100 dark:bg-amber-800 text-amber-600 dark:text-amber-300 rounded-full flex items-center justify-center mx-auto mb-4 font-black text-3xl">!</div>
               <h3 className="text-2xl font-black text-amber-900 dark:text-amber-100 mb-2">Payment Required</h3>
@@ -256,52 +284,67 @@ export default function PatientDashboard({
         </div>
       )}
 
-      {/* My Doctor Tab */}
-      {activeTab === 'doctor' && (
+      {/* My Doctors Tab */}
+      {activeTab === 'doctors' && (
         <div className="space-y-6">
-          {doctor ? (
-            <>
-              <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 shadow-sm border border-gray-100 dark:border-gray-800">
-                <div className="flex items-start gap-6">
-                  <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-600 to-teal-500 text-white flex items-center justify-center text-3xl font-black shrink-0">
-                    {doctor.full_name?.charAt(0)}
+          <div className="flex justify-between items-center">
+            <h3 className="text-sm font-black uppercase tracking-widest text-gray-400">Linked Clinics</h3>
+            <button onClick={() => setShowAddDoctor(true)} className="text-xs font-bold text-blue-600">+ Add New Doctor</button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {doctors.map(doc => (
+              <div key={doc.id} className="bg-white dark:bg-gray-900 rounded-3xl p-6 shadow-sm border border-gray-100 dark:border-gray-800 relative group">
+                <button 
+                  onClick={() => handleRemoveDoctor(doc.id)}
+                  className="absolute top-4 right-4 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  ✕
+                </button>
+                <div className="flex items-start gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600 to-teal-500 text-white flex items-center justify-center text-2xl font-black shrink-0">
+                    {doc.full_name?.charAt(0)}
                   </div>
                   <div className="flex-1">
-                    <h2 className="text-2xl font-black">Dr. {doctor.full_name}</h2>
-                    {doctor.specialization && (
-                      <span className="inline-block mt-1 text-sm font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-full">{doctor.specialization}</span>
+                    <h2 className="text-lg font-black">Dr. {doc.full_name}</h2>
+                    {doc.specialization && (
+                      <span className="text-xs font-bold text-blue-600">{doc.specialization}</span>
                     )}
-                    {doctor.phone_number && (
-                      <p className="mt-3 text-sm text-gray-500">📞 {doctor.phone_number}</p>
-                    )}
-                    {doctor.clinic_location && (
-                      <p className="mt-1 text-sm text-gray-500">📍 {doctor.clinic_location}</p>
-                    )}
+                    <div className="mt-3 flex gap-2">
+                       <button 
+                         onClick={() => { setSelectedDoctor(doc); setShowBooking(true); }}
+                         className="bg-blue-600 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors"
+                       >
+                         Book Now
+                       </button>
+                    </div>
                   </div>
                 </div>
               </div>
-
-              {doctor.working_hours && (
-                <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
-                  <h3 className="text-sm font-black uppercase tracking-widest text-gray-400 mb-4">Working Hours</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {Object.entries(DAYS).map(([key, label]) => {
-                      const val = (doctor.working_hours || {})[key] || 'Closed'
-                      const isClosed = val === 'Closed'
-                      return (
-                        <div key={key} className={`flex justify-between items-center p-3 rounded-xl ${isClosed ? 'bg-gray-50 dark:bg-gray-800/50' : 'bg-blue-50 dark:bg-blue-900/20'}`}>
-                          <span className="text-sm font-bold">{label}</span>
-                          <span className={`text-sm font-medium ${isClosed ? 'text-gray-400' : 'text-blue-700 dark:text-blue-300'}`}>{val}</span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="py-20 text-center text-gray-400 italic">No doctor info available.</div>
+            ))}
+          </div>
+          
+          {showAddDoctor && (
+             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+               <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 w-full max-w-md shadow-2xl">
+                 <div className="flex justify-between items-center mb-6">
+                   <h3 className="text-xl font-black">Add Doctor</h3>
+                   <button onClick={() => setShowAddDoctor(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+                 </div>
+                 <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
+                   {searching ? <p className="text-center py-4">Searching...</p> : allDoctors.filter(d => !doctors.find(myD => myD.id === d.id)).map(doc => (
+                     <button key={doc.id} onClick={() => handleAddDoctor(doc.id)} className="w-full p-4 rounded-2xl border-2 border-gray-100 dark:border-gray-800 hover:border-blue-500 text-left transition-all">
+                       <p className="font-bold">Dr. {doc.full_name}</p>
+                       <p className="text-xs text-blue-600">{doc.specialization}</p>
+                     </button>
+                   ))}
+                   {!searching && allDoctors.filter(d => !doctors.find(myD => myD.id === d.id)).length === 0 && (
+                     <p className="text-center py-8 text-gray-400 italic text-sm">No new doctors found.</p>
+                   )}
+                 </div>
+               </div>
+             </div>
           )}
+          {showBooking && selectedDoctor && <BookingModal onClose={() => setShowBooking(false)} onSuccess={() => window.location.reload()} />}
         </div>
       )}
 

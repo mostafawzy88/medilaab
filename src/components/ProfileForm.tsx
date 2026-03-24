@@ -19,6 +19,7 @@ type Profile = {
   fees_normal?: number | null
   fees_urgent?: number | null
   fees_home_visit?: number | null
+  email?: string | null
 }
 
 const SPECIALIZATIONS = [
@@ -76,6 +77,7 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
         fees_normal: profile.fees_normal,
         fees_urgent: profile.fees_urgent,
         fees_home_visit: profile.fees_home_visit,
+        email: profile.email,
       })
       .eq('id', profile.id)
 
@@ -141,6 +143,16 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
                 value={profile.phone_number || ''}
                 onChange={e => setProfile({ ...profile, phone_number: e.target.value })}
                 className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none ring-2 ring-transparent focus:ring-blue-500 transition-all font-medium"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-black uppercase tracking-widest text-gray-500">Email Address</label>
+              <input
+                type="email"
+                value={profile.email || ''}
+                onChange={e => setProfile({ ...profile, email: e.target.value })}
+                className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none ring-2 ring-transparent focus:ring-blue-500 transition-all font-medium"
+                placeholder="patient@example.com"
               />
             </div>
           </div>

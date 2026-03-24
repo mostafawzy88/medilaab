@@ -18,9 +18,10 @@ type Doctor = {
 type BookingModalProps = {
   onClose: () => void
   onSuccess: () => void
+  initialDoctor?: Doctor | null
 }
 
-export default function BookingModal({ onClose, onSuccess }: BookingModalProps) {
+export default function BookingModal({ onClose, onSuccess, initialDoctor }: BookingModalProps) {
   const t = useTranslations('Dashboard')
   const [step, setStep] = useState(1)
   const [doctors, setDoctors] = useState<Doctor[]>([])
@@ -40,11 +41,17 @@ export default function BookingModal({ onClose, onSuccess }: BookingModalProps) 
         .eq('role', 'doctor')
         .eq('is_authorized', true)
       
-      if (data) setDoctors(data)
+      if (data) {
+        setDoctors(data)
+        if (initialDoctor) {
+          setSelectedDoctorId(initialDoctor.id)
+          setStep(2)
+        }
+      }
       setLoading(false)
     }
     fetchDoctors()
-  }, [])
+  }, [initialDoctor])
 
   const selectedDoctor = doctors.find(d => d.id === selectedDoctorId)
 
@@ -233,11 +240,13 @@ export default function BookingModal({ onClose, onSuccess }: BookingModalProps) 
                   </div>
 
                   <div className="flex gap-3">
-                    <button onClick={() => setStep(1)} className="flex-1 bg-gray-100 dark:bg-gray-800 font-bold py-4 rounded-2xl hover:bg-gray-200">Back</button>
+                    {initialDoctor ? null : (
+                      <button onClick={() => setStep(1)} className="flex-1 bg-gray-100 dark:bg-gray-800 font-bold py-4 rounded-2xl hover:bg-gray-200">Back</button>
+                    )}
                     <button 
                       onClick={() => setStep(3)}
                       disabled={!selectedDate}
-                      className="flex-[2] bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl shadow-lg shadow-blue-500/20 disabled:opacity-50"
+                      className={`${initialDoctor ? 'w-full' : 'flex-[2]'} bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl shadow-lg shadow-blue-500/20 disabled:opacity-50`}
                     >
                       Next: Payment
                     </button>

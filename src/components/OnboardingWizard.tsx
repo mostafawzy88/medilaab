@@ -16,7 +16,7 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
   const [step, setStep] = useState(1)
   const [role, setRole] = useState<'doctor' | 'nurse' | 'patient' | null>(null)
   const [doctors, setDoctors] = useState<Doctor[]>([])
-  const [selectedDoctor, setSelectedDoctor] = useState<string>('')
+  const [selectedDoctors, setSelectedDoctors] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [fetchingDoctors, setFetchingDoctors] = useState(false)
 
@@ -41,7 +41,7 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
 
   const handleComplete = async () => {
     if (!role) return
-    if (role === 'patient' && !selectedDoctor) return
+    if (role === 'patient' && selectedDoctors.length === 0) return
 
     setLoading(true)
     console.log('[Onboarding] Handling complete for role:', role)
@@ -65,25 +65,40 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
       .upsert({
         id: user.id,
         role: role,
-        assigned_doctor_id: role === 'patient' ? selectedDoctor : null,
         has_completed_onboarding: true,
         // Doctors and nurses start unauthorized by default
         is_authorized: role === 'patient' ? true : false
       }, { onConflict: 'id' })
 
-    if (!error) {
-      console.log('[Onboarding] Profile updated successfully. Redirecting...')
-      
-      // Give the database a moment to reflect changes in the server session
-      await router.refresh()
-      
-      // Force a hard redirect to ensure the middle-ware and server components see the fresh DB state
-      window.location.href = `/${locale}/dashboard`
-    } else {
-      console.error('[Onboarding] Error Details:', error)
+    if (error) {
+      console.error('[Onboarding] Profile error:', error)
       alert(`Onboarding Error: ${error.message}`)
       setLoading(false)
+      return
     }
+
+    // If patient, insert doctor relationships
+    if (role === 'patient' && selectedDoctors.length > 0) {
+      const doctorRels = selectedDoctors.map(docId => ({
+        patient_id: user.id,
+        doctor_id: docId
+      }))
+      const { error: relError } = await supabase
+        .from('patient_doctors')
+        .insert(doctorRels)
+      
+      if (relError) {
+        console.error('[Onboarding] Relationship error:', relError)
+      }
+    }
+
+    console.log('[Onboarding] Profile updated successfully. Redirecting...')
+    
+    // Give the database a moment to reflect changes in the server session
+    await router.refresh()
+    
+    // Force a hard redirect to ensure the middle-ware and server components see the fresh DB state
+    window.location.href = `/${locale}/dashboard`
   }
 
   return (
@@ -173,16 +188,22 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
                   {doctors.map((doc) => (
                     <button
                       key={doc.id}
-                      onClick={() => setSelectedDoctor(doc.id)}
+                      onClick={() => {
+                        if (selectedDoctors.includes(doc.id)) {
+                          setSelectedDoctors(prev => prev.filter(id => id !== doc.id))
+                        } else {
+                          setSelectedDoctors(prev => [...prev, doc.id])
+                        }
+                      }}
                       className={`p-5 rounded-2xl border-2 text-left transition-all ${
-                        selectedDoctor === doc.id 
+                        selectedDoctors.includes(doc.id) 
                           ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' 
                           : 'border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 hover:border-gray-200'
                       }`}
                     >
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-lg">Dr. {doc.full_name}</span>
-                        {selectedDoctor === doc.id && (
+                        {selectedDoctors.includes(doc.id) && (
                           <div className="bg-blue-600 text-white rounded-full p-1">
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
@@ -202,8 +223,8 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
                 >
                   Back
                 </button>
-                <button
-                  disabled={!selectedDoctor || loading}
+                 <button
+                  disabled={selectedDoctors.length === 0 || loading}
                   onClick={handleComplete}
                   className="flex-[2] bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold py-4 rounded-2xl shadow-lg shadow-blue-500/30 transition-all disabled:opacity-50"
                 >

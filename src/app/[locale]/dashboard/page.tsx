@@ -22,7 +22,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
   // Get user profile role and onboarding status
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, full_name, has_completed_onboarding, is_authorized, assigned_doctor_id')
+    .select('role, full_name, email, has_completed_onboarding, is_authorized')
     .eq('id', user.id)
     .single();
 
@@ -109,10 +109,23 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
         fees: appointment.fees,
         doctor_name: doctorData?.full_name || 'Doctor',
         instapay_address: doctorData?.instapay_address || 'doctor@instapay',
+        payment_status: appointment.payment_status,
+        appointment_type: appointment.appointment_type,
       };
     }
 
-    portalContent = <PatientDashboard initialAppointment={appointmentData} doctorId={profile.assigned_doctor_id} />;
+    // Fetch patient's doctors
+    const { data: patientDoctors } = await supabase
+      .from('patient_doctors')
+      .select(`
+        doctor_id,
+        doctor:profiles!patient_doctors_doctor_id_fkey(id, full_name, specialization, clinic_location, working_hours, phone_number)
+      `)
+      .eq('patient_id', user.id);
+
+    const initialDoctors = (patientDoctors || []).map((d: any) => d.doctor);
+
+    portalContent = <PatientDashboard initialAppointment={appointmentData} initialDoctors={initialDoctors} />;
   } else if (role === 'doctor') {
     portalTitle = t('role_doctor');
     const startOfDay = new Date();

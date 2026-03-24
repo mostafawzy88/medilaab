@@ -59,7 +59,10 @@ export default function AdminDashboard() {
 
       const { data: pts } = await supabase
         .from('profiles')
-        .select('id, full_name, phone_number, created_at')
+        .select(`
+          id, full_name, email, phone_number, created_at,
+          patient_doctors(count)
+        `)
         .eq('role', 'patient')
         .order('created_at', { ascending: false })
       
@@ -250,8 +253,8 @@ export default function AdminDashboard() {
               <thead>
                 <tr className="bg-gray-50 dark:bg-gray-800/50 text-xs uppercase tracking-widest text-gray-500">
                   <th className="px-6 py-4">{t('patient_name')}</th>
-                  <th className="px-6 py-4">{m('email')}</th>
-                  <th className="px-6 py-4">{m('phone')}</th>
+                  <th className="px-6 py-4">Contact Detail</th>
+                  <th className="px-6 py-4">Clinics</th>
                   <th className="px-6 py-4">{m('patient_since')}</th>
                 </tr>
               </thead>
@@ -266,8 +269,18 @@ export default function AdminDashboard() {
                          <span className="font-bold text-sm tracking-tight">{pt.full_name}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-xs text-gray-500">{pt.phone_number || 'N/A'}</td>
-                    <td className="px-6 py-4 text-xs text-gray-400">{new Date(pt.created_at).toLocaleDateString()}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm font-bold text-gray-900 dark:text-gray-100">{pt.email || 'no-email@medilab'}</span>
+                        <span className="text-xs text-gray-500">{pt.phone_number || 'No Phone'}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-xs font-black bg-blue-50 dark:bg-blue-900/30 text-blue-600 px-2 py-1 rounded-lg">
+                        {pt.patient_doctors?.[0]?.count || 0} Linked
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-xs text-gray-400 font-medium">{new Date(pt.created_at).toLocaleDateString()}</td>
                   </tr>
                 ))}
                 {patients.length === 0 && (
