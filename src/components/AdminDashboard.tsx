@@ -47,18 +47,31 @@ export default function AdminDashboard() {
         avgWait: '15 mins' // Mocked avg wait
       })
 
-      // 2. Fetch Doctor Roster
-      const { data: docs } = await supabase
+      // 2. Fetch Clinical Staff (Doctors and Nurses)
+      const { data: staff } = await supabase
         .from('profiles')
-        .select('id, full_name, email, phone_number')
-        .eq('role', 'doctor')
+        .select('id, full_name, email, phone_number, role, is_authorized')
+        .in('role', ['doctor', 'nurse'])
+        .order('is_authorized', { ascending: true })
       
-      if (docs) setDoctors(docs)
+      if (staff) setDoctors(staff)
       setLoading(false)
     }
 
     fetchData()
   }, [])
+
+  const toggleAuth = async (userId: string, currentStatus: boolean) => {
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('profiles')
+      .update({ is_authorized: !currentStatus })
+      .eq('id', userId)
+    
+    if (!error) {
+      setDoctors(prev => prev.map(staff => staff.id === userId ? { ...staff, is_authorized: !currentStatus } : staff))
+    }
+  }
 
   return (
     <div className="space-y-6 animate-in fade-in duration-700">
@@ -67,7 +80,7 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
           { label: 'Total Patients', value: stats.totalPatients, trend: 'Active' },
-          { label: 'Active Doctors', value: stats.activeDoctors, trend: 'Verified' },
+          { label: 'Total CLINIC Staff', value: doctors.length, trend: 'Managed' },
           { label: 'Today\'s Revenue', value: `${stats.todayRevenue} EGP`, trend: '+5%' },
           { label: 'Avg Wait Time', value: stats.avgWait, trend: 'Target' },
         ].map((stat, i) => (
@@ -85,32 +98,55 @@ export default function AdminDashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* Doctor Management */}
+        {/* Staff Management */}
         <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-6">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-bold">Clinical Doctor Roster</h3>
-            <button className="text-sm bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium transition-colors">
-              + Invite Doctor
-            </button>
+            <h3 className="text-lg font-bold">Clinical Staff Authorization</h3>
+            <div className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-500 px-3 py-1 rounded-full uppercase tracking-widest font-bold">
+              Verification Center
+            </div>
           </div>
           <div className="space-y-3">
-            {doctors.map((doc) => (
-              <div key={doc.id} className="flex items-center justify-between p-3 rounded-xl border border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold">
-                    {doc.full_name?.charAt(0)}
+            {doctors.map((staff) => (
+              <div key={staff.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
+                staff.is_authorized 
+                  ? 'border-gray-100 dark:border-gray-800' 
+                  : 'bg-amber-50/50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-900/50 shadow-sm shadow-amber-500/5'
+              }`}>
+                <div className="flex items-center gap-4">
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg ${
+                    staff.is_authorized 
+                      ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400' 
+                      : 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400'
+                  }`}>
+                    {staff.full_name?.charAt(0)}
                   </div>
                   <div>
-                    <p className="font-semibold text-sm">{doc.full_name}</p>
-                    <p className="text-xs text-gray-500">{doc.email} • {doc.phone_number || 'No Phone'}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold text-sm">{staff.full_name}</p>
+                      <span className={`text-[10px] font-black uppercase px-1.5 py-0.5 rounded ${
+                        staff.role === 'doctor' ? 'bg-blue-600 text-white' : 'bg-teal-600 text-white'
+                      }`}>
+                        {staff.role}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500">{staff.email} • {staff.phone_number || 'No Phone'}</p>
                   </div>
                 </div>
-                <button className="text-gray-400 hover:text-gray-600">
-                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" /></svg>
+                
+                <button 
+                  onClick={() => toggleAuth(staff.id, staff.is_authorized)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                    staff.is_authorized 
+                      ? 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-red-50 hover:text-red-600' 
+                      : 'bg-blue-600 text-white shadow-lg shadow-blue-500/20 hover:scale-105 active:scale-95'
+                  }`}
+                >
+                  {staff.is_authorized ? 'Revoke' : 'Authorize Now'}
                 </button>
               </div>
             ))}
-            {doctors.length === 0 && <p className="text-gray-500 text-sm italic">No doctors registered yet.</p>}
+            {doctors.length === 0 && <p className="text-gray-500 text-sm italic">No clinical staff awaiting authorization.</p>}
           </div>
         </div>
 
