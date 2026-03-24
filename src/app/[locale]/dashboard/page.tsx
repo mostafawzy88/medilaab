@@ -6,6 +6,7 @@ import PatientDashboard from '@/components/PatientDashboard';
 import DoctorDashboard from '@/components/DoctorDashboard';
 import AdminDashboard from '@/components/AdminDashboard';
 import NurseDashboard from '@/components/NurseDashboard';
+import Navbar from '@/components/Navbar';
 
 export default async function DashboardPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
@@ -42,21 +43,24 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
   if ((role === 'doctor' || role === 'nurse') && !isAuthorized) {
     const authT = await getTranslations('Authorization');
     return (
-      <div className="min-h-screen flex items-center justify-center p-8 bg-slate-50 dark:bg-slate-950 font-[family-name:var(--font-geist-sans)]">
-        <div className="bg-white dark:bg-gray-900 p-8 sm:p-12 rounded-3xl shadow-2xl max-w-lg w-full text-center border border-gray-100 dark:border-gray-800 animate-in fade-in zoom-in duration-500">
-          <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mx-auto mb-8 rotate-3">
-            <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m0 0v2m0-2h2m-2 0H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <h2 className="text-3xl font-bold mb-4 text-gray-900 dark:text-white">
-            {authT('pending_title')}
-          </h2>
-          <p className="text-gray-500 dark:text-gray-400 mb-10 text-lg leading-relaxed">
-            {authT('pending_msg', { role: role === 'doctor' ? 'Doctor' : 'Nurse' })}
-          </p>
-          <div className="flex justify-center">
-            <LogoutButton />
+      <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 font-[family-name:var(--font-geist-sans)]">
+        <Navbar fullName={fullName} />
+        <div className="flex-1 flex items-center justify-center p-8">
+          <div className="bg-white dark:bg-gray-900 p-8 sm:p-12 rounded-3xl shadow-2xl max-w-lg w-full text-center border border-gray-100 dark:border-gray-800 animate-in fade-in zoom-in duration-500">
+            <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mx-auto mb-8 rotate-3">
+              <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m0 0v2m0-2h2m-2 0H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-3xl font-bold mb-4 text-gray-900 dark:text-white">
+              {authT('pending_title')}
+            </h2>
+            <p className="text-gray-500 dark:text-gray-400 mb-10 text-lg leading-relaxed">
+              {authT('pending_msg', { role: role === 'doctor' ? 'Doctor' : 'Nurse' })}
+            </p>
+            <div className="flex justify-center">
+              <LogoutButton />
+            </div>
           </div>
         </div>
       </div>
@@ -69,8 +73,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
 
   if (role === 'patient') {
     portalTitle = t('role_patient');
-    
-    // Fetch today's appointment for the patient
+    // ... logic remains same
     const startOfDay = new Date();
     startOfDay.setHours(0,0,0,0);
     const endOfDay = new Date();
@@ -110,8 +113,6 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
     portalContent = <PatientDashboard initialAppointment={appointmentData} />;
   } else if (role === 'doctor') {
     portalTitle = t('role_doctor');
-
-    // Fetch entire queue for the day
     const startOfDay = new Date();
     startOfDay.setHours(0,0,0,0);
     const endOfDay = new Date();
@@ -132,8 +133,6 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
     portalContent = <DoctorDashboard doctorId={user.id} initialQueue={(queue as any) || []} />;
   } else if (role === 'nurse') {
     portalTitle = t('role_nurse');
-    
-    // Nurse sees ALL active clinic appointments for the day
     const startOfDay = new Date();
     startOfDay.setHours(0,0,0,0);
     const endOfDay = new Date();
@@ -158,23 +157,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-[family-name:var(--font-geist-sans)]">
-      {/* Decorative Header */}
-      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-10 hidden sm:block">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 items-center">
-            <div className="flex font-bold text-xl tracking-tight text-blue-600 dark:text-blue-400">
-              Medilab
-            </div>
-            <div className="flex items-center gap-6">
-              <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                {t('welcome', { name: fullName })}
-              </span>
-              <div className="h-4 w-px bg-gray-300 dark:bg-gray-700"></div>
-              <LogoutButton />
-            </div>
-          </div>
-        </div>
-      </div>
+      <Navbar fullName={fullName} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-10 gap-4">
