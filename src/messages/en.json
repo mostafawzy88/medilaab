@@ -65,5 +65,55 @@
     "pending_title": "Account Pending Authorization",
     "pending_msg": "Your account as a {role} is waiting for administrative approval. You will receive access once the clinic administrator verifies your credentials.",
     "back_to_login": "Back to Login"
+  },
+  "Management": {
+    "patients_title": "Patient Registry",
+    "doctors_title": "Medical Staff",
+    "total_patients": "Total Patients",
+    "patient_since": "Patient Since",
+    "no_patients": "No patients found in the system.",
+    "email": "Email",
+    "phone": "Phone",
+    "role": "Role",
+    "authorized": "Authorized",
+    "not_authorized": "Pending",
+    "revoke": "Revoke",
+    "authorize": "Authorize"
+  },
+  "Profile": {
+    "title": "My Profile",
+    "edit": "Edit Profile",
+    "save": "Save Changes",
+    "full_name": "Full Name",
+    "email": "Email Address",
+    "phone": "Phone Number",
+    "clinic_location": "Clinic Location",
+    "instapay": "InstaPay Address",
+    "success_save": "Profile updated successfully!",
+    "certifications": "My Certifications",
+    "no_certs": "No certifications issued yet.",
+    "issue_cert": "Issue Certificate"
+  },
+  "Navigation": {
+    "dashboard": "Dashboard",
+    "about": "About Us",
+    "contact": "Contact",
+    "profile": "Profile"
+  },
+  "About": {
+    "title": "About Medilab",
+    "description": "Medilab is a leading clinic management solution provider in Egypt, focused on digitizing the healthcare experience. Our mission is to reduce wait times and improve the quality of clinical care through seamless automation.",
+    "mission": "Our Mission",
+    "values": "Our Values"
+  },
+  "Contact": {
+    "title": "Contact Us",
+    "subtitle": "We're here to help with any questions you might have.",
+    "form_name": "Your Name",
+    "form_email": "Your Email",
+    "form_msg": "Message",
+    "send": "Send Message",
+    "address": "Cairo, Egypt",
+    "phone": "+20 123 456 789"
   }
 }
