@@ -43,7 +43,7 @@ export default function AdminDashboard() {
       
       const { data: staff } = await supabase
         .from('profiles')
-        .select('id, full_name, email, phone_number, role, is_authorized')
+        .select('id, full_name, phone_number, role, is_authorized')
         .in('role', ['doctor', 'nurse'])
         .order('is_authorized', { ascending: true })
       
@@ -59,7 +59,7 @@ export default function AdminDashboard() {
 
       const { data: pts } = await supabase
         .from('profiles')
-        .select('id, full_name, email, phone_number, created_at')
+        .select('id, full_name, phone_number, created_at')
         .eq('role', 'patient')
         .order('created_at', { ascending: false })
       
@@ -170,7 +170,7 @@ export default function AdminDashboard() {
                             {staff.role}
                           </span>
                         </div>
-                        <p className="text-xs text-gray-500">{staff.email} • {staff.phone_number || 'No Phone'}</p>
+                        <p className="text-xs text-gray-500">{staff.phone_number || 'No Phone'}</p>
                       </div>
                     </div>
                     
@@ -230,7 +230,7 @@ export default function AdminDashboard() {
                          <span className="font-bold text-sm tracking-tight">{pt.full_name}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-xs text-gray-500">{pt.email}</td>
+                    <td className="px-6 py-4 text-xs text-gray-500">{pt.phone_number || 'N/A'}</td>
                     <td className="px-6 py-4 text-xs text-gray-500">{pt.phone_number || 'N/A'}</td>
                     <td className="px-6 py-4 text-xs text-gray-400">{new Date(pt.created_at).toLocaleDateString()}</td>
                   </tr>
