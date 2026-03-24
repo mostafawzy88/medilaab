@@ -3,7 +3,8 @@ import { Link } from '@/i18n/routing';
 import { createClient } from '@/utils/supabase/server';
 import { redirect } from 'next/navigation';
 
-export default async function IndexPage() {
+export default async function IndexPage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
   const t = await getTranslations('Index');
   
   // Check auth
@@ -11,7 +12,7 @@ export default async function IndexPage() {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (user) {
-    redirect('/dashboard');
+    redirect(`/${locale}/dashboard`);
   }
 
   return (
