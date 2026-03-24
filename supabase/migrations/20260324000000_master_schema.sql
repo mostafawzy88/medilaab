@@ -114,8 +114,8 @@ EXCEPTION WHEN undefined_object THEN null; END $$;
 CREATE POLICY "Public profiles are viewable by everyone." 
 ON public.profiles FOR SELECT USING (true);
 
-CREATE POLICY "Users can update own profile." 
-ON public.profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users can update profiles." 
+ON public.profiles FOR UPDATE USING ((auth.uid() = id) OR (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')));
 
 -- Appointments Policies
 DO $$ BEGIN
