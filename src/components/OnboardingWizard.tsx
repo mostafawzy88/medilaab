@@ -44,28 +44,44 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
     if (role === 'patient' && !selectedDoctor) return
 
     setLoading(true)
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    console.log('[Onboarding] Handling complete for role:', role)
     
-    if (!user) return
+    const supabase = createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    
+    if (authError || !user) {
+      console.error('[Onboarding] Auth error:', authError)
+      alert('Please sign in again.')
+      setLoading(false)
+      return
+    }
 
+    console.log('[Onboarding] Updating profile for user:', user.id)
+    
+    // We use upsert to ensure a profile exists before setting onboarding to true
+    // This fixes cases where the handle_new_user trigger might have been slow or absent
     const { error } = await supabase
       .from('profiles')
-      .update({
+      .upsert({
+        id: user.id,
         role: role,
         assigned_doctor_id: role === 'patient' ? selectedDoctor : null,
         has_completed_onboarding: true,
         // Doctors and nurses start unauthorized by default
         is_authorized: role === 'patient' ? true : false
-      })
-      .eq('id', user.id)
+      }, { onConflict: 'id' })
 
     if (!error) {
-      router.push(`/${locale}/dashboard`)
-      router.refresh()
+      console.log('[Onboarding] Profile updated successfully. Redirecting...')
+      
+      // Give the database a moment to reflect changes in the server session
+      await router.refresh()
+      
+      // Force a hard redirect to ensure the middle-ware and server components see the fresh DB state
+      window.location.href = `/${locale}/dashboard`
     } else {
-      console.error('Onboarding Error Details:', error)
-      alert(`${t('error')} (${error.message})`)
+      console.error('[Onboarding] Error Details:', error)
+      alert(`Onboarding Error: ${error.message}`)
       setLoading(false)
     }
   }
