@@ -15,7 +15,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ locale
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id, email, full_name, phone_number, instapay_address, clinic_location, role')
+    .select('id, email, full_name, phone_number, instapay_address, clinic_location, role, working_hours, latitude, longitude')
     .eq('id', user.id)
     .single();
 

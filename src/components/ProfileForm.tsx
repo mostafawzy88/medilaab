@@ -12,11 +12,14 @@ type Profile = {
   instapay_address: string | null
   clinic_location: string | null
   role: string
+  working_hours?: any
+  latitude?: number | null
+  longitude?: number | null
 }
 
 export default function ProfileForm({ initialProfile }: { initialProfile: Profile }) {
   const t = useTranslations('Profile')
-  const [profile, setProfile] = useState(initialProfile)
+  const [profile, setProfile] = useState<Profile>(initialProfile)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
 
@@ -32,7 +35,10 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
         full_name: profile.full_name,
         phone_number: profile.phone_number,
         instapay_address: profile.instapay_address,
-        clinic_location: profile.clinic_location
+        clinic_location: profile.clinic_location,
+        latitude: profile.latitude,
+        longitude: profile.longitude,
+        working_hours: profile.working_hours
       })
       .eq('id', profile.id)
 
@@ -76,7 +82,7 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-black uppercase tracking-widest text-gray-500">{t('phone')}</label>
+                  <label className="text-xs font-black uppercase tracking-widest text-gray-500">Phone Number</label>
                   <input 
                     type="text" 
                     value={profile.phone_number || ''} 
@@ -86,18 +92,49 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-black uppercase tracking-widest text-gray-500">{t('email')}</label>
-                <input 
-                  type="email" 
-                  disabled 
-                  value={profile.email} 
-                  className="w-full bg-gray-100 dark:bg-gray-800/50 text-gray-400 rounded-xl px-4 py-3 outline-none cursor-not-allowed font-medium"
-                />
-              </div>
-
               {(profile.role === 'doctor' || profile.role === 'admin') && (
                 <div className="space-y-6 pt-4 border-t border-gray-50 dark:border-gray-800">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-black uppercase tracking-widest text-gray-500">Latitude</label>
+                      <input 
+                        type="number" step="any"
+                        value={profile.latitude || ''} 
+                        onChange={e => setProfile({...profile, latitude: parseFloat(e.target.value)})}
+                        className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none ring-2 ring-transparent focus:ring-blue-600 font-medium"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-black uppercase tracking-widest text-gray-500">Longitude</label>
+                      <input 
+                        type="number" step="any"
+                        value={profile.longitude || ''} 
+                        onChange={e => setProfile({...profile, longitude: parseFloat(e.target.value)})}
+                        className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none ring-2 ring-transparent focus:ring-blue-600 font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-gray-500">{t('clinic_location')}</label>
+                    <textarea 
+                      rows={2}
+                      value={profile.clinic_location || ''} 
+                      onChange={e => setProfile({...profile, clinic_location: e.target.value})}
+                      className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-4 outline-none ring-2 ring-transparent focus:ring-blue-600 transition-all font-medium"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-gray-500">Working Hours (JSON)</label>
+                    <textarea 
+                      rows={4}
+                      value={typeof profile.working_hours === 'string' ? profile.working_hours : JSON.stringify(profile.working_hours, null, 2)} 
+                      onChange={e => setProfile({...profile, working_hours: e.target.value})}
+                      className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-4 outline-none ring-2 ring-transparent focus:ring-blue-600 font-mono text-xs"
+                    />
+                  </div>
+
                   <div className="space-y-2">
                     <label className="text-xs font-black uppercase tracking-widest text-gray-500">{t('instapay')}</label>
                     <input 
@@ -106,15 +143,6 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
                       value={profile.instapay_address || ''} 
                       onChange={e => setProfile({...profile, instapay_address: e.target.value})}
                       className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none ring-2 ring-transparent focus:ring-blue-600 transition-all font-medium"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-gray-500">{t('clinic_location')}</label>
-                    <textarea 
-                      rows={2}
-                      value={profile.clinic_location || ''} 
-                      onChange={e => setProfile({...profile, clinic_location: e.target.value})}
-                      className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-4 outline-none ring-2 ring-transparent focus:ring-blue-600 transition-all font-medium"
                     />
                   </div>
                 </div>
