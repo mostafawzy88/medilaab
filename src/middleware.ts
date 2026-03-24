@@ -6,40 +6,41 @@ import { routing } from './i18n/routing'
 const intlMiddleware = createMiddleware(routing)
 
 export async function middleware(request: NextRequest) {
-  try {
-    // Update Supabase session cookies
-    const supabaseResponse = await updateSession(request)
+  // 1. Update Supabase session (standard pattern)
+  // This ensures the session is refreshed and cookies are updated in the request/response
+  const supabaseResponse = await updateSession(request);
 
-    // Apply next-intl routing
-    const intlResponse = intlMiddleware(request)
-
-    // Ensure we have a valid response to work with
-    const finalResponse = intlResponse || NextResponse.next()
-
-    // Apply supabase cookies to the final response
-    const supabaseCookies = supabaseResponse.headers.getSetCookie()
-    if (supabaseCookies.length > 0) {
-      supabaseCookies.forEach((cookie) => {
-        finalResponse.headers.append('Set-Cookie', cookie)
-      })
-    }
-
-    return finalResponse
-  } catch (error) {
-    console.error('Middleware execution failed:', error)
-    // Return a default response instead of crashing
-    return NextResponse.next()
+  // 2. Determine if this path needs internationalization
+  const { pathname } = request.nextUrl;
+  
+  // Skip intl for API, Auth and internal paths
+  if (
+    pathname.startsWith('/api') || 
+    pathname.startsWith('/auth') || 
+    pathname.startsWith('/_next') || 
+    pathname.startsWith('/_vercel') ||
+    pathname.includes('.') // Static files
+  ) {
+    return supabaseResponse;
   }
+
+  // 3. Apply next-intl routing
+  const response = intlMiddleware(request);
+
+  // 4. Copy all Set-Cookie headers from Supabase to the final response
+  // This is essential for session persistence
+  supabaseResponse.headers.getSetCookie().forEach((cookie) => {
+    response.headers.append('Set-Cookie', cookie);
+  });
+
+  return response;
 }
 
 export const config = {
-  // Match only internationalized pathnames and exclude others
   matcher: [
-    // Match all pathnames except for
-    // - … if they start with /api, /_next or /_vercel
-    // - … if they contain a dot, e.g. /favicon.ico
-    '/((?!api|_next|_vercel|.*\\..*).*)',
-    // However, always match the root
+    // Match all non-static paths
+    '/((?!_next|_vercel|.*\\..*).*)',
+    // Always match the root
     '/'
   ]
 }
