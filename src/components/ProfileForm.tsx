@@ -16,6 +16,9 @@ type Profile = {
   working_hours?: any
   latitude?: number | null
   longitude?: number | null
+  fees_normal?: number | null
+  fees_urgent?: number | null
+  fees_home_visit?: number | null
 }
 
 const SPECIALIZATIONS = [
@@ -70,6 +73,9 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
         working_hours: getHours(),
         specialization: profile.specialization,
         bio: profile.bio,
+        fees_normal: profile.fees_normal,
+        fees_urgent: profile.fees_urgent,
+        fees_home_visit: profile.fees_home_visit,
       })
       .eq('id', profile.id)
 
@@ -179,6 +185,46 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
                 />
               </div>
             </div>
+
+            {/* Custom Pricing */}
+            {profile.role === 'doctor' && (
+              <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 space-y-5">
+                <h2 className="text-sm font-black uppercase tracking-widest text-gray-400">Custom Pricing (EGP)</h2>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-gray-500">Normal Visit</label>
+                    <input
+                      type="number" step="10"
+                      value={profile.fees_normal || ''}
+                      onChange={e => setProfile({ ...profile, fees_normal: parseFloat(e.target.value) })}
+                      className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none ring-2 ring-transparent focus:ring-blue-500 font-medium"
+                      placeholder="350"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-gray-500">Urgent Visit</label>
+                    <input
+                      type="number" step="10"
+                      value={profile.fees_urgent || ''}
+                      onChange={e => setProfile({ ...profile, fees_urgent: parseFloat(e.target.value) })}
+                      className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none ring-2 ring-transparent focus:ring-blue-500 font-medium"
+                      placeholder="500"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-gray-500">Home Visit</label>
+                    <input
+                      type="number" step="10"
+                      value={profile.fees_home_visit || ''}
+                      onChange={e => setProfile({ ...profile, fees_home_visit: parseFloat(e.target.value) })}
+                      className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none ring-2 ring-transparent focus:ring-blue-500 font-medium"
+                      placeholder="1000"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400 mt-2">Leave 0 or empty if you do not offer a certain type.</p>
+              </div>
+            )}
 
             {/* Clinic Info */}
             <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 space-y-5">

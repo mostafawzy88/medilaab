@@ -17,6 +17,18 @@ EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;
 
+DO $$ BEGIN
+    CREATE TYPE appointment_type AS ENUM ('clinic_normal', 'clinic_urgent', 'home_visit');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE payment_status AS ENUM ('pending', 'paid', 'refunded');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
 -- 2. Create Profiles Table (Core Users)
 CREATE TABLE IF NOT EXISTS public.profiles (
   id uuid REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
@@ -44,7 +56,12 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   
   -- Step 5: Professional Info
   specialization text,
-  bio text
+  bio text,
+  
+  -- Step 6: Custom Pricing
+  fees_normal numeric(10,2) DEFAULT 350.00,
+  fees_urgent numeric(10,2) DEFAULT 500.00,
+  fees_home_visit numeric(10,2) DEFAULT 1000.00
 );
 
 -- 3. Create Appointments Table
@@ -54,6 +71,8 @@ CREATE TABLE IF NOT EXISTS public.appointments (
   doctor_id uuid REFERENCES public.profiles(id) NOT NULL,
   scheduled_time timestamp with time zone NOT NULL,
   status appointment_status DEFAULT 'waiting'::appointment_status,
+  appointment_type appointment_type DEFAULT 'clinic_normal'::appointment_type,
+  payment_status payment_status DEFAULT 'pending'::payment_status,
   notes text,
   queue_position integer,
   fees numeric(10,2) DEFAULT 350.00,

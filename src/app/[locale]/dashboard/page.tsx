@@ -86,6 +86,8 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
         doctor_id, 
         queue_position, 
         fees,
+        payment_status,
+        appointment_type,
         doctor:profiles!appointments_doctor_id_fkey(full_name, instapay_address)
       `)
       .eq('patient_id', user.id)

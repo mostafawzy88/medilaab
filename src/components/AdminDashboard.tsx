@@ -82,6 +82,24 @@ export default function AdminDashboard() {
     }
   }
 
+  const exportToCSV = (data: any[], filename: string) => {
+    if (!data || data.length === 0) return
+    const keys = Object.keys(data[0])
+    const csvContent = [
+      keys.join(','),
+      ...data.map(item => keys.map(k => {
+        const val = item[k] === null ? '' : item[k]
+        return typeof val === 'string' ? `"${val.replace(/"/g, '""')}"` : val
+      }).join(','))
+    ].join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`
+    link.click()
+  }
+
   if (loading) return <div className="py-20 text-center animate-pulse text-gray-400 font-medium">Loading medical data...</div>
 
   return (
@@ -143,10 +161,19 @@ export default function AdminDashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-6">
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-lg font-bold">{m('doctors_title')}</h3>
-                <div className="text-[10px] bg-blue-600 text-white px-3 py-1 rounded-full uppercase tracking-tighter font-black">
-                  Staff Hub
+                <div className="flex items-center gap-3">
+                  <h3 className="text-lg font-bold">{m('doctors_title')}</h3>
+                  <div className="text-[10px] bg-blue-600 text-white px-3 py-1 rounded-full uppercase tracking-tighter font-black">
+                    Staff Hub
+                  </div>
                 </div>
+                <button
+                  onClick={() => exportToCSV(doctors, 'clinics_staff')}
+                  className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 text-gray-600 dark:text-gray-300"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                  Export CSV
+                </button>
               </div>
               <div className="space-y-3">
                 {doctors.map((staff) => (
@@ -205,9 +232,18 @@ export default function AdminDashboard() {
         </>
       ) : (
         <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
-          <div className="px-6 py-6 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50">
-             <h3 className="text-xl font-bold">{m('patients_title')}</h3>
-             <p className="text-sm text-gray-500">Managing all clinic visitors and their registration dates.</p>
+          <div className="px-6 py-6 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 flex justify-between items-center">
+             <div>
+               <h3 className="text-xl font-bold">{m('patients_title')}</h3>
+               <p className="text-sm text-gray-500">Managing all clinic visitors and their registration dates.</p>
+             </div>
+             <button
+                onClick={() => exportToCSV(patients, 'patients_list')}
+                className="px-4 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-sm font-bold rounded-xl transition-colors flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                Export CSV
+              </button>
           </div>
           <div className="p-0 overflow-x-auto">
             <table className="w-full text-left">
@@ -230,7 +266,6 @@ export default function AdminDashboard() {
                          <span className="font-bold text-sm tracking-tight">{pt.full_name}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-xs text-gray-500">{pt.phone_number || 'N/A'}</td>
                     <td className="px-6 py-4 text-xs text-gray-500">{pt.phone_number || 'N/A'}</td>
                     <td className="px-6 py-4 text-xs text-gray-400">{new Date(pt.created_at).toLocaleDateString()}</td>
                   </tr>

@@ -13,6 +13,8 @@ type AppointmentProps = {
   fees: number
   doctor_name: string
   instapay_address: string | null
+  payment_status?: string
+  appointment_type?: string
 }
 
 type DoctorInfo = {
@@ -47,6 +49,7 @@ export default function PatientDashboard({
   const [doctor, setDoctor] = useState<DoctorInfo | null>(null)
   const [certs, setCerts] = useState<Certification[]>([])
   const [loadingCerts, setLoadingCerts] = useState(false)
+  const [updatingPayment, setUpdatingPayment] = useState(false)
 
   useEffect(() => {
     const supabase = createClient()
@@ -106,6 +109,23 @@ export default function PatientDashboard({
     }
     fetchCerts()
   }, [activeTab])
+
+  const handleMarkAsPaid = async () => {
+    if (!appointment) return
+    setUpdatingPayment(true)
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('appointments')
+      .update({ payment_status: 'paid' })
+      .eq('id', appointment.id)
+    
+    if (!error) {
+      setAppointment({ ...appointment, payment_status: 'paid' })
+    } else {
+      alert("Error updating payment status: " + error.message)
+    }
+    setUpdatingPayment(false)
+  }
 
   const DAYS: Record<string, string> = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' }
 
@@ -170,46 +190,69 @@ export default function PatientDashboard({
       {/* Queue Tab */}
       {activeTab === 'queue' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 shadow-xl border border-gray-100 dark:border-gray-800 relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-4 opacity-10">
-                <svg className="w-24 h-24" fill="currentColor" viewBox="0 0 20 20"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path></svg>
-              </div>
-              <p className="text-sm font-medium text-gray-500 mb-1">{t('current_serving')}</p>
-              <div className="text-6xl font-black text-slate-800 dark:text-slate-100">{currentServing}</div>
-            </div>
-            <div className="bg-gradient-to-br from-blue-600 to-teal-500 rounded-3xl p-6 shadow-xl shadow-blue-500/20 relative overflow-hidden text-white">
-              <div className="absolute -bottom-6 -right-6 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
-              <p className="text-sm font-medium text-blue-100 mb-1">{t('your_turn')}</p>
-              <div className="text-6xl font-black">{appointment.queue_position}</div>
-            </div>
-            <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 shadow-xl border border-gray-100 dark:border-gray-800 flex flex-col justify-center">
-              <p className="text-sm font-medium text-gray-500 mb-1">{t('est_wait')}</p>
-              <div className="flex items-baseline gap-2">
-                <span className="text-5xl font-black text-orange-500">{waitTimeMins}</span>
-                <span className="text-lg font-bold text-gray-400">{t('mins')}</span>
-              </div>
-              {patientsAhead === 0 && (
-                <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-bold uppercase tracking-wider">
-                  <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span></span>
-                  It's your turn!
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 shadow-xl border border-gray-100 dark:border-gray-800 md:flex items-center gap-8">
-            <div className="flex-1 mb-8 md:mb-0">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-sm font-bold mb-4">InstaPay</div>
-              <h3 className="text-3xl font-bold mb-2">{t('pay_instapay')}</h3>
-              <p className="text-gray-500 dark:text-gray-400 max-w-md">
-                Scan the QR code with your Egyptian InstaPay app to settle your <strong>{appointment.fees} EGP</strong> fee with Dr. {appointment.doctor_name}.
+          {appointment.payment_status === 'pending' ? (
+            <div className="bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-200 dark:border-amber-900/50 rounded-3xl p-8 text-center animate-in fade-in zoom-in duration-500">
+              <div className="w-16 h-16 bg-amber-100 dark:bg-amber-800 text-amber-600 dark:text-amber-300 rounded-full flex items-center justify-center mx-auto mb-4 font-black text-3xl">!</div>
+              <h3 className="text-2xl font-black text-amber-900 dark:text-amber-100 mb-2">Payment Required</h3>
+              <p className="text-amber-800 dark:text-amber-200 max-w-lg mx-auto mb-8">
+                Your appointment is currently <strong className="font-black uppercase tracking-widest">Pending</strong>. You must settle the {appointment.fees} EGP fee to secure your slot and view your live queue status.
               </p>
+
+              <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 shadow-sm inline-block mx-auto mb-8 border border-amber-100 dark:border-gray-800">
+                <QRCodeSVG value={qrData} size={150} bgColor="#ffffff" fgColor="#000000" />
+                <p className="text-sm font-bold text-gray-500 mt-4 break-all">{instapayAddress}</p>
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-xs font-bold mt-2">InstaPay</div>
+              </div>
+
+              <div>
+                <button 
+                  onClick={handleMarkAsPaid}
+                  disabled={updatingPayment}
+                  className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black py-4 px-10 rounded-2xl shadow-lg shadow-amber-500/30 transition-all disabled:opacity-50"
+                >
+                  {updatingPayment ? 'Updating...' : 'I Have Paid'}
+                </button>
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-4 font-bold">Only click this after you have sent the transfer.</p>
+              </div>
             </div>
-            <div className="bg-white p-4 rounded-3xl shadow-lg border-4 border-purple-50 shrink-0">
-              <QRCodeSVG value={qrData} size={180} bgColor="#ffffff" fgColor="#000000" level="Q" includeMargin={false} />
-              <div className="text-center mt-3 text-xs font-bold text-gray-400 tracking-wider">{t('scan_qr', { fees: appointment.fees })}</div>
-            </div>
-          </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 shadow-xl border border-gray-100 dark:border-gray-800 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-4 opacity-10">
+                    <svg className="w-24 h-24" fill="currentColor" viewBox="0 0 20 20"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path></svg>
+                  </div>
+                  <p className="text-sm font-medium text-gray-500 mb-1">{t('current_serving')}</p>
+                  <div className="text-6xl font-black text-slate-800 dark:text-slate-100">{currentServing}</div>
+                </div>
+                <div className="bg-gradient-to-br from-blue-600 to-teal-500 rounded-3xl p-6 shadow-xl shadow-blue-500/20 relative overflow-hidden text-white">
+                  <div className="absolute -bottom-6 -right-6 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+                  <p className="text-sm font-medium text-blue-100 mb-1">{t('your_turn')}</p>
+                  <div className="text-6xl font-black">{appointment.queue_position}</div>
+                </div>
+                <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 shadow-xl border border-gray-100 dark:border-gray-800 flex flex-col justify-center">
+                  <p className="text-sm font-medium text-gray-500 mb-1">{t('est_wait')}</p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-5xl font-black text-orange-500">{waitTimeMins}</span>
+                    <span className="text-lg font-bold text-gray-400">{t('mins')}</span>
+                  </div>
+                  {patientsAhead === 0 && (
+                    <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-bold uppercase tracking-wider">
+                      <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span></span>
+                      It's your turn!
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="bg-green-50 dark:bg-green-900/20 rounded-3xl p-8 shadow-sm border border-green-200 dark:border-green-900/50 flex items-center gap-6">
+                <div className="w-12 h-12 bg-green-100 dark:bg-green-800 text-green-600 dark:text-green-300 rounded-full flex items-center justify-center shrink-0 text-xl font-black">✓</div>
+                <div>
+                  <h3 className="text-xl font-bold text-green-900 dark:text-green-100">Payment Confirmed</h3>
+                  <p className="text-green-700 dark:text-green-300">Your slot is secured. You can track your queue status above.</p>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
