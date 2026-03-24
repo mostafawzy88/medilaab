@@ -111,11 +111,17 @@ DO $$ BEGIN
   DROP POLICY IF EXISTS "Users can update own profile." ON public.profiles;
 EXCEPTION WHEN undefined_object THEN null; END $$;
 
-CREATE POLICY "Public profiles are viewable by everyone." 
+CREATE POLICY "Profiles are viewable by everyone." 
 ON public.profiles FOR SELECT USING (true);
 
+CREATE POLICY "Users can initialize own profile." 
+ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
+
 CREATE POLICY "Users can update profiles." 
-ON public.profiles FOR UPDATE USING ((auth.uid() = id) OR (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')));
+ON public.profiles FOR UPDATE USING (
+  (auth.uid() = id) OR 
+  (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'))
+);
 
 -- Appointments Policies
 DO $$ BEGIN
