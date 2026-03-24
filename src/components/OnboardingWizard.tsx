@@ -64,7 +64,8 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
       router.push(`/${locale}/dashboard`)
       router.refresh()
     } else {
-      alert(t('error'))
+      console.error('Onboarding Error Details:', error)
+      alert(`${t('error')} (${error.message})`)
       setLoading(false)
     }
   }

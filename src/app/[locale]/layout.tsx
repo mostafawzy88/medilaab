@@ -26,6 +26,8 @@ export const metadata: Metadata = {
   },
 };
 
+import LanguageSwitcher from "@/components/LanguageSwitcher";
+
 export default async function RootLayout({
   children,
   params,
@@ -42,6 +44,7 @@ export default async function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <NextIntlClientProvider messages={messages}>
+          <LanguageSwitcher />
           {children}
         </NextIntlClientProvider>
       </body>
