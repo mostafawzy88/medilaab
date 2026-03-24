@@ -43,7 +43,12 @@
     "available_slots": "المواعيد المتاحة",
     "confirm_booking": "تأكيد الحجز",
     "booking_success": "تم حجز الموعد بنجاح!",
-    "no_doctors": "لا يوجد أطباء متاحون حالياً."
+    "no_doctors": "لا يوجد أطباء متاحون حالياً.",
+    "appt_requests": "طلبات المواعيد",
+    "approve": "موافقة",
+    "reject": "رفض",
+    "pending_confirmation": "بانتظار التأكيد",
+    "no_requests": "لا توجد طلبات مواعيد معلقة."
   },
   "Onboarding": {
     "title": "مرحباً بك في ميديلاب",

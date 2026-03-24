@@ -66,8 +66,8 @@ export default function BookingModal({ onClose, onSuccess }: BookingModalProps) 
       doctor_id: selectedDoctor,
       scheduled_time: new Date(selectedDate).toISOString(),
       queue_position: nextPosition,
-      fees: 300.00, // Default fee
-      status: 'scheduled'
+      fees: 350.00, // Clinic base fee
+      status: 'waiting'
     })
 
     if (!error) {

@@ -43,7 +43,12 @@
     "available_slots": "Available Slots",
     "confirm_booking": "Confirm Booking",
     "booking_success": "Appointment booked successfully!",
-    "no_doctors": "No doctors available at the moment."
+    "no_doctors": "No doctors available at the moment.",
+    "appt_requests": "Appointment Requests",
+    "approve": "Approve",
+    "reject": "Reject",
+    "pending_confirmation": "Pending Confirmation",
+    "no_requests": "No pending appointment requests."
   },
   "Onboarding": {
     "title": "Welcome to Medilab",
