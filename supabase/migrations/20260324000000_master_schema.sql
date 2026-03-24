@@ -61,7 +61,10 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   -- Step 6: Custom Pricing
   fees_normal numeric(10,2) DEFAULT 350.00,
   fees_urgent numeric(10,2) DEFAULT 500.00,
-  fees_home_visit numeric(10,2) DEFAULT 1000.00
+  fees_home_visit numeric(10,2) DEFAULT 1000.00,
+  
+  -- Step 7: Appointment Settings
+  auto_confirm_appointments boolean DEFAULT false
 );
 
 -- 3. Create Appointments Table
@@ -172,6 +175,15 @@ ON public.appointments FOR SELECT USING (EXISTS (
   SELECT 1 FROM profiles 
   WHERE id = auth.uid() AND role = 'nurse' AND supervisor_id = appointments.doctor_id
 ));
+
+CREATE POLICY "Nurses can update supervisor's appointments."
+ON public.appointments FOR UPDATE USING (EXISTS (
+  SELECT 1 FROM profiles
+  WHERE id = auth.uid() AND role = 'nurse' AND supervisor_id = appointments.doctor_id
+));
+
+CREATE POLICY "Patients can update own appointments."
+ON public.appointments FOR UPDATE USING (auth.uid() = patient_id);
 
 -- Prescriptions Policies
 DO $$ BEGIN

@@ -12,6 +12,7 @@ type Doctor = {
   fees_normal: number | null
   fees_urgent: number | null
   fees_home_visit: number | null
+  auto_confirm_appointments: boolean | null
 }
 
 type BookingModalProps = {
@@ -26,6 +27,7 @@ export default function BookingModal({ onClose, onSuccess }: BookingModalProps) 
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>('')
   const [selectedDate, setSelectedDate] = useState<string>('')
   const [appointmentType, setAppointmentType] = useState<'clinic_normal' | 'clinic_urgent' | 'home_visit'>('clinic_normal')
+  const [paymentChoice, setPaymentChoice] = useState<'prepay' | 'pay_at_visit'>('prepay')
   const [booking, setBooking] = useState(false)
   const [loading, setLoading] = useState(true)
 
@@ -34,7 +36,7 @@ export default function BookingModal({ onClose, onSuccess }: BookingModalProps) 
       const supabase = createClient()
       const { data } = await supabase
         .from('profiles')
-        .select('id, full_name, instapay_address, fees_normal, fees_urgent, fees_home_visit')
+        .select('id, full_name, instapay_address, fees_normal, fees_urgent, fees_home_visit, auto_confirm_appointments')
         .eq('role', 'doctor')
         .eq('is_authorized', true)
       
@@ -91,7 +93,8 @@ export default function BookingModal({ onClose, onSuccess }: BookingModalProps) 
 
     const nextPosition = (count || 0) + 1
 
-    // Create appointment
+    // Create appointment - auto-confirm if doctor has it enabled
+    const autoConfirm = selectedDoctor.auto_confirm_appointments === true
     const { error } = await supabase.from('appointments').insert({
       patient_id: user.id,
       doctor_id: selectedDoctor.id,
@@ -99,8 +102,8 @@ export default function BookingModal({ onClose, onSuccess }: BookingModalProps) 
       queue_position: nextPosition,
       fees: currentFee,
       appointment_type: appointmentType,
-      status: 'waiting',
-      payment_status: 'pending' // New field enforcing payments
+      status: autoConfirm ? 'scheduled' : 'waiting',
+      payment_status: paymentChoice === 'prepay' ? 'pending' : 'paid'
     })
 
     if (!error) {
@@ -242,26 +245,64 @@ export default function BookingModal({ onClose, onSuccess }: BookingModalProps) 
                 </div>
               )}
 
-              {/* Step 3: Payment Adherence & Confirmation */}
+              {/* Step 3: Payment Choice & Confirmation */}
               {step === 3 && (
                 <div className="space-y-6 animate-in slide-in-from-right-4">
-                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/50 rounded-2xl p-5 text-center">
-                    <div className="w-12 h-12 bg-blue-100 dark:bg-blue-800 text-blue-600 dark:text-blue-300 rounded-full flex items-center justify-center mx-auto mb-3 font-black text-xl">!</div>
-                    <h3 className="font-black text-blue-900 dark:text-blue-100 text-lg mb-2">Payment Required to Secure Slot</h3>
-                    <p className="text-sm text-blue-700 dark:text-blue-300 leading-relaxed mb-4">
-                      Doctors require pre-payment to confirm your seriousness. Your appointment will be marked as <strong className="font-black uppercase tracking-widest text-[#d97706]">Pending</strong> until you pay.
-                    </p>
-                    
-                    <div className="mt-4 p-4 bg-white dark:bg-gray-900 rounded-xl inline-block shadow-sm">
-                      <QRCodeSVG 
-                        value={`instapay://payment?address=${selectedDoctor?.instapay_address || 'placeholder@instapay'}&amount=${currentFee}`} 
-                        size={120} 
-                        bgColor="#ffffff" 
-                        fgColor="#000000" 
-                      />
-                      <p className="text-xs font-bold text-gray-500 mt-3 break-all">{selectedDoctor?.instapay_address || 'Not Provided'}</p>
+                  {/* Payment choice */}
+                  <div className="space-y-3">
+                    <label className="text-xs font-black uppercase tracking-widest text-gray-500">How would you like to pay?</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        onClick={() => setPaymentChoice('prepay')}
+                        className={`p-4 rounded-xl border-2 text-center transition-all ${paymentChoice === 'prepay' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-100 dark:border-gray-800'}`}
+                      >
+                        <div className="text-2xl mb-1">💳</div>
+                        <p className="font-bold text-sm">Prepay (InstaPay)</p>
+                        <p className="text-[10px] text-gray-500 mt-1">Secure your slot now</p>
+                      </button>
+                      <button
+                        onClick={() => setPaymentChoice('pay_at_visit')}
+                        className={`p-4 rounded-xl border-2 text-center transition-all ${paymentChoice === 'pay_at_visit' ? 'border-teal-600 bg-teal-50 dark:bg-teal-900/20' : 'border-gray-100 dark:border-gray-800'}`}
+                      >
+                        <div className="text-2xl mb-1">🏥</div>
+                        <p className="font-bold text-sm">Pay at Visit</p>
+                        <p className="text-[10px] text-gray-500 mt-1">Pay when you arrive</p>
+                      </button>
                     </div>
                   </div>
+
+                  {/* InstaPay QR shown only for prepay */}
+                  {paymentChoice === 'prepay' && selectedDoctor?.instapay_address && (
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/50 rounded-2xl p-5 text-center">
+                      <h3 className="font-black text-blue-900 dark:text-blue-100 text-lg mb-3">Pay via InstaPay</h3>
+                      <p className="text-sm text-blue-700 dark:text-blue-300 mb-4">
+                        Send <strong className="font-black">{currentFee} EGP</strong> to the doctor's InstaPay to secure your slot.
+                      </p>
+                      <div className="bg-white dark:bg-gray-900 rounded-xl p-4 inline-block shadow-sm">
+                        <QRCodeSVG 
+                          value={`instapay://payment?address=${selectedDoctor.instapay_address}&amount=${currentFee}`} 
+                          size={120} bgColor="#ffffff" fgColor="#000000" 
+                        />
+                        <p className="text-xs font-bold text-gray-500 mt-3 break-all">{selectedDoctor.instapay_address}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {paymentChoice === 'pay_at_visit' && (
+                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/50 rounded-2xl p-5 text-center">
+                      <p className="text-sm text-amber-800 dark:text-amber-200">
+                        ⚠️ You will need to pay <strong className="font-black">{currentFee} EGP</strong> at the clinic. The doctor may cancel your slot if you don't show up.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Auto-confirm badge */}
+                  {selectedDoctor?.auto_confirm_appointments && (
+                    <div className="flex items-center gap-2 px-4 py-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-900/50 rounded-xl">
+                      <span className="text-green-600 text-lg">⚡</span>
+                      <p className="text-sm text-green-700 dark:text-green-300 font-medium">This doctor has <strong>auto-confirm</strong> enabled. Your appointment will be confirmed instantly!</p>
+                    </div>
+                  )}
 
                   <div className="flex gap-3">
                     <button onClick={() => setStep(2)} disabled={booking} className="flex-1 bg-gray-100 dark:bg-gray-800 font-bold py-4 rounded-2xl hover:bg-gray-200">Back</button>
@@ -270,7 +311,7 @@ export default function BookingModal({ onClose, onSuccess }: BookingModalProps) 
                       disabled={booking}
                       className="flex-[2] bg-gradient-to-r from-blue-600 to-teal-500 hover:from-blue-700 hover:to-teal-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-blue-500/30 disabled:opacity-50"
                     >
-                      {booking ? 'Confirming...' : 'I Agree, Book Now'}
+                      {booking ? 'Confirming...' : 'Confirm Booking'}
                     </button>
                   </div>
                 </div>

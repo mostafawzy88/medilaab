@@ -24,12 +24,28 @@ export default function DoctorDashboard({
   const t = useTranslations('Dashboard')
   const locale = useLocale()
   
-  // Confirmed queue (scheduled or in_progress)
   const [activeQueue, setActiveQueue] = useState<Appointment[]>(initialQueue.filter(a => a.status === 'scheduled' || a.status === 'in_progress'))
-  // Pending requests (waiting)
   const [requests, setRequests] = useState<Appointment[]>(initialQueue.filter(a => a.status === 'waiting'))
   const [activePrescription, setActivePrescription] = useState<Appointment | null>(null)
   const [view, setView] = useState<'queue' | 'requests'>('queue')
+  const [autoConfirm, setAutoConfirm] = useState(false)
+
+  // Fetch auto-confirm preference
+  useEffect(() => {
+    const fetchPrefs = async () => {
+      const supabase = createClient()
+      const { data } = await supabase.from('profiles').select('auto_confirm_appointments').eq('id', doctorId).single()
+      if (data) setAutoConfirm(data.auto_confirm_appointments || false)
+    }
+    fetchPrefs()
+  }, [doctorId])
+
+  const toggleAutoConfirm = async () => {
+    const newVal = !autoConfirm
+    setAutoConfirm(newVal)
+    const supabase = createClient()
+    await supabase.from('profiles').update({ auto_confirm_appointments: newVal }).eq('id', doctorId)
+  }
 
   useEffect(() => {
     const supabase = createClient()
@@ -104,6 +120,20 @@ export default function DoctorDashboard({
         >
           {t('appt_requests')} 
           {requests.length > 0 && <span className="ml-2 w-2 h-2 rounded-full bg-red-500 inline-block animate-pulse"></span>}
+        </button>
+      </div>
+
+      {/* Auto-Confirm Toggle */}
+      <div className="flex items-center justify-between bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-100 dark:border-gray-800 shadow-sm">
+        <div>
+          <p className="font-bold text-sm">Auto-Confirm Appointments</p>
+          <p className="text-xs text-gray-500">Automatically approve bookings that fall within your working hours</p>
+        </div>
+        <button 
+          onClick={toggleAutoConfirm}
+          className={`relative w-12 h-7 rounded-full transition-colors ${autoConfirm ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-700'}`}
+        >
+          <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-sm transition-transform ${autoConfirm ? 'translate-x-5' : ''}`} />
         </button>
       </div>
 

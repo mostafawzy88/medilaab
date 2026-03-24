@@ -109,10 +109,13 @@ export default function NurseDashboard({
   }
 
   const handleApproveReschedule = async (appointmentId: string) => {
-    // In a real app this would open a date picker and fire a webhook.
     const supabase = createClient()
     await supabase.from('appointments').update({ status: 'scheduled' }).eq('id', appointmentId)
-    alert("Appointment successfully rescheduled/approved. Webhook triggered.")
+  }
+
+  const handleReject = async (appointmentId: string) => {
+    const supabase = createClient()
+    await supabase.from('appointments').update({ status: 'cancelled' }).eq('id', appointmentId)
   }
 
   return (
@@ -184,14 +187,23 @@ export default function NurseDashboard({
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                           {t('view_prescription')}
                         </button>
-                      ) : apt.status !== 'in_progress' ? (
-                        <>
+                      ) : apt.status === 'waiting' ? (
+                        <div className="flex gap-2 justify-end">
                           <button 
                             onClick={() => handleApproveReschedule(apt.id)}
-                            className="inline-flex items-center gap-1.5 bg-orange-50-50 text-orange-600 hover:bg-orange-100 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors mr-2"
+                            className="bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-all hover:scale-105 active:scale-95"
                           >
-                            Reschedule
+                            Approve
                           </button>
+                          <button 
+                            onClick={() => handleReject(apt.id)}
+                            className="bg-gray-100 text-gray-500 px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-red-50 hover:text-red-600 transition-all"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      ) : apt.status !== 'in_progress' ? (
+                        <>
                           <button 
                             onClick={() => handleCallNext(apt.id, apt.patient?.full_name || 'Patient')}
                             className="inline-flex items-center gap-1.5 bg-teal-50 text-teal-600 hover:bg-teal-100 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors"
