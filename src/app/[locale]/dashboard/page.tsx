@@ -22,7 +22,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
   // Get user profile role and onboarding status
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, full_name, has_completed_onboarding, is_authorized')
+    .select('role, full_name, has_completed_onboarding, is_authorized, assigned_doctor_id')
     .eq('id', user.id)
     .single();
 
@@ -110,7 +110,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
       };
     }
 
-    portalContent = <PatientDashboard initialAppointment={appointmentData} />;
+    portalContent = <PatientDashboard initialAppointment={appointmentData} doctorId={profile.assigned_doctor_id} />;
   } else if (role === 'doctor') {
     portalTitle = t('role_doctor');
     const startOfDay = new Date();

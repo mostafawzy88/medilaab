@@ -40,7 +40,11 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   latitude numeric(10,8),
   longitude numeric(11,8),
   supervisor_id uuid REFERENCES public.profiles(id),
-  subscription_status text DEFAULT 'active'
+  subscription_status text DEFAULT 'active',
+  
+  -- Step 5: Professional Info
+  specialization text,
+  bio text
 );
 
 -- 3. Create Appointments Table
