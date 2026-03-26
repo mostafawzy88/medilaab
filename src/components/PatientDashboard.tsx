@@ -54,6 +54,7 @@ export default function PatientDashboard({
   const [certs, setCerts] = useState<Certification[]>([])
   const [loadingCerts, setLoadingCerts] = useState(false)
   const [updatingPayment, setUpdatingPayment] = useState(false)
+  const [addingDoctor, setAddingDoctor] = useState<string | null>(null)
 
   useEffect(() => {
     const supabase = createClient()
@@ -91,15 +92,33 @@ export default function PatientDashboard({
   }, [showAddDoctor])
 
   const handleAddDoctor = async (docId: string) => {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    setAddingDoctor(docId)
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        alert("Please sign in first")
+        return
+      }
 
-    const { error } = await supabase.from('patient_doctors').insert({ patient_id: user.id, doctor_id: docId })
-    if (!error) {
-      const newDoc = allDoctors.find(d => d.id === docId)
-      if (newDoc) setDoctors(prev => [...prev, newDoc])
-      setShowAddDoctor(false)
+      const { error } = await supabase.from('patient_doctors').insert({ patient_id: user.id, doctor_id: docId })
+      
+      if (error) {
+        if (error.code === '23505') {
+          alert("This doctor is already in your list.")
+        } else {
+          throw error
+        }
+      } else {
+        const newDoc = allDoctors.find(d => d.id === docId)
+        if (newDoc) setDoctors(prev => [...prev, newDoc])
+        setShowAddDoctor(false)
+      }
+    } catch (err: any) {
+      console.error('[AddDoctor] Error:', err)
+      alert("Failed to add doctor: " + (err.message || "Unknown error"))
+    } finally {
+      setAddingDoctor(null)
     }
   }
 
@@ -171,14 +190,23 @@ export default function PatientDashboard({
                  <h3 className="text-xl font-black">Add Doctor</h3>
                  <button onClick={() => setShowAddDoctor(false)} className="text-gray-400 hover:text-gray-600">✕</button>
                </div>
-               <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
-                 {searching ? <p className="text-center py-4">Searching...</p> : allDoctors.map(doc => (
-                   <button key={doc.id} onClick={() => handleAddDoctor(doc.id)} className="w-full p-4 rounded-2xl border-2 border-gray-100 dark:border-gray-800 hover:border-blue-500 text-left transition-all">
-                     <p className="font-bold">Dr. {doc.full_name}</p>
-                     <p className="text-xs text-blue-600">{doc.specialization}</p>
-                   </button>
-                 ))}
-               </div>
+                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
+                  {searching ? <p className="text-center py-4">Searching...</p> : allDoctors.map(doc => (
+                    <div key={doc.id} className="w-full p-4 rounded-2xl border-2 border-gray-100 dark:border-gray-800 flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-bold">Dr. {doc.full_name}</p>
+                        <p className="text-xs text-blue-600 font-medium">{doc.specialization}</p>
+                      </div>
+                      <button 
+                        disabled={addingDoctor !== null}
+                        onClick={() => handleAddDoctor(doc.id)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+                      >
+                        {addingDoctor === doc.id ? 'Adding...' : 'Add'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
              </div>
            </div>
         )}
@@ -332,10 +360,19 @@ export default function PatientDashboard({
                  </div>
                  <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
                    {searching ? <p className="text-center py-4">Searching...</p> : allDoctors.filter(d => !doctors.find(myD => myD.id === d.id)).map(doc => (
-                     <button key={doc.id} onClick={() => handleAddDoctor(doc.id)} className="w-full p-4 rounded-2xl border-2 border-gray-100 dark:border-gray-800 hover:border-blue-500 text-left transition-all">
-                       <p className="font-bold">Dr. {doc.full_name}</p>
-                       <p className="text-xs text-blue-600">{doc.specialization}</p>
-                     </button>
+                     <div key={doc.id} className="w-full p-4 rounded-2xl border-2 border-gray-100 dark:border-gray-800 flex items-center justify-between gap-4">
+                       <div>
+                         <p className="font-bold">Dr. {doc.full_name}</p>
+                         <p className="text-xs text-blue-600 font-medium">{doc.specialization}</p>
+                       </div>
+                       <button 
+                         disabled={addingDoctor !== null}
+                         onClick={() => handleAddDoctor(doc.id)}
+                         className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+                       >
+                         {addingDoctor === doc.id ? 'Adding...' : 'Add'}
+                       </button>
+                     </div>
                    ))}
                    {!searching && allDoctors.filter(d => !doctors.find(myD => myD.id === d.id)).length === 0 && (
                      <p className="text-center py-8 text-gray-400 italic text-sm">No new doctors found.</p>
