@@ -6,41 +6,38 @@ import { routing } from './i18n/routing'
 const intlMiddleware = createMiddleware(routing)
 
 export async function middleware(request: NextRequest) {
-  // 1. Update Supabase session (standard pattern)
-  // This ensures the session is refreshed and cookies are updated in the request/response
-  const supabaseResponse = await updateSession(request);
+  try {
+    const { pathname } = request.nextUrl;
 
-  // 2. Determine if this path needs internationalization
-  const { pathname } = request.nextUrl;
-  
-  // Skip intl for API, Auth and internal paths
-  if (
-    pathname.startsWith('/api') || 
-    pathname.startsWith('/auth') || 
-    pathname.startsWith('/_next') || 
-    pathname.startsWith('/_vercel') ||
-    pathname.includes('.') // Static files
-  ) {
-    return supabaseResponse;
+    // 1. Skip system paths early
+    if (pathname.startsWith('/_next') || pathname.startsWith('/_vercel') || pathname.includes('.')) {
+      return NextResponse.next();
+    }
+
+    // 2. Handle Supabase Session
+    const supabaseResponse = await updateSession(request);
+
+    // 3. Skip intl for API and Auth
+    if (pathname.startsWith('/api') || pathname.startsWith('/auth')) {
+      return supabaseResponse;
+    }
+
+    // 4. Handle next-intl
+    const response = intlMiddleware(request);
+
+    // 5. Merge cookies safely
+    const supabaseCookies = supabaseResponse.headers.getSetCookie();
+    for (const cookie of supabaseCookies) {
+      response.headers.append('Set-Cookie', cookie);
+    }
+
+    return response;
+  } catch (e) {
+    console.error('Middleware crash:', e);
+    return NextResponse.next();
   }
-
-  // 3. Apply next-intl routing
-  const response = intlMiddleware(request);
-
-  // 4. Copy all Set-Cookie headers from Supabase to the final response
-  // This is essential for session persistence
-  supabaseResponse.headers.getSetCookie().forEach((cookie) => {
-    response.headers.append('Set-Cookie', cookie);
-  });
-
-  return response;
 }
 
 export const config = {
-  matcher: [
-    // Match all non-static paths
-    '/((?!_next|_vercel|.*\\..*).*)',
-    // Always match the root
-    '/'
-  ]
+  matcher: ['/', '/(ar|en)/:path*', '/((?!api|auth|_next|_vercel|.*\\..*).*)']
 }
