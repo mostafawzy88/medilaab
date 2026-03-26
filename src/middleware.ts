@@ -1,41 +1,44 @@
+import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { updateSession } from '@/utils/supabase/middleware'
 import createMiddleware from 'next-intl/middleware'
 import { routing } from './i18n/routing'
 
 const intlMiddleware = createMiddleware(routing)
 
 export async function middleware(request: NextRequest) {
-  try {
-    const { pathname } = request.nextUrl;
+  const { pathname } = request.nextUrl;
 
-    // 1. Skip system paths early
-    if (pathname.startsWith('/_next') || pathname.startsWith('/_vercel') || pathname.includes('.')) {
-      return NextResponse.next();
-    }
+  // 1. Hand off to intlMiddleware first to get the base response (including rewrites/redirects)
+  let response = intlMiddleware(request);
 
-    // 2. Handle Supabase Session
-    const supabaseResponse = await updateSession(request);
-
-    // 3. Skip intl for API and Auth
-    if (pathname.startsWith('/api') || pathname.startsWith('/auth')) {
-      return supabaseResponse;
-    }
-
-    // 4. Handle next-intl
-    const response = intlMiddleware(request);
-
-    // 5. Merge cookies safely
-    const supabaseCookies = supabaseResponse.headers.getSetCookie();
-    for (const cookie of supabaseCookies) {
-      response.headers.append('Set-Cookie', cookie);
-    }
-
+  // 2. Skip Supabase for static files and internal paths
+  if (pathname.includes('.') || pathname.startsWith('/_next') || pathname.startsWith('/_vercel')) {
     return response;
-  } catch (e) {
-    console.error('Middleware crash:', e);
-    return NextResponse.next();
   }
+
+  // 3. Initialize Supabase client with the ability to modify our 'response' object
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          )
+        },
+      },
+    }
+  )
+
+  // 4. Important: This refreshes the session if needed
+  await supabase.auth.getUser()
+
+  return response;
 }
 
 export const config = {
