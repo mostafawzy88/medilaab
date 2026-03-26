@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { createClient } from '@/utils/supabase/server';
+import { getOrCreateProfile } from '@/utils/supabase/profiles';
 import { redirect } from 'next/navigation';
 import LogoutButton from '@/components/LogoutButton';
 import PatientDashboard from '@/components/PatientDashboard';
@@ -16,32 +17,19 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    // redirect(`/${locale}/login`);
-    return <div className="p-10 text-center">No user. Redirect to Login disabled for debugging. <a href={`/${locale}/login`} className="underline">Click here to go manually</a></div>;
+    redirect(`/${locale}/login`);
   }
 
-  // Get user profile role and onboarding status
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role, full_name, email, has_completed_onboarding, is_authorized')
-    .eq('id', user.id)
-    .single();
+  // Get or create user profile
+  const profile = await getOrCreateProfile(supabase, user.id, user.email, user.user_metadata?.full_name);
 
   if (!profile) {
-    // This shouldn't happen with the trigger, but safe to redirect to onboarding
-    // redirect(`/${locale}/onboarding`);
-    return <div className="p-10 text-center text-red-500">No profile found for user {user.email}. Role based UI cannot render. <a href={`/${locale}/onboarding`} className="underline font-bold">Try Onboarding Manually</a></div>;
+    // This only happens on serious DB error
+    return <div className="p-10 text-center text-red-500">System Error: Could not load your profile. Please try again later.</div>;
   }
 
   if (!profile.has_completed_onboarding) {
-    // redirect(`/${locale}/onboarding`);
-    return (
-      <div className="p-10 text-center">
-        Onboarding not completed. Redirect to Onboarding disabled for debugging. 
-        <pre className="mt-4 bg-gray-100 p-4 rounded text-left">{JSON.stringify(profile, null, 2)}</pre>
-        <a href={`/${locale}/onboarding`} className="underline mt-4 block">Go to Onboarding</a>
-      </div>
-    );
+    redirect(`/${locale}/onboarding`);
   }
 
   const role = profile.role;

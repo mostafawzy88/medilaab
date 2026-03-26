@@ -1,6 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import { Link } from '@/i18n/routing';
 import { createClient } from '@/utils/supabase/server';
+import { getOrCreateProfile } from '@/utils/supabase/profiles';
 import { redirect } from 'next/navigation';
 
 export default async function IndexPage({ params }: { params: Promise<{ locale: string }> }) {
@@ -12,8 +13,8 @@ export default async function IndexPage({ params }: { params: Promise<{ locale: 
   const { data: { user } } = await supabase.auth.getUser();
 
   if (user) {
-    // redirect(`/${locale}/dashboard`);
-    return <div className="p-10 text-center">User logged in. Redirect to Dashboard disabled for debugging. <a href={`/${locale}/dashboard`} className="underline">Click here to go manually</a></div>;
+    await getOrCreateProfile(supabase, user.id, user.email, user.user_metadata?.full_name);
+    redirect(`/${locale}/dashboard`);
   }
 
   return (
