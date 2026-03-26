@@ -116,7 +116,11 @@ export default function PatientDashboard({
       }
     } catch (err: any) {
       console.error('[AddDoctor] Error:', err)
-      alert("Failed to add doctor: " + (err.message || "Unknown error"))
+      if (err.message?.includes('schema cache') || err.message?.includes('patient_doctors')) {
+        alert("The doctors table hasn't been set up yet. Please ask your admin to run the database setup SQL in Supabase.")
+      } else {
+        alert("Failed to add doctor: " + (err.message || "Unknown error"))
+      }
     } finally {
       setAddingDoctor(null)
     }

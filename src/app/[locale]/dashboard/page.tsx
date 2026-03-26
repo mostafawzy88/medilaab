@@ -111,8 +111,9 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
       };
     }
 
-    // Fetch patient's doctors
-    const { data: patientDoctors } = await supabase
+    // Fetch patient's doctors (with fallback if table doesn't exist yet)
+    let initialDoctors: any[] = [];
+    const { data: patientDoctors, error: pdError } = await supabase
       .from('patient_doctors')
       .select(`
         doctor_id,
@@ -120,7 +121,20 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
       `)
       .eq('patient_id', user.id);
 
-    const initialDoctors = (patientDoctors || []).map((d: any) => d.doctor);
+    if (pdError) {
+      // Table might not exist — fallback to assigned_doctor_id
+      console.warn('[Dashboard] patient_doctors error:', pdError.message);
+      if (profile.assigned_doctor_id) {
+        const { data: fallbackDoc } = await supabase
+          .from('profiles')
+          .select('id, full_name, specialization, clinic_location, working_hours, phone_number')
+          .eq('id', profile.assigned_doctor_id)
+          .single();
+        if (fallbackDoc) initialDoctors = [fallbackDoc];
+      }
+    } else {
+      initialDoctors = (patientDoctors || []).map((d: any) => d.doctor);
+    }
 
     portalContent = <PatientDashboard initialAppointment={appointmentData} initialDoctors={initialDoctors} />;
   } else if (role === 'doctor') {
