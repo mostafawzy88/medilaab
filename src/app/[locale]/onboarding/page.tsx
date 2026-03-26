@@ -10,7 +10,8 @@ export default async function OnboardingPage({ params }: { params: Promise<{ loc
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect(`/${locale}/login`);
+    // redirect(`/${locale}/login`);
+    return <div className="p-10 text-center">No user (Onboarding). Redirect to Login disabled. <a href={`/${locale}/login`} className="underline">Go to Login</a></div>;
   }
 
   // Check if already completed
@@ -21,7 +22,14 @@ export default async function OnboardingPage({ params }: { params: Promise<{ loc
     .single();
 
   if (profile?.has_completed_onboarding) {
-    redirect(`/${locale}/dashboard`);
+    // redirect(`/${locale}/dashboard`);
+    return (
+      <div className="p-10 text-center">
+        Onboarding ALREADY completed. Redirect to Dashboard disabled.
+        <pre className="mt-4 bg-gray-100 p-4 rounded text-left">{JSON.stringify(profile, null, 2)}</pre>
+        <a href={`/${locale}/dashboard`} className="underline mt-4 block font-bold">Go to Dashboard</a>
+      </div>
+    );
   }
 
   return (

@@ -12,7 +12,8 @@ export default async function IndexPage({ params }: { params: Promise<{ locale: 
   const { data: { user } } = await supabase.auth.getUser();
 
   if (user) {
-    redirect(`/${locale}/dashboard`);
+    // redirect(`/${locale}/dashboard`);
+    return <div className="p-10 text-center">User logged in. Redirect to Dashboard disabled for debugging. <a href={`/${locale}/dashboard`} className="underline">Click here to go manually</a></div>;
   }
 
   return (

@@ -16,7 +16,8 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect(`/${locale}/login`);
+    // redirect(`/${locale}/login`);
+    return <div className="p-10 text-center">No user. Redirect to Login disabled for debugging. <a href={`/${locale}/login`} className="underline">Click here to go manually</a></div>;
   }
 
   // Get user profile role and onboarding status
@@ -28,11 +29,19 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
 
   if (!profile) {
     // This shouldn't happen with the trigger, but safe to redirect to onboarding
-    redirect(`/${locale}/onboarding`);
+    // redirect(`/${locale}/onboarding`);
+    return <div className="p-10 text-center text-red-500">No profile found for user {user.email}. Role based UI cannot render. <a href={`/${locale}/onboarding`} className="underline font-bold">Try Onboarding Manually</a></div>;
   }
 
   if (!profile.has_completed_onboarding) {
-    redirect(`/${locale}/onboarding`);
+    // redirect(`/${locale}/onboarding`);
+    return (
+      <div className="p-10 text-center">
+        Onboarding not completed. Redirect to Onboarding disabled for debugging. 
+        <pre className="mt-4 bg-gray-100 p-4 rounded text-left">{JSON.stringify(profile, null, 2)}</pre>
+        <a href={`/${locale}/onboarding`} className="underline mt-4 block">Go to Onboarding</a>
+      </div>
+    );
   }
 
   const role = profile.role;
