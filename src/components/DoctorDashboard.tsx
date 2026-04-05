@@ -68,16 +68,17 @@ export default function DoctorDashboard({
   }, [doctorId])
 
   const refetchQueue = async (supabase: any) => {
-    const startOfDay = new Date()
-    startOfDay.setHours(0,0,0,0)
+    // Show everything from 12 hours ago up to end of today to avoid midnight UTC issues
+    const startOfWindow = new Date()
+    startOfWindow.setHours(startOfWindow.getHours() - 12)
     
-    // Today's queue
+    // Today's queue (scheduled/in_progress)
     const { data: queueData } = await supabase
       .from('appointments')
       .select(`id, patient_id, scheduled_time, status, queue_position, appointment_type, fees, payment_status, patient:profiles!appointments_patient_id_fkey(full_name)`)
       .eq('doctor_id', doctorId)
       .in('status', ['scheduled', 'in_progress'])
-      .gte('scheduled_time', startOfDay.toISOString())
+      .gte('scheduled_time', startOfWindow.toISOString())
       .order('queue_position', { ascending: true })
       
     if (queueData) {

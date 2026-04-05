@@ -135,10 +135,9 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
     portalContent = <PatientDashboard initialAppointments={appointmentsList} initialDoctors={initialDoctors} />;
   } else if (role === 'doctor') {
     portalTitle = t('role_doctor');
-    const startOfDay = new Date();
-    startOfDay.setHours(0,0,0,0);
-    const endOfDay = new Date();
-    endOfDay.setHours(23,59,59,999);
+    // Broaden the window to 12 hours ago to avoid midnight UTC issues
+    const startOfWindow = new Date();
+    startOfWindow.setHours(startOfWindow.getHours() - 12);
 
     // Today's queue (scheduled/in_progress)
     const { data: queue } = await supabase
@@ -149,8 +148,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
       `)
       .eq('doctor_id', user.id)
       .in('status', ['scheduled', 'in_progress'])
-      .gte('scheduled_time', startOfDay.toISOString())
-      .lte('scheduled_time', endOfDay.toISOString())
+      .gte('scheduled_time', startOfWindow.toISOString())
       .order('queue_position', { ascending: true });
 
     // ALL pending requests (any date)
@@ -167,10 +165,8 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
     portalContent = <DoctorDashboard doctorId={user.id} initialQueue={(queue as any) || []} initialRequests={(pendingRequests as any) || []} />;
   } else if (role === 'nurse') {
     portalTitle = t('role_nurse');
-    const startOfDay = new Date();
-    startOfDay.setHours(0,0,0,0);
-    const endOfDay = new Date();
-    endOfDay.setHours(23,59,59,999);
+    const startOfWindow = new Date();
+    startOfWindow.setHours(startOfWindow.getHours() - 12);
 
     const { data: queue } = await supabase
       .from('appointments')
@@ -179,8 +175,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
         patient:profiles!appointments_patient_id_fkey(full_name)
       `)
       .in('status', ['scheduled', 'waiting', 'in_progress', 'completed'])
-      .gte('scheduled_time', startOfDay.toISOString())
-      .lte('scheduled_time', endOfDay.toISOString())
+      .gte('scheduled_time', startOfWindow.toISOString())
       .order('queue_position', { ascending: true });
 
     portalContent = <NurseDashboard clinicAppointments={(queue as any) || []} />;
