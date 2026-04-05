@@ -70,13 +70,9 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
 
   if (role === 'patient') {
     portalTitle = t('role_patient');
-    // ... logic remains same
-    const startOfDay = new Date();
-    startOfDay.setHours(0,0,0,0);
-    const endOfDay = new Date();
-    endOfDay.setHours(23,59,59,999);
-
-    const { data: appointment } = await supabase
+    
+    // Fetch ALL active/recent appointments for the patient (not just today)
+    const { data: appointments } = await supabase
       .from('appointments')
       .select(`
         id, 
@@ -85,31 +81,32 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
         fees,
         payment_status,
         appointment_type,
-        doctor:profiles!appointments_doctor_id_fkey(full_name, instapay_address)
+        status,
+        scheduled_time,
+        rejection_reason,
+        reviewed_by,
+        reviewed_at,
+        doctor:profiles!appointments_doctor_id_fkey(full_name, instapay_address),
+        reviewer:profiles!appointments_reviewed_by_fkey(full_name)
       `)
       .eq('patient_id', user.id)
-      .in('status', ['scheduled', 'waiting', 'in_progress'])
-      .gte('scheduled_time', startOfDay.toISOString())
-      .lte('scheduled_time', endOfDay.toISOString())
-      .order('scheduled_time', { ascending: true })
-      .limit(1)
-      .single();
+      .order('scheduled_time', { ascending: false })
+      .limit(20);
 
-    let appointmentData = null;
-    if (appointment) {
-      // @ts-ignore - Handle joining typing complexities
-      const doctorData = appointment.doctor as any;
-      appointmentData = {
-        id: appointment.id,
-        doctor_id: appointment.doctor_id,
-        queue_position: appointment.queue_position || 1,
-        fees: appointment.fees,
-        doctor_name: doctorData?.full_name || 'Doctor',
-        instapay_address: doctorData?.instapay_address || 'doctor@instapay',
-        payment_status: appointment.payment_status,
-        appointment_type: appointment.appointment_type,
-      };
-    }
+    const appointmentsList = (appointments || []).map((apt: any) => ({
+      id: apt.id,
+      doctor_id: apt.doctor_id,
+      queue_position: apt.queue_position || 0,
+      fees: apt.fees,
+      doctor_name: apt.doctor?.full_name || 'Doctor',
+      instapay_address: apt.doctor?.instapay_address || null,
+      payment_status: apt.payment_status,
+      appointment_type: apt.appointment_type,
+      status: apt.status,
+      scheduled_time: apt.scheduled_time,
+      rejection_reason: apt.rejection_reason,
+      reviewer_name: apt.reviewer?.full_name || null,
+    }));
 
     // Fetch patient's doctors (with fallback if table doesn't exist yet)
     let initialDoctors: any[] = [];
@@ -122,7 +119,6 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
       .eq('patient_id', user.id);
 
     if (pdError) {
-      // Table might not exist — fallback to assigned_doctor_id
       console.warn('[Dashboard] patient_doctors error:', pdError.message);
       if (profile.assigned_doctor_id) {
         const { data: fallbackDoc } = await supabase
@@ -136,7 +132,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
       initialDoctors = (patientDoctors || []).map((d: any) => d.doctor);
     }
 
-    portalContent = <PatientDashboard initialAppointment={appointmentData} initialDoctors={initialDoctors} />;
+    portalContent = <PatientDashboard initialAppointments={appointmentsList} initialDoctors={initialDoctors} />;
   } else if (role === 'doctor') {
     portalTitle = t('role_doctor');
     const startOfDay = new Date();
@@ -144,19 +140,31 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
     const endOfDay = new Date();
     endOfDay.setHours(23,59,59,999);
 
+    // Today's queue (scheduled/in_progress)
     const { data: queue } = await supabase
       .from('appointments')
       .select(`
-        id, patient_id, scheduled_time, status, queue_position,
+        id, patient_id, scheduled_time, status, queue_position, appointment_type, fees, payment_status,
         patient:profiles!appointments_patient_id_fkey(full_name)
       `)
       .eq('doctor_id', user.id)
-      .in('status', ['scheduled', 'waiting', 'in_progress'])
+      .in('status', ['scheduled', 'in_progress'])
       .gte('scheduled_time', startOfDay.toISOString())
       .lte('scheduled_time', endOfDay.toISOString())
       .order('queue_position', { ascending: true });
 
-    portalContent = <DoctorDashboard doctorId={user.id} initialQueue={(queue as any) || []} />;
+    // ALL pending requests (any date)
+    const { data: pendingRequests } = await supabase
+      .from('appointments')
+      .select(`
+        id, patient_id, scheduled_time, status, queue_position, appointment_type, fees, payment_status,
+        patient:profiles!appointments_patient_id_fkey(full_name)
+      `)
+      .eq('doctor_id', user.id)
+      .eq('status', 'waiting')
+      .order('scheduled_time', { ascending: true });
+
+    portalContent = <DoctorDashboard doctorId={user.id} initialQueue={(queue as any) || []} initialRequests={(pendingRequests as any) || []} />;
   } else if (role === 'nurse') {
     portalTitle = t('role_nurse');
     const startOfDay = new Date();

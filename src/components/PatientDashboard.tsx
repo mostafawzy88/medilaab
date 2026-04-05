@@ -15,6 +15,10 @@ type AppointmentProps = {
   instapay_address: string | null
   payment_status?: string
   appointment_type?: string
+  status?: string
+  scheduled_time?: string
+  rejection_reason?: string | null
+  reviewer_name?: string | null
 }
 
 type DoctorInfo = {
@@ -34,18 +38,25 @@ type Certification = {
   doctor_name: string
 }
 
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
+  waiting: { label: 'Pending Approval', color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200', icon: '🕐' },
+  scheduled: { label: 'Approved', color: 'text-green-700', bg: 'bg-green-50 border-green-200', icon: '✅' },
+  in_progress: { label: 'In Progress', color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200', icon: '🔵' },
+  completed: { label: 'Completed', color: 'text-gray-600', bg: 'bg-gray-50 border-gray-200', icon: '☑️' },
+  cancelled: { label: 'Rejected', color: 'text-red-700', bg: 'bg-red-50 border-red-200', icon: '❌' },
+}
+
 export default function PatientDashboard({
-  initialAppointment,
+  initialAppointments,
   initialDoctors
 }: {
-  initialAppointment: AppointmentProps | null
+  initialAppointments: AppointmentProps[]
   initialDoctors: DoctorInfo[]
 }) {
   const t = useTranslations('Dashboard')
-  const [appointment, setAppointment] = useState(initialAppointment)
-  const [currentServing, setCurrentServing] = useState(1)
+  const [appointments, setAppointments] = useState(initialAppointments)
   const [showBooking, setShowBooking] = useState(false)
-  const [activeTab, setActiveTab] = useState<'queue' | 'doctors' | 'certs'>('queue')
+  const [activeTab, setActiveTab] = useState<'bookings' | 'doctors' | 'certs'>('bookings')
   const [doctors, setDoctors] = useState<DoctorInfo[]>(initialDoctors)
   const [selectedDoctor, setSelectedDoctor] = useState<DoctorInfo | null>(initialDoctors[0] || null)
   const [allDoctors, setAllDoctors] = useState<DoctorInfo[]>([])
@@ -53,30 +64,7 @@ export default function PatientDashboard({
   const [searching, setSearching] = useState(false)
   const [certs, setCerts] = useState<Certification[]>([])
   const [loadingCerts, setLoadingCerts] = useState(false)
-  const [updatingPayment, setUpdatingPayment] = useState(false)
   const [addingDoctor, setAddingDoctor] = useState<string | null>(null)
-
-  useEffect(() => {
-    const supabase = createClient()
-    const channel = supabase
-      .channel('schema-db-changes')
-      .on('postgres_changes', {
-        event: '*', schema: 'public', table: 'appointments',
-        filter: `doctor_id=eq.${appointment?.doctor_id}`,
-      }, (payload: any) => {
-        if (payload.new?.status === 'in_progress') setCurrentServing(payload.new.queue_position || 1)
-        if (payload.new?.id === appointment?.id) setAppointment(prev => prev ? { ...prev, ...payload.new } : null)
-      }).subscribe()
-
-    const fetchCurrentServing = async () => {
-      if (!appointment?.doctor_id) return
-      const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0)
-      const { data } = await supabase.from('appointments').select('queue_position').eq('doctor_id', appointment.doctor_id).eq('status', 'in_progress').gte('scheduled_time', startOfDay.toISOString()).order('scheduled_time', { ascending: false }).limit(1).single()
-      if (data?.queue_position) setCurrentServing(data.queue_position)
-    }
-    fetchCurrentServing()
-    return () => { supabase.removeChannel(channel) }
-  }, [appointment?.doctor_id, appointment?.id])
 
   // Fetch all authorized doctors for searching
   useEffect(() => {
@@ -96,19 +84,12 @@ export default function PatientDashboard({
     try {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        alert("Please sign in first")
-        return
-      }
+      if (!user) { alert("Please sign in first"); return }
 
       const { error } = await supabase.from('patient_doctors').insert({ patient_id: user.id, doctor_id: docId })
-      
       if (error) {
-        if (error.code === '23505') {
-          alert("This doctor is already in your list.")
-        } else {
-          throw error
-        }
+        if (error.code === '23505') alert("This doctor is already in your list.")
+        else throw error
       } else {
         const newDoc = allDoctors.find(d => d.id === docId)
         if (newDoc) setDoctors(prev => [...prev, newDoc])
@@ -130,7 +111,6 @@ export default function PatientDashboard({
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-
     const { error } = await supabase.from('patient_doctors').delete().eq('patient_id', user.id).eq('doctor_id', docId)
     if (!error) setDoctors(prev => prev.filter(d => d.id !== docId))
   }
@@ -156,79 +136,16 @@ export default function PatientDashboard({
     fetchCerts()
   }, [activeTab])
 
-  const handleMarkAsPaid = async () => {
-    if (!appointment) return
-    setUpdatingPayment(true)
-    const supabase = createClient()
-    const { error } = await supabase
-      .from('appointments')
-      .update({ payment_status: 'paid' })
-      .eq('id', appointment.id)
-    
-    if (!error) {
-      setAppointment({ ...appointment, payment_status: 'paid' })
-    } else {
-      alert("Error updating payment status: " + error.message)
-    }
-    setUpdatingPayment(false)
-  }
-
-  const DAYS: Record<string, string> = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' }
-
-  if (!appointment && doctors.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 animate-in fade-in duration-700 space-y-6 text-center">
-        <div className="w-20 h-20 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-6 mx-auto text-4xl">👨‍⚕️</div>
-        <h3 className="text-2xl font-black">{t('no_appointment')}</h3>
-        <p className="text-gray-500 max-w-sm">You haven't added any doctors to your list yet. Start by adding a doctor to book your first appointment.</p>
-        <button
-          onClick={() => setShowAddDoctor(true)}
-          className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-2xl transition-all shadow-md font-bold"
-        >
-          Add My First Doctor
-        </button>
-        {showAddDoctor && (
-           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-             <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 w-full max-w-md shadow-2xl">
-               <div className="flex justify-between items-center mb-6">
-                 <h3 className="text-xl font-black">Add Doctor</h3>
-                 <button onClick={() => setShowAddDoctor(false)} className="text-gray-400 hover:text-gray-600">✕</button>
-               </div>
-                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
-                  {searching ? <p className="text-center py-4">Searching...</p> : allDoctors.map(doc => (
-                    <div key={doc.id} className="w-full p-4 rounded-2xl border-2 border-gray-100 dark:border-gray-800 flex items-center justify-between gap-4">
-                      <div>
-                        <p className="font-bold">Dr. {doc.full_name}</p>
-                        <p className="text-xs text-blue-600 font-medium">{doc.specialization}</p>
-                      </div>
-                      <button 
-                        disabled={addingDoctor !== null}
-                        onClick={() => handleAddDoctor(doc.id)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
-                      >
-                        {addingDoctor === doc.id ? 'Adding...' : 'Add'}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-             </div>
-           </div>
-        )}
-      </div>
-    )
-  }
-
-  const patientsAhead = appointment ? Math.max(0, appointment.queue_position - currentServing) : 0
-  const waitTimeMins = patientsAhead * 20
-  const instapayAddress = appointment?.instapay_address || 'placeholder@instapay'
-  const qrData = appointment ? `instapay://payment?address=${instapayAddress}&amount=${appointment.fees}` : ''
+  // Separate active from past
+  const activeAppointments = appointments.filter(a => ['waiting', 'scheduled', 'in_progress'].includes(a.status || ''))
+  const pastAppointments = appointments.filter(a => ['completed', 'cancelled'].includes(a.status || ''))
 
   return (
     <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-700">
       {/* Tab Nav */}
       <div className="flex gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-2xl w-fit">
         {[
-          { key: 'queue', label: 'My Queue' },
+          { key: 'bookings', label: `My Bookings (${activeAppointments.length})` },
           { key: 'doctors', label: 'My Doctors' },
           { key: 'certs', label: 'Certificates' },
         ].map(tab => (
@@ -240,77 +157,111 @@ export default function PatientDashboard({
         ))}
       </div>
 
-      {/* Queue Tab */}
-      {activeTab === 'queue' && (
+      {/* Bookings Tab */}
+      {activeTab === 'bookings' && (
         <div className="space-y-6">
-          {!appointment ? (
+          {/* Book New Button */}
+          <button
+            onClick={() => setShowBooking(true)}
+            className="w-full bg-gradient-to-r from-blue-600 to-teal-500 hover:from-blue-700 hover:to-teal-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            Book New Appointment
+          </button>
+
+          {/* Active Appointments */}
+          {activeAppointments.length === 0 && pastAppointments.length === 0 ? (
             <div className="text-center py-20 bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800">
-               <div className="text-5xl mb-4">📅</div>
-               <h3 className="text-xl font-bold">{t('no_appointment')}</h3>
-               <p className="text-gray-500 mt-2 mb-6">Choose one of your doctors to book a visit.</p>
-               <button onClick={() => setActiveTab('doctors')} className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold">Go to My Doctors</button>
-            </div>
-          ) : appointment.payment_status === 'pending' ? (
-            <div className="bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-200 dark:border-amber-900/50 rounded-3xl p-8 text-center animate-in fade-in zoom-in duration-500">
-              <div className="w-16 h-16 bg-amber-100 dark:bg-amber-800 text-amber-600 dark:text-amber-300 rounded-full flex items-center justify-center mx-auto mb-4 font-black text-3xl">!</div>
-              <h3 className="text-2xl font-black text-amber-900 dark:text-amber-100 mb-2">Payment Required</h3>
-              <p className="text-amber-800 dark:text-amber-200 max-w-lg mx-auto mb-8">
-                Your appointment is currently <strong className="font-black uppercase tracking-widest">Pending</strong>. You must settle the {appointment.fees} EGP fee to secure your slot and view your live queue status.
-              </p>
-
-              <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 shadow-sm inline-block mx-auto mb-8 border border-amber-100 dark:border-gray-800">
-                <QRCodeSVG value={qrData} size={150} bgColor="#ffffff" fgColor="#000000" />
-                <p className="text-sm font-bold text-gray-500 mt-4 break-all">{instapayAddress}</p>
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-xs font-bold mt-2">InstaPay</div>
-              </div>
-
-              <div>
-                <button 
-                  onClick={handleMarkAsPaid}
-                  disabled={updatingPayment}
-                  className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black py-4 px-10 rounded-2xl shadow-lg shadow-amber-500/30 transition-all disabled:opacity-50"
-                >
-                  {updatingPayment ? 'Updating...' : 'I Have Paid'}
-                </button>
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-4 font-bold">Only click this after you have sent the transfer.</p>
-              </div>
+              <div className="text-5xl mb-4">📅</div>
+              <h3 className="text-xl font-bold">{t('no_appointment')}</h3>
+              <p className="text-gray-500 mt-2">You don't have any bookings yet. Book your first appointment above!</p>
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 shadow-xl border border-gray-100 dark:border-gray-800 relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-4 opacity-10">
-                    <svg className="w-24 h-24" fill="currentColor" viewBox="0 0 20 20"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path></svg>
-                  </div>
-                  <p className="text-sm font-medium text-gray-500 mb-1">{t('current_serving')}</p>
-                  <div className="text-6xl font-black text-slate-800 dark:text-slate-100">{currentServing}</div>
+              {activeAppointments.length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-gray-400">Active Bookings</h3>
+                  {activeAppointments.map(apt => {
+                    const cfg = STATUS_CONFIG[apt.status || 'waiting']
+                    const isPending = apt.status === 'waiting'
+                    const needsPayment = apt.payment_status === 'pending' && apt.status === 'scheduled'
+                    
+                    return (
+                      <div key={apt.id} className={`bg-white dark:bg-gray-900 rounded-2xl p-5 border ${isPending ? 'border-amber-200 dark:border-amber-800' : needsPayment ? 'border-blue-200 dark:border-blue-800' : 'border-gray-100 dark:border-gray-800'} shadow-sm`}>
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-lg">{cfg.icon}</span>
+                              <span className={`text-xs font-black uppercase tracking-wider ${cfg.color}`}>{needsPayment ? '💳 Awaiting Payment' : cfg.label}</span>
+                            </div>
+                            <h4 className="font-bold text-lg">Dr. {apt.doctor_name}</h4>
+                            <div className="flex flex-wrap gap-3 mt-2 text-sm text-gray-500">
+                              <span>📅 {apt.scheduled_time ? new Date(apt.scheduled_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'TBD'}</span>
+                              <span className="capitalize">🏥 {(apt.appointment_type || 'clinic_normal').replace(/_/g, ' ')}</span>
+                              <span>💰 {apt.fees} EGP</span>
+                              {apt.queue_position > 0 && apt.status === 'scheduled' && <span>🔢 Queue #{apt.queue_position}</span>}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Payment section for approved appointments */}
+                        {needsPayment && apt.instapay_address && (
+                          <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+                            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 text-center">
+                              <p className="text-sm text-blue-700 dark:text-blue-300 font-medium mb-3">
+                                Pay <strong className="font-black">{apt.fees} EGP</strong> via InstaPay to secure your slot
+                              </p>
+                              <div className="bg-white dark:bg-gray-900 rounded-lg p-3 inline-block shadow-sm">
+                                <QRCodeSVG value={`instapay://payment?address=${apt.instapay_address}&amount=${apt.fees}`} size={100} bgColor="#ffffff" fgColor="#000000" />
+                                <p className="text-xs font-bold text-gray-500 mt-2 break-all">{apt.instapay_address}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
-                <div className="bg-gradient-to-br from-blue-600 to-teal-500 rounded-3xl p-6 shadow-xl shadow-blue-500/20 relative overflow-hidden text-white">
-                  <div className="absolute -bottom-6 -right-6 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
-                  <p className="text-sm font-medium text-blue-100 mb-1">{t('your_turn')}</p>
-                  <div className="text-6xl font-black">{appointment.queue_position}</div>
+              )}
+
+              {/* Past Appointments */}
+              {pastAppointments.length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 mt-8">Past Bookings</h3>
+                  {pastAppointments.map(apt => {
+                    const cfg = STATUS_CONFIG[apt.status || 'completed']
+                    return (
+                      <div key={apt.id} className="bg-white dark:bg-gray-900 rounded-2xl p-5 border border-gray-100 dark:border-gray-800 shadow-sm opacity-75">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-lg">{cfg.icon}</span>
+                              <span className={`text-xs font-black uppercase tracking-wider ${cfg.color}`}>{cfg.label}</span>
+                            </div>
+                            <h4 className="font-bold text-lg">Dr. {apt.doctor_name}</h4>
+                            <div className="flex flex-wrap gap-3 mt-2 text-sm text-gray-500">
+                              <span>📅 {apt.scheduled_time ? new Date(apt.scheduled_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'N/A'}</span>
+                              <span className="capitalize">🏥 {(apt.appointment_type || 'clinic_normal').replace(/_/g, ' ')}</span>
+                              <span>💰 {apt.fees} EGP</span>
+                            </div>
+                            {/* Rejection reason */}
+                            {apt.status === 'cancelled' && apt.rejection_reason && (
+                              <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-100 dark:border-red-900/50">
+                                <p className="text-sm text-red-700 dark:text-red-300">
+                                  <span className="font-bold">Rejected{apt.reviewer_name ? ` by Dr. ${apt.reviewer_name}` : ''}:</span> {apt.rejection_reason}
+                                </p>
+                              </div>
+                            )}
+                            {apt.status === 'cancelled' && !apt.rejection_reason && apt.reviewer_name && (
+                              <p className="mt-2 text-sm text-red-600">Rejected by Dr. {apt.reviewer_name}</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
-                <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 shadow-xl border border-gray-100 dark:border-gray-800 flex flex-col justify-center">
-                  <p className="text-sm font-medium text-gray-500 mb-1">{t('est_wait')}</p>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-5xl font-black text-orange-500">{waitTimeMins}</span>
-                    <span className="text-lg font-bold text-gray-400">{t('mins')}</span>
-                  </div>
-                  {patientsAhead === 0 && (
-                    <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-bold uppercase tracking-wider">
-                      <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span></span>
-                      It's your turn!
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="bg-green-50 dark:bg-green-900/20 rounded-3xl p-8 shadow-sm border border-green-200 dark:border-green-900/50 flex items-center gap-6">
-                <div className="w-12 h-12 bg-green-100 dark:bg-green-800 text-green-600 dark:text-green-300 rounded-full flex items-center justify-center shrink-0 text-xl font-black">✓</div>
-                <div>
-                  <h3 className="text-xl font-bold text-green-900 dark:text-green-100">Payment Confirmed</h3>
-                  <p className="text-green-700 dark:text-green-300">Your slot is secured. You can track your queue status above.</p>
-                </div>
-              </div>
+              )}
             </>
           )}
         </div>
@@ -323,37 +274,47 @@ export default function PatientDashboard({
             <h3 className="text-sm font-black uppercase tracking-widest text-gray-400">Linked Clinics</h3>
             <button onClick={() => setShowAddDoctor(true)} className="text-xs font-bold text-blue-600">+ Add New Doctor</button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {doctors.map(doc => (
-              <div key={doc.id} className="bg-white dark:bg-gray-900 rounded-3xl p-6 shadow-sm border border-gray-100 dark:border-gray-800 relative group">
-                <button 
-                  onClick={() => handleRemoveDoctor(doc.id)}
-                  className="absolute top-4 right-4 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  ✕
-                </button>
-                <div className="flex items-start gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600 to-teal-500 text-white flex items-center justify-center text-2xl font-black shrink-0">
-                    {doc.full_name?.charAt(0)}
-                  </div>
-                  <div className="flex-1">
-                    <h2 className="text-lg font-black">Dr. {doc.full_name}</h2>
-                    {doc.specialization && (
-                      <span className="text-xs font-bold text-blue-600">{doc.specialization}</span>
-                    )}
-                    <div className="mt-3 flex gap-2">
-                       <button 
-                         onClick={() => { setSelectedDoctor(doc); setShowBooking(true); }}
-                         className="bg-blue-600 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors"
-                       >
-                         Book Now
-                       </button>
+          
+          {doctors.length === 0 ? (
+            <div className="text-center py-20 bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800">
+              <div className="text-5xl mb-4">👨‍⚕️</div>
+              <h3 className="text-xl font-bold">No Doctors Yet</h3>
+              <p className="text-gray-500 mt-2 mb-6">Add your first doctor to start booking appointments.</p>
+              <button onClick={() => setShowAddDoctor(true)} className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold">Add My First Doctor</button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {doctors.map(doc => (
+                <div key={doc.id} className="bg-white dark:bg-gray-900 rounded-3xl p-6 shadow-sm border border-gray-100 dark:border-gray-800 relative group">
+                  <button 
+                    onClick={() => handleRemoveDoctor(doc.id)}
+                    className="absolute top-4 right-4 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    ✕
+                  </button>
+                  <div className="flex items-start gap-4">
+                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600 to-teal-500 text-white flex items-center justify-center text-2xl font-black shrink-0">
+                      {doc.full_name?.charAt(0)}
+                    </div>
+                    <div className="flex-1">
+                      <h2 className="text-lg font-black">Dr. {doc.full_name}</h2>
+                      {doc.specialization && (
+                        <span className="text-xs font-bold text-blue-600">{doc.specialization}</span>
+                      )}
+                      <div className="mt-3 flex gap-2">
+                         <button 
+                           onClick={() => { setSelectedDoctor(doc); setShowBooking(true); }}
+                           className="bg-blue-600 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors"
+                         >
+                           Book Now
+                         </button>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
           
           {showAddDoctor && (
              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
@@ -385,7 +346,6 @@ export default function PatientDashboard({
                </div>
              </div>
           )}
-          {showBooking && selectedDoctor && <BookingModal onClose={() => setShowBooking(false)} onSuccess={() => window.location.reload()} />}
         </div>
       )}
 
@@ -408,14 +368,12 @@ export default function PatientDashboard({
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
               {certs.map(cert => (
                 <div key={cert.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 text-blue-600 flex items-center justify-center shrink-0 text-lg">📋</div>
-                      <div>
-                        <p className="font-bold">{cert.title}</p>
-                        {cert.description && <p className="text-sm text-gray-500 mt-1">{cert.description}</p>}
-                        <p className="text-xs text-gray-400 mt-2">Issued by Dr. {cert.doctor_name} • {new Date(cert.issued_at).toLocaleDateString()}</p>
-                      </div>
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 text-blue-600 flex items-center justify-center shrink-0 text-lg">📋</div>
+                    <div>
+                      <p className="font-bold">{cert.title}</p>
+                      {cert.description && <p className="text-sm text-gray-500 mt-1">{cert.description}</p>}
+                      <p className="text-xs text-gray-400 mt-2">Issued by Dr. {cert.doctor_name} • {new Date(cert.issued_at).toLocaleDateString()}</p>
                     </div>
                   </div>
                 </div>
@@ -424,6 +382,9 @@ export default function PatientDashboard({
           )}
         </div>
       )}
+
+      {/* Booking Modal */}
+      {showBooking && <BookingModal onClose={() => setShowBooking(false)} onSuccess={() => window.location.reload()} />}
     </div>
   )
 }

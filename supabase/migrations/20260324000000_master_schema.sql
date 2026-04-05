@@ -91,6 +91,9 @@ CREATE TABLE IF NOT EXISTS public.appointments (
   notes text,
   queue_position integer,
   fees numeric(10,2) DEFAULT 350.00,
+  reviewed_by uuid REFERENCES public.profiles(id),
+  reviewed_at timestamp with time zone,
+  rejection_reason text,
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
