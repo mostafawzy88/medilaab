@@ -87,6 +87,7 @@ export default function PatientDashboard({
 
   const [appointmentLogs, setAppointmentLogs] = useState<Record<string, AppointmentLog[]>>({})
   const [expandedLogs, setExpandedLogs] = useState<string | null>(null)
+  const [queueWaitTimes, setQueueWaitTimes] = useState<Record<string, number>>({})
 
   // Fetch all authorized doctors for searching
   useEffect(() => {
@@ -100,6 +101,38 @@ export default function PatientDashboard({
     }
     fetchAllDocs()
   }, [showAddDoctor])
+
+  // Fetch accurate queue wait times
+  useEffect(() => {
+    const fetchWaitTimes = async () => {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const todayApts = appointments.filter(a => a.scheduled_time?.startsWith(todayStr) && a.status === 'scheduled');
+      if (todayApts.length === 0) {
+        setQueueWaitTimes({});
+        return;
+      }
+
+      const supabase = createClient();
+      const newWaitTimes: Record<string, number> = {};
+
+      for (const apt of todayApts) {
+        const { count } = await supabase
+          .from('appointments')
+          .select('*', { count: 'exact', head: true })
+          .eq('doctor_id', apt.doctor_id)
+          .in('status', ['scheduled', 'in_progress'])
+          .gte('scheduled_time', todayStr + 'T00:00:00')
+          .lt('scheduled_time', apt.scheduled_time) // Count those strictly before me
+        
+        newWaitTimes[apt.id] = (count || 0) * 30;
+      }
+      setQueueWaitTimes(newWaitTimes);
+    };
+
+    fetchWaitTimes();
+    const interval = setInterval(fetchWaitTimes, 60000); // Refresh every minute
+    return () => clearInterval(interval);
+  }, [appointments]);
 
   const handleAddDoctor = async (docId: string) => {
     setAddingDoctor(docId)
@@ -276,7 +309,12 @@ export default function PatientDashboard({
                         </div>
                         <div className="flex gap-2">
                            {isApproved && (
-                             <button onClick={() => { setEditAppointmentId(apt.id); setShowBooking(true); }} className="text-xs font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-lg hover:bg-blue-100 transition-colors">Reschedule</button>
+                             <button onClick={() => { 
+                               const doc = doctors.find(d => d.id === apt.doctor_id);
+                               setSelectedDoctor(doc || null);
+                               setEditAppointmentId(apt.id); 
+                               setShowBooking(true); 
+                             }} className="text-xs font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-lg hover:bg-blue-100 transition-colors">Reschedule</button>
                            )}
                            {isPending && (
                              <button onClick={() => handleDeleteAppointment(apt.id)} className="text-xs font-bold text-red-600 bg-red-50 dark:bg-red-900/30 px-3 py-1 rounded-lg hover:bg-red-100 transition-colors">Delete</button>
@@ -284,6 +322,17 @@ export default function PatientDashboard({
                         </div>
                       </div>
                       <h4 className="font-bold text-lg">Dr. {apt.doctor_name}</h4>
+                      
+                      {/* Wait Time Display */}
+                      {isApproved && apt.scheduled_time?.startsWith(new Date().toISOString().split('T')[0]) && (
+                        <div className="mt-2 flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800">
+                          <span className="text-blue-600">⌛</span>
+                          <p className="text-xs font-bold text-blue-700 dark:text-blue-300">
+                            Estimated Wait: {queueWaitTimes[apt.id] !== undefined ? `${queueWaitTimes[apt.id]} mins` : 'Calculating...'}
+                          </p>
+                        </div>
+                      )}
+
                       <div className="flex flex-col gap-1 mt-3 text-sm text-gray-500">
                         <div className="flex gap-2 items-center">
                           <span className="w-5 text-center">📅</span>
@@ -319,29 +368,32 @@ export default function PatientDashboard({
             </div>
           ) : (
             <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800 shadow-sm overflow-x-auto">
-               <div className="min-w-[700px]">
+               <div className="min-w-[800px]">
+                 <h4 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-6 px-2">Next 30 Days Availability</h4>
                  {/* Mini Calendar View Grid */}
-                 <div className="grid grid-cols-7 gap-4">
-                    {[0,1,2,3,4,5,6].map(i => {
+                 <div className="grid grid-cols-7 gap-2">
+                    {Array.from({ length: 30 }).map((_, i) => {
                       const d = new Date()
                       d.setDate(d.getDate() + i)
                       const dateStr = d.toISOString().split('T')[0]
                       const dayApts = activeAppointments.filter(a => a.scheduled_time?.startsWith(dateStr))
+                      const isToday = i === 0;
+                      
                       return (
-                        <div key={i} className="flex flex-col gap-2">
-                           <div className="text-center pb-2 border-b border-gray-100 dark:border-gray-800">
-                             <p className="text-xs font-bold uppercase text-gray-400">{d.toLocaleDateString('en-US', { weekday: 'short'})}</p>
-                             <p className="text-xl font-black">{d.getDate()}</p>
+                        <div key={i} className={`flex flex-col gap-1 p-2 rounded-2xl border ${isToday ? 'border-blue-200 bg-blue-50/30' : 'border-gray-50 dark:border-gray-800'}`}>
+                           <div className="text-center pb-1 border-b border-gray-100 dark:border-gray-800">
+                             <p className="text-[10px] font-bold uppercase text-gray-400">{d.toLocaleDateString('en-US', { weekday: 'short'})}</p>
+                             <p className={`text-sm font-black ${isToday ? 'text-blue-600' : ''}`}>{d.getDate()}</p>
                            </div>
-                           <div className="space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar pr-1">
+                           <div className="space-y-1 max-h-[100px] overflow-y-auto custom-scrollbar">
                               {dayApts.length === 0 ? (
-                                <div className="text-xs text-center text-gray-400 italic py-4">Free</div>
+                                <div className="text-[10px] text-center text-gray-300 italic py-2">-</div>
                               ) : dayApts.map(apt => {
                                 const isPending = apt.status === 'waiting'
                                 return (
-                                  <div key={apt.id} className={`p-2 rounded-xl text-xs border ${isPending ? 'bg-amber-50 border-amber-200 dark:bg-amber-900/20' : 'bg-green-50 border-green-200 dark:bg-green-900/20'}`}>
-                                    <p className="font-bold">{new Date(apt.scheduled_time!).toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'})}</p>
-                                    <p className="truncate">Dr. {apt.doctor_name}</p>
+                                  <div key={apt.id} className={`p-1 rounded-lg text-[9px] border ${isPending ? 'bg-amber-50 border-amber-200 dark:bg-amber-900/10' : 'bg-green-50 border-green-200 dark:bg-green-900/10'}`}>
+                                    <p className="font-bold">{new Date(apt.scheduled_time!).toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit', hour12: false})}</p>
+                                    <p className="truncate opacity-75">Dr. {apt.doctor_name.split(' ')[0]}</p>
                                   </div>
                                 )
                               })}
