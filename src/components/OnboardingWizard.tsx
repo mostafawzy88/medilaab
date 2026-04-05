@@ -21,7 +21,7 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
   const [fetchingDoctors, setFetchingDoctors] = useState(false)
 
   useEffect(() => {
-    if (step === 2 && role === 'patient') {
+    if (step === 2 && (role === 'patient' || role === 'nurse')) {
       fetchDoctors()
     }
   }, [step, role])
@@ -60,15 +60,21 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
     
     // We use upsert to ensure a profile exists before setting onboarding to true
     // This fixes cases where the handle_new_user trigger might have been slow or absent
+    const updateData: any = {
+      id: user.id,
+      role: role,
+      has_completed_onboarding: true,
+      is_authorized: role === 'patient' ? true : false
+    }
+
+    // If nurse, set supervisor_id
+    if (role === 'nurse' && selectedDoctors.length > 0) {
+      updateData.supervisor_id = selectedDoctors[0]
+    }
+
     const { error } = await supabase
       .from('profiles')
-      .upsert({
-        id: user.id,
-        role: role,
-        has_completed_onboarding: true,
-        // Doctors and nurses start unauthorized by default
-        is_authorized: role === 'patient' ? true : false
-      }, { onConflict: 'id' })
+      .upsert(updateData, { onConflict: 'id' })
 
     if (error) {
       console.error('[Onboarding] Profile error:', error)
@@ -108,7 +114,7 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
         <div className="h-2 w-full bg-gray-100 dark:bg-gray-800">
           <div 
             className="h-full bg-blue-600 transition-all duration-500" 
-            style={{ width: `${(step / (role === 'patient' ? 2 : 1)) * 100}%` }}
+            style={{ width: `${(step / (role === 'patient' || role === 'nurse' ? 2 : 1)) * 100}%` }}
           ></div>
         </div>
 
@@ -153,7 +159,7 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
               <button
                 disabled={!role || loading}
                 onClick={() => {
-                  if (role === 'patient') {
+                  if (role === 'patient' || role === 'nurse') {
                     setStep(2)
                   } else {
                     handleComplete()
@@ -161,7 +167,7 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
                 }}
                 className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold py-4 rounded-2xl shadow-lg shadow-blue-500/30 transition-all disabled:opacity-50 h-16"
               >
-                {loading ? t('completing') : (role === 'patient' ? 'Next' : t('finish'))}
+                {loading ? t('completing') : (role === 'patient' || role === 'nurse' ? 'Next' : t('finish'))}
               </button>
             </div>
           )}
@@ -227,6 +233,63 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
                   disabled={selectedDoctors.length === 0 || loading}
                   onClick={handleComplete}
                   className="flex-[2] bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold py-4 rounded-2xl shadow-lg shadow-blue-500/30 transition-all disabled:opacity-50"
+                >
+                  {loading ? t('completing') : t('finish')}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === 2 && role === 'nurse' && (
+            <div className="space-y-8 animate-in slide-in-from-right-4 duration-500">
+              <div className="text-center">
+                <h1 className="text-3xl font-bold mb-2">Select Supervising Doctor</h1>
+                <p className="text-gray-500 dark:text-gray-400">Choose the doctor you will be assisting. They will need to approve your access.</p>
+              </div>
+
+              {fetchingDoctors ? (
+                <div className="py-20 flex flex-col items-center gap-4">
+                  <div className="w-12 h-12 border-4 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+                  <p className="text-gray-400">Finding doctors...</p>
+                </div>
+              ) : doctors.length === 0 ? (
+                <div className="py-20 text-center space-y-4">
+                  <div className="text-4xl">👨‍⚕️</div>
+                  <p className="text-gray-500">No authorized doctors found yet.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3">
+                  {doctors.map((doc) => (
+                    <button
+                      key={doc.id}
+                      onClick={() => setSelectedDoctors([doc.id])}
+                      className={`p-5 rounded-2xl border-2 text-left transition-all ${
+                        selectedDoctors.includes(doc.id) 
+                          ? 'border-teal-600 bg-teal-50 dark:bg-teal-900/20' 
+                          : 'border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 hover:border-gray-200'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-lg">Dr. {doc.full_name}</span>
+                        {selectedDoctors.includes(doc.id) && (
+                          <div className="bg-teal-600 text-white rounded-full p-1">
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex gap-4">
+                <button onClick={() => setStep(1)} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold py-4 rounded-2xl transition-all">Back</button>
+                <button
+                  disabled={selectedDoctors.length === 0 || loading}
+                  onClick={handleComplete}
+                  className="flex-[2] bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-teal-500/30 transition-all disabled:opacity-50"
                 >
                   {loading ? t('completing') : t('finish')}
                 </button>

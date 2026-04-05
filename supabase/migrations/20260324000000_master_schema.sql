@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   longitude numeric(11,8),
   supervisor_id uuid REFERENCES public.profiles(id),
   subscription_status text DEFAULT 'active',
+  subscription_expires_at timestamp with time zone,
   
   -- Step 5: Professional Info
   specialization text,
