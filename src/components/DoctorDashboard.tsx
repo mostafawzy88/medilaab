@@ -100,36 +100,48 @@ export default function DoctorDashboard({
   const handleApprove = async (appointmentId: string) => {
     setProcessing(appointmentId)
     const supabase = createClient()
-    await supabase.from('appointments').update({ 
+    const { error } = await supabase.from('appointments').update({ 
       status: 'scheduled',
       reviewed_by: doctorId,
       reviewed_at: new Date().toISOString()
     }).eq('id', appointmentId)
+    if (error) { alert('Error approving: ' + error.message) }
+    await refetchQueue(supabase)
     setProcessing(null)
   }
 
   const handleReject = async (appointmentId: string) => {
     setProcessing(appointmentId)
     const supabase = createClient()
-    await supabase.from('appointments').update({ 
+    const { error } = await supabase.from('appointments').update({ 
       status: 'cancelled',
       reviewed_by: doctorId,
       reviewed_at: new Date().toISOString(),
       rejection_reason: rejectionReason || null
     }).eq('id', appointmentId)
+    if (error) { alert('Error rejecting: ' + error.message) }
     setRejectingId(null)
     setRejectionReason('')
+    await refetchQueue(supabase)
     setProcessing(null)
   }
 
   const handleCallNext = async (appointmentId: string, patientName: string) => {
     const supabase = createClient()
     await supabase.from('appointments').update({ status: 'in_progress' }).eq('id', appointmentId)
+    await refetchQueue(supabase)
 
+    // Text-to-speech announcement for clinic speakers
     if ('speechSynthesis' in window) {
-      const msgText = t('tts_next', { name: patientName })
+      // Cancel any ongoing speech first
+      window.speechSynthesis.cancel()
+      const msgText = locale === 'ar' 
+        ? `المريض التالي، ${patientName}، يرجى التوجه إلى غرفة الفحص` 
+        : `Next patient, ${patientName}, please proceed to the examination room.`
       const utterance = new SpeechSynthesisUtterance(msgText)
       utterance.lang = locale === 'ar' ? 'ar-EG' : 'en-US'
+      utterance.volume = 1
+      utterance.rate = 0.9
       window.speechSynthesis.speak(utterance)
     }
   }
@@ -137,6 +149,7 @@ export default function DoctorDashboard({
   const handleComplete = async (appointmentId: string) => {
     const supabase = createClient()
     await supabase.from('appointments').update({ status: 'completed' }).eq('id', appointmentId)
+    await refetchQueue(supabase)
   }
 
   return (

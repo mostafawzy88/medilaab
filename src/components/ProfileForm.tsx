@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useTranslations } from 'next-intl'
 
@@ -20,6 +20,13 @@ type Profile = {
   fees_urgent?: number | null
   fees_home_visit?: number | null
   email?: string | null
+  subscription_expires_at?: string | null
+}
+
+type Certificate = {
+  id: string
+  title: string
+  description: string | null
 }
 
 const SPECIALIZATIONS = [
@@ -42,6 +49,10 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
   const [profile, setProfile] = useState<Profile>(initialProfile)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
+  const [certificates, setCertificates] = useState<Certificate[]>([])
+  const [newCertTitle, setNewCertTitle] = useState('')
+  const [newCertDesc, setNewCertDesc] = useState('')
+  const [addingCert, setAddingCert] = useState(false)
 
   const getHours = (): Record<string, string> => {
     if (!profile.working_hours) return DEFAULT_HOURS
@@ -92,6 +103,58 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
   const hours = getHours()
   const isStaff = profile.role === 'doctor' || profile.role === 'nurse'
 
+  // Fetch doctor certificates
+  useEffect(() => {
+    if (profile.role === 'doctor') {
+      const fetchCerts = async () => {
+        const supabase = createClient()
+        const { data } = await supabase
+          .from('doctor_certificates')
+          .select('id, title, description')
+          .eq('doctor_id', profile.id)
+          .order('created_at', { ascending: false })
+        if (data) setCertificates(data)
+      }
+      fetchCerts()
+    }
+  }, [profile.id, profile.role])
+
+  const handleAddCertificate = async () => {
+    if (!newCertTitle.trim()) return
+    setAddingCert(true)
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('doctor_certificates')
+      .insert({ doctor_id: profile.id, title: newCertTitle.trim(), description: newCertDesc.trim() || null })
+      .select('id, title, description')
+      .single()
+    if (data && !error) {
+      setCertificates((prev: Certificate[]) => [data, ...prev])
+      setNewCertTitle('')
+      setNewCertDesc('')
+    } else {
+      alert('Error adding certificate: ' + (error?.message || 'Unknown error'))
+    }
+    setAddingCert(false)
+  }
+
+  const handleRemoveCertificate = async (certId: string) => {
+    const supabase = createClient()
+    await supabase.from('doctor_certificates').delete().eq('id', certId)
+    setCertificates((prev: Certificate[]) => prev.filter(c => c.id !== certId))
+  }
+
+  // Subscription info
+  const getSubInfo = () => {
+    if (!profile.subscription_expires_at) return null
+    const expires = new Date(profile.subscription_expires_at)
+    const now = new Date()
+    const daysLeft = Math.ceil((expires.getTime() - now.getTime()) / (1000*60*60*24))
+    if (daysLeft < 0) return { label: 'Expired', color: 'bg-red-500/20 text-red-300', daysLeft }
+    if (daysLeft <= 7) return { label: `${daysLeft} days left`, color: 'bg-amber-500/20 text-amber-300', daysLeft }
+    return { label: `${daysLeft} days left`, color: 'bg-green-500/20 text-green-300', daysLeft }
+  }
+
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
 
@@ -104,12 +167,20 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
           </div>
           <div>
             <h1 className="text-3xl font-black tracking-tight">{profile.full_name || 'Your Profile'}</h1>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
               <span className="text-xs font-black uppercase tracking-widest bg-white/20 px-3 py-1 rounded-full">
                 {profile.role}
               </span>
               {profile.specialization && (
                 <span className="text-xs font-medium text-blue-100">{profile.specialization}</span>
+              )}
+              {isStaff && getSubInfo() && (
+                <span className={`text-xs font-bold px-3 py-1 rounded-full ${getSubInfo()!.color}`}>
+                  ⏳ Subscription: {getSubInfo()!.label}
+                  {profile.subscription_expires_at && (
+                    <span className="ml-1 opacity-75">(Expires {new Date(profile.subscription_expires_at).toLocaleDateString()})</span>
+                  )}
+                </span>
               )}
             </div>
           </div>
@@ -309,6 +380,64 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
                 })}
               </div>
             </div>
+
+            {/* Certificates (Doctor only) */}
+            {profile.role === 'doctor' && (
+              <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 space-y-5">
+                <h2 className="text-sm font-black uppercase tracking-widest text-gray-400">Certificates & Qualifications</h2>
+                <p className="text-xs text-gray-500">Add your medical certificates, degrees, and board certifications here. Patients can see these on your profile.</p>
+                
+                {/* Existing Certificates */}
+                {certificates.length > 0 && (
+                  <div className="space-y-3">
+                    {certificates.map(cert => (
+                      <div key={cert.id} className="flex items-start justify-between gap-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg">🏅</span>
+                            <p className="font-bold text-sm">{cert.title}</p>
+                          </div>
+                          {cert.description && <p className="text-xs text-gray-500 mt-1 ml-7">{cert.description}</p>}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveCertificate(cert.id)}
+                          className="text-red-400 hover:text-red-600 text-xs font-bold px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add New Certificate */}
+                <div className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-2xl p-4 space-y-3">
+                  <input
+                    type="text"
+                    value={newCertTitle}
+                    onChange={e => setNewCertTitle(e.target.value)}
+                    placeholder="Certificate title (e.g., MBBS, Fellowship in Cardiology)"
+                    className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none ring-2 ring-transparent focus:ring-blue-500 transition-all text-sm font-medium"
+                  />
+                  <input
+                    type="text"
+                    value={newCertDesc}
+                    onChange={e => setNewCertDesc(e.target.value)}
+                    placeholder="Issuing institution or description (optional)"
+                    className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none ring-2 ring-transparent focus:ring-blue-500 transition-all text-sm font-medium"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddCertificate}
+                    disabled={!newCertTitle.trim() || addingCert}
+                    className="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-xl text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {addingCert ? 'Adding...' : '+ Add Certificate'}
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
 
