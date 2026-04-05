@@ -5,17 +5,19 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import LogoutButton from './LogoutButton'
 
-export default function Navbar({ fullName }: { fullName: string }) {
+export default function Navbar({ fullName, role }: { fullName: string, role?: string }) {
   const t = useTranslations('Navigation')
   const dt = useTranslations('Dashboard')
   const locale = useLocale()
   const pathname = usePathname()
 
-  const navItems = [
-    { name: t('dashboard'), href: `/${locale}/dashboard` },
-    { name: t('about'), href: `/${locale}/about` },
-    { name: t('contact'), href: `/${locale}/contact` },
-  ]
+  const navItems = role === 'admin' 
+    ? [{ name: t('dashboard'), href: `/${locale}/dashboard` }]
+    : [
+        { name: t('dashboard'), href: `/${locale}/dashboard` },
+        { name: t('about'), href: `/${locale}/about` },
+        { name: t('contact'), href: `/${locale}/contact` },
+      ]
 
   return (
     <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-100 dark:border-gray-800 sticky top-0 z-40">

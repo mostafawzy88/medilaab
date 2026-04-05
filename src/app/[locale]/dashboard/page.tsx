@@ -41,7 +41,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
     const authT = await getTranslations('Authorization');
     return (
       <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 font-[family-name:var(--font-geist-sans)]">
-        <Navbar fullName={fullName} />
+        <Navbar fullName={fullName} role={role} />
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="bg-white dark:bg-gray-900 p-8 sm:p-12 rounded-3xl shadow-2xl max-w-lg w-full text-center border border-gray-100 dark:border-gray-800 animate-in fade-in zoom-in duration-500">
             <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mx-auto mb-8 rotate-3">
@@ -191,7 +191,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-[family-name:var(--font-geist-sans)]">
-      <Navbar fullName={fullName} />
+      <Navbar fullName={fullName} role={role} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-10 gap-4">

@@ -10,6 +10,8 @@ type StaffMember = {
   full_name: string
   email: string | null
   phone_number: string | null
+  clinic_location?: string | null
+  instapay_address?: string | null
   role: string
   is_authorized: boolean
   subscription_status: string | null
@@ -30,6 +32,7 @@ const DURATION_OPTIONS = [
   { value: '3', label: '3 Months' },
   { value: '6', label: '6 Months' },
   { value: '12', label: '1 Year' },
+  { value: 'custom', label: 'Custom Date' }
 ]
 
 export default function AdminDashboard() {
@@ -49,6 +52,11 @@ export default function AdminDashboard() {
   const [selectedDuration, setSelectedDuration] = useState<Record<string, string>>({})
   const [processing, setProcessing] = useState<string | null>(null)
 
+  // Edit Modal States
+  const [editUser, setEditUser] = useState<StaffMember | any | null>(null)
+  const [editForm, setEditForm] = useState<any>({})
+  const [savingUser, setSavingUser] = useState(false)
+
   // Stats
   const totalPatients = patients.length
   const activeDoctors = staff.filter(s => s.role === 'doctor' && s.is_authorized).length
@@ -64,7 +72,7 @@ export default function AdminDashboard() {
     
     const { data: staffData } = await supabase
       .from('profiles')
-      .select('id, full_name, email, phone_number, role, is_authorized, subscription_status, subscription_expires_at, supervisor_id, created_at')
+      .select('id, full_name, email, phone_number, clinic_location, instapay_address, role, is_authorized, subscription_status, subscription_expires_at, supervisor_id, created_at')
       .in('role', ['doctor', 'nurse'])
       .order('created_at', { ascending: false })
     
@@ -72,7 +80,7 @@ export default function AdminDashboard() {
 
     const { data: pts } = await supabase
       .from('profiles')
-      .select('id, full_name, email, phone_number, created_at')
+      .select('id, full_name, email, phone_number, clinic_location, instapay_address, created_at, role')
       .eq('role', 'patient')
       .order('created_at', { ascending: false })
     
@@ -98,9 +106,22 @@ export default function AdminDashboard() {
   }
 
   const handleActivate = async (userId: string) => {
-    const months = parseInt(selectedDuration[userId] || '1')
-    const expiresAt = new Date()
-    expiresAt.setMonth(expiresAt.getMonth() + months)
+    const durOpt = selectedDuration[userId] || '1'
+    let expiresAt = new Date()
+    
+    if (durOpt === 'custom') {
+      const customDateStr = editForm?.subscription_expires_at // Use form if open, else prompt
+      if (customDateStr) {
+        expiresAt = new Date(customDateStr)
+      } else {
+         const result = prompt("Enter expiry date (YYYY-MM-DD):")
+         if (!result) return
+         expiresAt = new Date(result)
+      }
+    } else {
+       const months = parseInt(durOpt)
+       expiresAt.setMonth(expiresAt.getMonth() + months)
+    }
 
     setProcessing(userId)
     const supabase = createClient()
@@ -112,6 +133,9 @@ export default function AdminDashboard() {
 
     if (!error) {
       setStaff(prev => prev.map(s => s.id === userId ? { ...s, is_authorized: true, subscription_status: 'active', subscription_expires_at: expiresAt.toISOString() } : s))
+      if (editUser?.id === userId) {
+         setEditForm(prev => ({ ...prev, is_authorized: true, subscription_status: 'active', subscription_expires_at: expiresAt.toISOString().split('T')[0] }))
+      }
     } else {
       alert('Error: ' + error.message)
     }
@@ -128,12 +152,55 @@ export default function AdminDashboard() {
 
     if (!error) {
       setStaff(prev => prev.map(s => s.id === userId ? { ...s, is_authorized: false, subscription_status: 'suspended' } : s))
+      if (editUser?.id === userId) {
+         setEditForm(prev => ({ ...prev, is_authorized: false, subscription_status: 'suspended' }))
+      }
     }
     setProcessing(null)
   }
 
+  const handleSaveUser = async () => {
+    if (!editUser) return
+    setSavingUser(true)
+
+    // Build update payload dynamically
+    const updatePayload: any = {
+      full_name: editForm.full_name,
+      email: editForm.email,
+      phone_number: editForm.phone_number,
+      clinic_location: editForm.clinic_location,
+      instapay_address: editForm.instapay_address,
+      subscription_expires_at: editForm.subscription_expires_at ? new Date(editForm.subscription_expires_at).toISOString() : null,
+      supervisor_id: editForm.supervisor_id || null
+    }
+
+    const supabase = createClient()
+    const { error } = await supabase.from('profiles').update(updatePayload).eq('id', editUser.id)
+
+    if (!error) {
+      if (editUser.role === 'patient') {
+         setPatients(prev => prev.map(p => p.id === editUser.id ? { ...p, ...updatePayload } : p))
+      } else {
+         setStaff(prev => prev.map(s => s.id === editUser.id ? { ...s, ...updatePayload } : s))
+      }
+      setEditUser(null) // Close modal
+    } else {
+      alert("Error saving user: " + error.message)
+    }
+    setSavingUser(false)
+  }
+
+  const openEditModal = (user: any) => {
+    setEditUser(user)
+    setEditForm({
+       ...user,
+       subscription_expires_at: user.subscription_expires_at ? new Date(user.subscription_expires_at).toISOString().split('T')[0] : ''
+    })
+  }
+
   const handleSendReminder = (member: StaffMember) => {
-    const price = settings.subscription_prices[selectedDuration[member.id] || '1'] || 500
+    const durOpt = selectedDuration[member.id] || '1'
+    const price = durOpt === 'custom' ? 'Custom' : settings.subscription_prices[durOpt] || 500
     const paymentInfo = settings.instapay_address 
       ? `InstaPay: ${settings.instapay_address}` 
       : settings.payment_link 
@@ -194,8 +261,11 @@ export default function AdminDashboard() {
 
   if (loading) return <div className="py-20 text-center animate-pulse text-gray-400 font-medium">Loading admin panel...</div>
 
+  // Filter out doctors for nurse assignment dropdown
+  const doctorList = staff.filter(s => s.role === 'doctor')
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-700">
+    <div className="space-y-6 animate-in fade-in duration-700 relative">
       
       {/* Navigation Tabs */}
       <div className="flex gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-2xl w-fit flex-wrap">
@@ -294,13 +364,13 @@ export default function AdminDashboard() {
                   <div key={member.id} className={`bg-white dark:bg-gray-900 rounded-2xl p-5 border shadow-sm ${!member.is_authorized ? 'border-amber-200 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-900/10' : 'border-gray-100 dark:border-gray-800'}`}>
                     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                       {/* Info */}
-                      <div className="flex items-center gap-4 flex-1">
+                      <div className="flex items-center gap-4 flex-1 cursor-pointer group" onClick={() => openEditModal(member)}>
                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg ${member.role === 'doctor' ? 'bg-blue-100 dark:bg-blue-900 text-blue-600' : 'bg-teal-100 dark:bg-teal-900 text-teal-600'}`}>
                           {member.full_name?.charAt(0)}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <p className="font-bold text-sm">{member.full_name}</p>
+                            <p className="font-bold text-sm group-hover:text-blue-600 transition-colors">{member.full_name}</p>
                             <span className={`text-[10px] font-black uppercase px-1.5 py-0.5 rounded ${member.role === 'doctor' ? 'bg-blue-600 text-white' : 'bg-teal-600 text-white'}`}>{member.role}</span>
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${sub.color}`}>
                               <span className={`w-1.5 h-1.5 rounded-full ${sub.dot}`}></span>
@@ -327,7 +397,7 @@ export default function AdminDashboard() {
                         >
                           {DURATION_OPTIONS.map(opt => (
                             <option key={opt.value} value={opt.value}>
-                              {opt.label} — {settings.subscription_prices[opt.value] || '?'} EGP
+                              {opt.label} {opt.value !== 'custom' ? `— ${settings.subscription_prices[opt.value] || '?'} EGP` : ''}
                             </option>
                           ))}
                         </select>
@@ -391,11 +461,11 @@ export default function AdminDashboard() {
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {patients.map(pt => (
-                  <tr key={pt.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                  <tr key={pt.id} onClick={() => openEditModal(pt)} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors cursor-pointer group">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                          <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 font-bold text-xs">{pt.full_name?.charAt(0)}</div>
-                         <span className="font-bold text-sm">{pt.full_name}</span>
+                         <span className="font-bold text-sm group-hover:text-blue-600 transition-colors">{pt.full_name}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -470,7 +540,7 @@ export default function AdminDashboard() {
           <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-6">
             <h3 className="text-xl font-bold mb-6">Subscription Pricing</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {DURATION_OPTIONS.map(opt => (
+              {DURATION_OPTIONS.slice(0, 4).map(opt => (
                 <div key={opt.value} className="p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
                   <label className="text-xs font-black uppercase tracking-widest text-gray-500 block mb-2">{opt.label}</label>
                   <div className="flex items-center gap-1">
@@ -499,6 +569,132 @@ export default function AdminDashboard() {
           </button>
         </div>
       )}
+
+      {/* ================= EDIT MODAL ================= */}
+      {editUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-300">
+           <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-800 w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
+             <div className="p-6 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex justify-between items-center">
+                <div>
+                   <h3 className="text-xl font-bold">Edit User Details</h3>
+                   <p className="text-sm text-gray-500">ID: {editUser.id.substring(0,8)}... — Role: <span className="font-bold text-blue-600 capitalize">{editUser.role}</span></p>
+                </div>
+                <button onClick={() => setEditUser(null)} className="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-all">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+             </div>
+
+             <div className="p-6 space-y-4">
+                {/* Basic Info */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                   <div>
+                      <label className="text-xs font-black uppercase tracking-widest text-gray-500 block mb-1">Full Name</label>
+                      <input 
+                         type="text" 
+                         value={editForm.full_name || ''} 
+                         onChange={e => setEditForm(prev => ({...prev, full_name: e.target.value}))}
+                         className="w-full rounded-xl px-3 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 focus:border-blue-600 outline-none text-sm font-medium"
+                      />
+                   </div>
+                   <div>
+                      <label className="text-xs font-black uppercase tracking-widest text-gray-500 block mb-1">Phone Number</label>
+                      <input 
+                         type="tel" 
+                         value={editForm.phone_number || ''} 
+                         onChange={e => setEditForm(prev => ({...prev, phone_number: e.target.value}))}
+                         className="w-full rounded-xl px-3 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 focus:border-blue-600 outline-none text-sm font-medium"
+                      />
+                   </div>
+                </div>
+
+                <div>
+                   <label className="text-xs font-black uppercase tracking-widest text-gray-500 block mb-1">Email Address</label>
+                   <input 
+                      type="email" 
+                      value={editForm.email || ''} 
+                      onChange={e => setEditForm(prev => ({...prev, email: e.target.value}))}
+                      className="w-full rounded-xl px-3 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 focus:border-blue-600 outline-none text-sm font-medium"
+                   />
+                </div>
+
+                <div>
+                   <label className="text-xs font-black uppercase tracking-widest text-gray-500 block mb-1">Address / Clinic Location</label>
+                   <input 
+                      type="text" 
+                      value={editForm.clinic_location || ''} 
+                      onChange={e => setEditForm(prev => ({...prev, clinic_location: e.target.value}))}
+                      className="w-full rounded-xl px-3 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 focus:border-blue-600 outline-none text-sm font-medium"
+                   />
+                </div>
+
+                <div>
+                   <label className="text-xs font-black uppercase tracking-widest text-gray-500 block mb-1">User's InstaPay / Payment Details</label>
+                   <input 
+                      type="text" 
+                      value={editForm.instapay_address || ''} 
+                      onChange={e => setEditForm(prev => ({...prev, instapay_address: e.target.value}))}
+                      className="w-full rounded-xl px-3 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 focus:border-blue-600 outline-none text-sm font-medium"
+                   />
+                </div>
+
+                {/* Sub & Link Info (Staff Only) */}
+                {editUser.role !== 'patient' && (
+                  <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900 p-4 rounded-2xl space-y-4">
+                    <h4 className="font-bold text-blue-800 dark:text-blue-300 text-sm">Staff Controls</h4>
+                    
+                    {/* Expiry Calendar */}
+                    <div>
+                       <label className="text-[10px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 block mb-1">Custom Subscription Expiry</label>
+                       <input 
+                          type="date" 
+                          value={editForm.subscription_expires_at || ''} 
+                          onChange={e => setEditForm(prev => ({...prev, subscription_expires_at: e.target.value}))}
+                          className="w-full rounded-xl px-3 py-2 bg-white dark:bg-gray-900 border border-blue-200 dark:border-blue-800 focus:border-blue-600 outline-none text-sm font-bold text-gray-700 dark:text-gray-300"
+                       />
+                       <p className="text-[10px] text-gray-500 mt-1">If you change this date, they will be considered active until it passes.</p>
+                    </div>
+
+                    {/* Nurse-Doctor linking */}
+                    {editUser.role === 'nurse' && (
+                      <div>
+                         <label className="text-[10px] font-black uppercase tracking-widest text-teal-600 dark:text-teal-400 block mb-1">Supervising Doctor</label>
+                         <select 
+                            value={editForm.supervisor_id || ''} 
+                            onChange={e => setEditForm(prev => ({...prev, supervisor_id: e.target.value}))}
+                            className="w-full rounded-xl px-3 py-2 bg-white dark:bg-gray-900 border border-teal-200 dark:border-teal-800 focus:border-teal-600 outline-none text-sm font-bold text-gray-700 dark:text-gray-300"
+                         >
+                            <option value="">-- No Supervisor Assigned --</option>
+                            {doctorList.map(doc => (
+                               <option key={doc.id} value={doc.id}>Dr. {doc.full_name}</option>
+                            ))}
+                         </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+             </div>
+
+             <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 flex justify-end gap-3">
+                <button 
+                  onClick={() => setEditUser(null)}
+                  className="px-5 py-2.5 rounded-xl font-bold text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleSaveUser}
+                  disabled={savingUser}
+                  className="px-5 py-2.5 rounded-xl font-bold text-sm bg-blue-600 text-white shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all disabled:opacity-50 flex items-center gap-2"
+                >
+                  {savingUser ? (
+                    <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> Saving...</>
+                  ) : 'Save Changes'}
+                </button>
+             </div>
+           </div>
+        </div>
+      )}
+
     </div>
   )
 }
