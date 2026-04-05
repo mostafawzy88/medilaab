@@ -132,9 +132,9 @@ export default function AdminDashboard() {
     }).eq('id', userId)
 
     if (!error) {
-      setStaff(prev => prev.map(s => s.id === userId ? { ...s, is_authorized: true, subscription_status: 'active', subscription_expires_at: expiresAt.toISOString() } : s))
+      setStaff((prev: StaffMember[]) => prev.map(s => s.id === userId ? { ...s, is_authorized: true, subscription_status: 'active', subscription_expires_at: expiresAt.toISOString() } : s))
       if (editUser?.id === userId) {
-         setEditForm(prev => ({ ...prev, is_authorized: true, subscription_status: 'active', subscription_expires_at: expiresAt.toISOString().split('T')[0] }))
+         setEditForm((prev: any) => ({ ...prev, is_authorized: true, subscription_status: 'active', subscription_expires_at: expiresAt.toISOString().split('T')[0] }))
       }
     } else {
       alert('Error: ' + error.message)
@@ -151,9 +151,9 @@ export default function AdminDashboard() {
     }).eq('id', userId)
 
     if (!error) {
-      setStaff(prev => prev.map(s => s.id === userId ? { ...s, is_authorized: false, subscription_status: 'suspended' } : s))
+      setStaff((prev: StaffMember[]) => prev.map(s => s.id === userId ? { ...s, is_authorized: false, subscription_status: 'suspended' } : s))
       if (editUser?.id === userId) {
-         setEditForm(prev => ({ ...prev, is_authorized: false, subscription_status: 'suspended' }))
+         setEditForm((prev: any) => ({ ...prev, is_authorized: false, subscription_status: 'suspended' }))
       }
     }
     setProcessing(null)
@@ -179,9 +179,9 @@ export default function AdminDashboard() {
 
     if (!error) {
       if (editUser.role === 'patient') {
-         setPatients(prev => prev.map(p => p.id === editUser.id ? { ...p, ...updatePayload } : p))
+         setPatients((prev: any[]) => prev.map(p => p.id === editUser.id ? { ...p, ...updatePayload } : p))
       } else {
-         setStaff(prev => prev.map(s => s.id === editUser.id ? { ...s, ...updatePayload } : s))
+         setStaff((prev: StaffMember[]) => prev.map(s => s.id === editUser.id ? { ...s, ...updatePayload } : s))
       }
       setEditUser(null) // Close modal
     } else {
@@ -392,7 +392,7 @@ export default function AdminDashboard() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <select
                           value={selectedDuration[member.id] || '1'}
-                          onChange={e => setSelectedDuration(prev => ({ ...prev, [member.id]: e.target.value }))}
+                          onChange={e => setSelectedDuration((prev: Record<string, string>) => ({ ...prev, [member.id]: e.target.value }))}
                           className="rounded-xl px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-xs font-bold"
                         >
                           {DURATION_OPTIONS.map(opt => (
@@ -497,7 +497,7 @@ export default function AdminDashboard() {
                 <input
                   type="text"
                   value={settings.instapay_address || ''}
-                  onChange={e => setSettings(prev => ({ ...prev, instapay_address: e.target.value }))}
+                  onChange={e => setSettings((prev: AdminSettings) => ({ ...prev, instapay_address: e.target.value }))}
                   placeholder="your-name@instapay"
                   className="w-full rounded-xl px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 focus:border-blue-600 outline-none font-medium"
                 />
@@ -518,7 +518,7 @@ export default function AdminDashboard() {
                 <input
                   type="url"
                   value={settings.payment_link || ''}
-                  onChange={e => setSettings(prev => ({ ...prev, payment_link: e.target.value }))}
+                  onChange={e => setSettings((prev: AdminSettings) => ({ ...prev, payment_link: e.target.value }))}
                   placeholder="https://payment.example.com/your-link"
                   className="w-full rounded-xl px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 focus:border-blue-600 outline-none font-medium"
                 />
@@ -528,7 +528,7 @@ export default function AdminDashboard() {
                 <label className="text-xs font-black uppercase tracking-widest text-gray-500 block mb-2">Bank Account Details</label>
                 <textarea
                   value={settings.bank_details || ''}
-                  onChange={e => setSettings(prev => ({ ...prev, bank_details: e.target.value }))}
+                  onChange={e => setSettings((prev: AdminSettings) => ({ ...prev, bank_details: e.target.value }))}
                   placeholder="Bank Name: ...\nAccount Number: ...\nIBAN: ..."
                   rows={4}
                   className="w-full rounded-xl px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 focus:border-blue-600 outline-none font-medium resize-none"
@@ -547,7 +547,7 @@ export default function AdminDashboard() {
                     <input
                       type="number"
                       value={settings.subscription_prices[opt.value] || 0}
-                      onChange={e => setSettings(prev => ({
+                      onChange={e => setSettings((prev: AdminSettings) => ({
                         ...prev,
                         subscription_prices: { ...prev.subscription_prices, [opt.value]: parseInt(e.target.value) || 0 }
                       }))}
@@ -592,7 +592,7 @@ export default function AdminDashboard() {
                       <input 
                          type="text" 
                          value={editForm.full_name || ''} 
-                         onChange={e => setEditForm(prev => ({...prev, full_name: e.target.value}))}
+                         onChange={e => setEditForm((prev: any) => ({...prev, full_name: e.target.value}))}
                          className="w-full rounded-xl px-3 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 focus:border-blue-600 outline-none text-sm font-medium"
                       />
                    </div>
@@ -601,7 +601,7 @@ export default function AdminDashboard() {
                       <input 
                          type="tel" 
                          value={editForm.phone_number || ''} 
-                         onChange={e => setEditForm(prev => ({...prev, phone_number: e.target.value}))}
+                         onChange={e => setEditForm((prev: any) => ({...prev, phone_number: e.target.value}))}
                          className="w-full rounded-xl px-3 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 focus:border-blue-600 outline-none text-sm font-medium"
                       />
                    </div>
@@ -612,7 +612,7 @@ export default function AdminDashboard() {
                    <input 
                       type="email" 
                       value={editForm.email || ''} 
-                      onChange={e => setEditForm(prev => ({...prev, email: e.target.value}))}
+                      onChange={e => setEditForm((prev: any) => ({...prev, email: e.target.value}))}
                       className="w-full rounded-xl px-3 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 focus:border-blue-600 outline-none text-sm font-medium"
                    />
                 </div>
@@ -622,7 +622,7 @@ export default function AdminDashboard() {
                    <input 
                       type="text" 
                       value={editForm.clinic_location || ''} 
-                      onChange={e => setEditForm(prev => ({...prev, clinic_location: e.target.value}))}
+                      onChange={e => setEditForm((prev: any) => ({...prev, clinic_location: e.target.value}))}
                       className="w-full rounded-xl px-3 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 focus:border-blue-600 outline-none text-sm font-medium"
                    />
                 </div>
@@ -632,7 +632,7 @@ export default function AdminDashboard() {
                    <input 
                       type="text" 
                       value={editForm.instapay_address || ''} 
-                      onChange={e => setEditForm(prev => ({...prev, instapay_address: e.target.value}))}
+                      onChange={e => setEditForm((prev: any) => ({...prev, instapay_address: e.target.value}))}
                       className="w-full rounded-xl px-3 py-2.5 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 focus:border-blue-600 outline-none text-sm font-medium"
                    />
                 </div>
@@ -648,7 +648,7 @@ export default function AdminDashboard() {
                        <input 
                           type="date" 
                           value={editForm.subscription_expires_at || ''} 
-                          onChange={e => setEditForm(prev => ({...prev, subscription_expires_at: e.target.value}))}
+                          onChange={e => setEditForm((prev: any) => ({...prev, subscription_expires_at: e.target.value}))}
                           className="w-full rounded-xl px-3 py-2 bg-white dark:bg-gray-900 border border-blue-200 dark:border-blue-800 focus:border-blue-600 outline-none text-sm font-bold text-gray-700 dark:text-gray-300"
                        />
                        <p className="text-[10px] text-gray-500 mt-1">If you change this date, they will be considered active until it passes.</p>
@@ -660,7 +660,7 @@ export default function AdminDashboard() {
                          <label className="text-[10px] font-black uppercase tracking-widest text-teal-600 dark:text-teal-400 block mb-1">Supervising Doctor</label>
                          <select 
                             value={editForm.supervisor_id || ''} 
-                            onChange={e => setEditForm(prev => ({...prev, supervisor_id: e.target.value}))}
+                            onChange={e => setEditForm((prev: any) => ({...prev, supervisor_id: e.target.value}))}
                             className="w-full rounded-xl px-3 py-2 bg-white dark:bg-gray-900 border border-teal-200 dark:border-teal-800 focus:border-teal-600 outline-none text-sm font-bold text-gray-700 dark:text-gray-300"
                          >
                             <option value="">-- No Supervisor Assigned --</option>
