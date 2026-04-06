@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useTranslations, useLocale } from 'next-intl'
 import PrescriptionModal from './PrescriptionModal'
+import BookingModal from './BookingModal'
 
 type Appointment = {
   id: string
@@ -32,11 +33,15 @@ export default function DoctorDashboard({
   const [activeQueue, setActiveQueue] = useState<Appointment[]>(initialQueue.filter(a => a.status === 'scheduled' || a.status === 'in_progress'))
   const [requests, setRequests] = useState<Appointment[]>(initialRequests || initialQueue.filter(a => a.status === 'waiting'))
   const [activePrescription, setActivePrescription] = useState<Appointment | null>(null)
-  const [view, setView] = useState<'queue' | 'requests'>('queue')
+  const [processing, setProcessing] = useState<string | null>(null)
+  const [showBooking, setShowBooking] = useState(false)
+  const [editingApt, setEditingApt] = useState<any>(null)
+  const [activeTab, setActiveTab] = useState<'queue' | 'requests' | 'stats' | 'meds'>('queue')
+  const [stats, setStats] = useState<any>(null)
+  const [loadingStats, setLoadingStats] = useState(false)
   const [autoConfirm, setAutoConfirm] = useState(false)
   const [rejectingId, setRejectingId] = useState<string | null>(null)
   const [rejectionReason, setRejectionReason] = useState('')
-  const [processing, setProcessing] = useState<string | null>(null)
 
   // Fetch auto-confirm preference
   useEffect(() => {
@@ -153,22 +158,112 @@ export default function DoctorDashboard({
     await refetchQueue(supabase)
   }
 
+  const fetchStats = async () => {
+    setLoadingStats(true)
+    const supabase = createClient()
+    const { data: appts } = await supabase
+      .from('appointments')
+      .select('fees, status, appointment_type, scheduled_time')
+      .eq('doctor_id', doctorId)
+      .neq('status', 'cancelled')
+    
+    if (appts) {
+      const totalRevenue = appts.reduce((sum: number, a: any) => sum + (Number(a.fees) || 0), 0)
+      const patientCount = appts.length
+      const byType = {
+        clinic_normal: appts.filter((a: any) => a.appointment_type === 'clinic_normal').length,
+        clinic_urgent: appts.filter((a: any) => a.appointment_type === 'clinic_urgent').length,
+        home_visit: appts.filter((a: any) => a.appointment_type === 'home_visit').length,
+      }
+      setStats({ totalRevenue, patientCount, byType })
+    }
+    setLoadingStats(false)
+  }
+
+  const [meds, setMeds] = useState<any[]>([])
+  const [loadingMeds, setLoadingMeds] = useState(false)
+  const [newMed, setNewMed] = useState({ name: '', dosage: '', symptoms: '' })
+  const [patientHistory, setPatientHistory] = useState<any[] | null>(null)
+  const [loadingHistory, setLoadingHistory] = useState(false)
+
+  const fetchMeds = async () => {
+    setLoadingMeds(true)
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const { data } = await supabase.from('doctor_medications').select('*').eq('doctor_id', user.id).order('name')
+      setMeds(data || [])
+    }
+    setLoadingMeds(false)
+  }
+
+  const handleAddMedToFavs = async () => {
+    if (!newMed.name) return
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    await supabase.from('doctor_medications').insert({
+      doctor_id: user.id,
+      name: newMed.name,
+      default_dosage: newMed.dosage,
+      common_symptoms: newMed.symptoms
+    })
+    setNewMed({ name: '', dosage: '', symptoms: '' })
+    fetchMeds()
+  }
+
+  const handleDeleteMed = async (id: string) => {
+    const supabase = createClient()
+    await supabase.from('doctor_medications').delete().eq('id', id)
+    fetchMeds()
+  }
+
+  const fetchPatientHistory = async (patientId: string) => {
+    setLoadingHistory(true)
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('prescriptions')
+      .select('*, doctor:profiles!prescriptions_doctor_id_fkey(full_name)')
+      .eq('patient_id', patientId)
+      .order('created_at', { ascending: false })
+    setPatientHistory(data || [])
+    setLoadingHistory(false)
+  }
+
+  useEffect(() => {
+    if (activeTab === 'stats') fetchStats()
+    if (activeTab === 'meds') fetchMeds()
+  }, [activeTab])
+
   return (
     <div className="space-y-6">
       {/* Tab Switcher */}
-      <div className="flex gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-2xl w-fit">
+      <div className="flex flex-wrap gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-2xl w-fit">
         <button 
-          onClick={() => setView('queue')}
-          className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${view === 'queue' ? 'bg-white shadow-sm' : 'text-gray-500'}`}
+          onClick={() => setActiveTab('queue')}
+          className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'queue' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500'}`}
         >
           {t('todays_queue')} ({activeQueue.length})
         </button>
         <button 
-          onClick={() => setView('requests')}
-          className={`px-6 py-2 rounded-xl text-sm font-bold transition-all relative ${view === 'requests' ? 'bg-white shadow-sm' : 'text-gray-500'}`}
+          onClick={() => setActiveTab('requests')}
+          className={`px-6 py-2 rounded-xl text-sm font-bold transition-all relative ${activeTab === 'requests' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500'}`}
         >
           {t('appt_requests')} ({requests.length})
           {requests.length > 0 && <span className="ml-2 w-2 h-2 rounded-full bg-red-500 inline-block animate-pulse"></span>}
+        </button>
+        <button 
+          onClick={() => setActiveTab('stats')}
+          className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'stats' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500'}`}
+        >
+          Statistics
+        </button>
+        <button 
+          onClick={() => setActiveTab('meds')}
+          className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'meds' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500'}`}
+        >
+          My Medications
         </button>
       </div>
 
@@ -188,12 +283,12 @@ export default function DoctorDashboard({
 
       <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-xl overflow-hidden border border-gray-100 dark:border-gray-800">
         <div className="overflow-x-auto">
-          {view === 'queue' ? (
+          {activeTab === 'queue' ? (
             activeQueue.length === 0 ? (
               <div className="p-12 text-center text-gray-500">{t('no_patients')}</div>
             ) : (
               <table className="w-full text-left">
-                <thead className="bg-gray-50 text-gray-500 text-xs font-black uppercase tracking-widest">
+                <thead className="bg-gray-50 dark:bg-gray-800 text-gray-500 text-xs font-black uppercase tracking-widest">
                   <tr>
                     <th className="p-4">#</th>
                     <th className="p-4">{t('patient_name')}</th>
@@ -208,25 +303,33 @@ export default function DoctorDashboard({
                       <td className="p-4 font-bold">{apt.patient?.full_name}</td>
                       <td className="p-4">
                         <span className={`px-2 py-1 rounded-full text-xs font-bold leading-none ${apt.status === 'in_progress' ? 'bg-blue-600 text-white' : 'bg-green-100 text-green-700'}`}>
-                          {apt.status}
+                          {apt.status === 'in_progress' ? 'In Progress' : 'Scheduled'}
                         </span>
                       </td>
-                      <td className="p-4 text-right space-x-2">
-                        {apt.status === 'scheduled' ? (
-                          <button onClick={() => handleCallNext(apt.id, apt.patient.full_name)} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold">{t('call_next')}</button>
-                        ) : (
-                          <div className="flex gap-2 justify-end">
-                            <button onClick={() => setActivePrescription(apt)} className="bg-purple-600 text-white px-4 py-2 rounded-xl text-xs font-bold">{t('write_prescription')}</button>
-                            <button onClick={() => handleComplete(apt.id)} className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold">{t('mark_completed')}</button>
-                          </div>
-                        )}
+                      <td className="p-4 text-right">
+                        <div className="flex gap-2 justify-end">
+                          {apt.status === 'scheduled' ? (
+                            <>
+                              <button onClick={() => fetchPatientHistory(apt.patient_id)} className="text-blue-600 hover:text-blue-700 font-bold px-3 py-1.5 rounded-lg text-xs transition-colors">History</button>
+                              <button onClick={() => { setEditingApt(apt); setShowBooking(true); }} className="bg-amber-100 text-amber-700 font-bold px-3 py-1.5 rounded-lg text-xs hover:bg-amber-200 transition-colors">Reschedule</button>
+                              <button onClick={() => handleCallNext(apt.id, apt.patient.full_name)} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-blue-500/20">{t('call_next')}</button>
+                            </>
+                          ) : (
+                            <>
+                              <button onClick={() => fetchPatientHistory(apt.patient_id)} className="text-blue-600 hover:text-blue-700 font-bold px-3 py-1.5 rounded-lg text-xs transition-colors">History</button>
+                              <button onClick={() => handleCallNext(apt.id, apt.patient.full_name)} className="bg-amber-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs hover:bg-amber-600 transition-colors">Recall</button>
+                              <button onClick={() => setActivePrescription(apt)} className="bg-purple-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-purple-500/20">{t('write_prescription')}</button>
+                              <button onClick={() => handleComplete(apt.id)} className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-emerald-500/20">{t('mark_completed')}</button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             )
-          ) : (
+          ) : activeTab === 'requests' ? (
             requests.length === 0 ? (
               <div className="p-12 text-center">
                 <div className="text-5xl mb-4">📭</div>
@@ -272,9 +375,161 @@ export default function DoctorDashboard({
                 ))}
               </div>
             )
+          ) : activeTab === 'stats' ? (
+            <div className="p-8">
+              {loadingStats ? (
+                <div className="flex justify-center p-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>
+              ) : stats ? (
+                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-3xl border border-blue-100 dark:border-blue-800">
+                      <p className="text-blue-600 text-xs font-black uppercase tracking-widest mb-1">Total Revenue</p>
+                      <p className="text-3xl font-black text-blue-900 dark:text-blue-100">{stats.totalRevenue} <span className="text-sm">EGP</span></p>
+                    </div>
+                    <div className="bg-purple-50 dark:bg-purple-900/20 p-6 rounded-3xl border border-purple-100 dark:border-purple-800">
+                      <p className="text-purple-600 text-xs font-black uppercase tracking-widest mb-1">Patients Seen</p>
+                      <p className="text-3xl font-black text-purple-900 dark:text-purple-100">{stats.patientCount}</p>
+                    </div>
+                    <div className="bg-emerald-50 dark:bg-emerald-900/20 p-6 rounded-3xl border border-emerald-100 dark:border-emerald-800">
+                      <p className="text-emerald-600 text-xs font-black uppercase tracking-widest mb-1">Active Queue</p>
+                      <p className="text-3xl font-black text-emerald-900 dark:text-emerald-100">{activeQueue.length}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-gray-50 dark:bg-gray-800/50 p-6 rounded-3xl">
+                    <h4 className="font-bold mb-4">Patient Distribution by Type</h4>
+                    <div className="space-y-4">
+                      {Object.entries(stats.byType).map(([type, count]: [string, any]) => (
+                        <div key={type} className="flex items-center gap-4">
+                          <div className="w-32 text-xs font-bold uppercase text-gray-500 truncate">{type.replace('_', ' ')}</div>
+                          <div className="flex-1 bg-gray-200 dark:bg-gray-700 h-3 rounded-full overflow-hidden">
+                            <div className="bg-blue-600 h-full transition-all duration-1000" style={{ width: `${(count / (stats.patientCount || 1)) * 100}%` }}></div>
+                          </div>
+                          <div className="w-8 text-right font-black text-sm">{count}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : activeTab === 'meds' ? (
+            <div className="p-8">
+              <div className="max-w-2xl mx-auto space-y-8">
+                <div className="bg-blue-50 dark:bg-blue-900/10 p-6 rounded-3xl border border-blue-100 dark:border-blue-800">
+                  <h4 className="font-bold mb-4">Add Favorite Medication</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <input 
+                      placeholder="Medication Name" 
+                      value={newMed.name}
+                      onChange={e => setNewMed({...newMed, name: e.target.value})}
+                      className="rounded-xl px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input 
+                      placeholder="Default Dosage (e.g. 500mg)" 
+                      value={newMed.dosage}
+                      onChange={e => setNewMed({...newMed, dosage: e.target.value})}
+                      className="rounded-xl px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input 
+                      placeholder="Common Symptoms (e.g. Fever, Cough)" 
+                      value={newMed.symptoms}
+                      onChange={e => setNewMed({...newMed, symptoms: e.target.value})}
+                      className="rounded-xl px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500 sm:col-span-2"
+                    />
+                    <button onClick={handleAddMedToFavs} className="bg-blue-600 text-white font-bold py-2 rounded-xl shadow-lg shadow-blue-500/30 sm:col-span-2">Add to Favorites</button>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h4 className="font-bold px-2">Your Favorites</h4>
+                  {loadingMeds ? (
+                    <div className="flex justify-center p-8 text-blue-600 animate-spin italic">Loading...</div>
+                  ) : meds.length === 0 ? (
+                    <div className="p-8 text-center text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-2xl">No favorite medications added yet.</div>
+                  ) : (
+                    meds.map((m) => (
+                      <div key={m.id} className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl shadow-sm">
+                        <div>
+                          <p className="font-bold">{m.name}</p>
+                          <p className="text-xs text-gray-500">{m.default_dosage} • {m.common_symptoms}</p>
+                        </div>
+                        <button onClick={() => handleDeleteMed(m.id)} className="p-2 text-gray-400 hover:text-red-500"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="p-12 text-center text-gray-400">Settings & Other features coming soon...</div>
           )}
         </div>
       </div>
+
+      {showBooking && (
+        <BookingModal
+          onClose={() => { setShowBooking(false); setEditingApt(null) }}
+          onSuccess={async () => {
+            setShowBooking(false)
+            setEditingApt(null)
+            const supabase = createClient()
+            await refetchQueue(supabase)
+          }}
+          initialDoctor={{ id: doctorId } as any}
+          editAppointmentId={editingApt?.id}
+        />
+      )}
+
+      {/* Patient History Modal */}
+      {patientHistory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 w-full max-w-2xl shadow-2xl max-h-[85vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-black">Medical History</h3>
+              <button onClick={() => setPatientHistory(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">✕</button>
+            </div>
+            
+            {loadingHistory ? (
+              <div className="flex justify-center p-12 text-blue-600 animate-spin italic">Loading History...</div>
+            ) : patientHistory.length === 0 ? (
+              <p className="p-8 text-center text-gray-400">No previous medical records found for this patient.</p>
+            ) : (
+              <div className="space-y-6">
+                {patientHistory.map((h: any) => (
+                  <div key={h.id} className="p-5 border border-gray-100 dark:border-gray-800 rounded-2xl bg-gray-50/50 dark:bg-gray-800/30">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <p className="text-xs font-black text-blue-600 uppercase tracking-widest">{new Date(h.created_at).toLocaleDateString()}</p>
+                        <h4 className="font-bold text-lg">{h.diagnosis || 'General Checkup'}</h4>
+                      </div>
+                      <p className="text-xs text-gray-500 italic">By Dr. {h.doctor?.full_name}</p>
+                    </div>
+                    <div className="space-y-4">
+                      {h.symptoms && (
+                        <div>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase">Symptoms</p>
+                          <p className="text-sm">{h.symptoms}</p>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Medications</p>
+                        <div className="mt-1 space-y-1">
+                          {Array.isArray(h.medications) ? h.medications.map((m: any, i: number) => (
+                            <div key={i} className="text-sm bg-white dark:bg-gray-800 p-2 rounded-lg border border-gray-100 dark:border-gray-700">
+                              <strong>{m.name}</strong> - {m.dosage} ({m.instructions})
+                            </div>
+                          )) : <p className="text-sm italic">No medications recorded</p>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Rejection Reason Modal */}
       {rejectingId && (
