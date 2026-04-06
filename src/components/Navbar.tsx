@@ -56,7 +56,7 @@ export default function Navbar({ fullName, role }: { fullName: string, role?: st
               <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-black">
                 {fullName?.charAt(0)}
               </div>
-              <span className="text-sm font-bold hidden sm:inline">{t('profile')}</span>
+              <span className="text-sm font-bold hidden sm:inline">{fullName}</span>
             </Link>
             <div className="h-6 w-px bg-gray-200 dark:bg-gray-800 hidden sm:block"></div>
             <div className="hidden sm:block">
