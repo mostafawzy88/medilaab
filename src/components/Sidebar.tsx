@@ -85,8 +85,8 @@ export default function Sidebar({ fullName, role }: { fullName: string, role?: s
       </nav>
 
       {/* User Area at bottom of Sidebar */}
-      <div className="p-4 border-t border-[#2A214D]">
-         <div className="flex items-center gap-3 px-4 py-3 bg-[#1D1438] rounded-xl mb-3 border border-[#2A214D]">
+      <div className="p-4 border-t border-[#2A214D] space-y-4">
+         <div className="flex items-center gap-3 px-4 py-3 bg-[#1D1438] rounded-xl border border-[#2A214D]">
             <div className="w-8 h-8 rounded-full bg-[var(--color-cp-purple)] text-white flex items-center justify-center text-xs font-black">
               {fullName?.charAt(0)}
             </div>
@@ -94,6 +94,16 @@ export default function Sidebar({ fullName, role }: { fullName: string, role?: s
                <p className="text-sm font-bold text-white truncate">{fullName}</p>
                <p className="text-[10px] text-gray-400 uppercase font-black">{role}</p>
             </div>
+         </div>
+         
+         <div className="space-y-2">
+           <LogoutButton />
+           <Link 
+             href="/" 
+             className="flex items-center justify-center gap-2 w-full py-2.5 text-[10px] font-black uppercase text-gray-500 hover:text-white transition-colors border border-dashed border-[#2A214D] rounded-xl"
+           >
+             <span>🌐</span> {t('back_to_website') || 'Back to Website'}
+           </Link>
          </div>
       </div>
     </div>
