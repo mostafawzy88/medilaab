@@ -3,8 +3,10 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useTranslations, useLocale } from 'next-intl'
+import { useSearchParams } from 'next/navigation'
 import PrescriptionModal from './PrescriptionModal'
 import BookingModal from './BookingModal'
+import ClinicSchedule from './ClinicSchedule'
 
 type Appointment = {
   id: string
@@ -36,7 +38,10 @@ export default function DoctorDashboard({
   const [processing, setProcessing] = useState<string | null>(null)
   const [showBooking, setShowBooking] = useState(false)
   const [editingApt, setEditingApt] = useState<any>(null)
-  const [activeTab, setActiveTab] = useState<'queue' | 'requests' | 'stats' | 'meds'>('queue')
+  
+  const searchParams = useSearchParams()
+  const activeTab = searchParams.get('tab') || 'queue'
+
   const [stats, setStats] = useState<any>(null)
   const [loadingStats, setLoadingStats] = useState(false)
   const [autoConfirm, setAutoConfirm] = useState(false)
@@ -238,37 +243,8 @@ export default function DoctorDashboard({
 
   return (
     <div className="space-y-6">
-      {/* Tab Switcher */}
-      <div className="flex flex-wrap gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-2xl w-fit">
-        <button 
-          onClick={() => setActiveTab('queue')}
-          className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'queue' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500'}`}
-        >
-          {t('todays_queue')} ({activeQueue.length})
-        </button>
-        <button 
-          onClick={() => setActiveTab('requests')}
-          className={`px-6 py-2 rounded-xl text-sm font-bold transition-all relative ${activeTab === 'requests' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500'}`}
-        >
-          {t('appt_requests')} ({requests.length})
-          {requests.length > 0 && <span className="ml-2 w-2 h-2 rounded-full bg-red-500 inline-block animate-pulse"></span>}
-        </button>
-        <button 
-          onClick={() => setActiveTab('stats')}
-          className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'stats' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500'}`}
-        >
-          Statistics
-        </button>
-        <button 
-          onClick={() => setActiveTab('meds')}
-          className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'meds' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500'}`}
-        >
-          My Medications
-        </button>
-      </div>
-
       {/* Auto-Confirm Toggle */}
-      <div className="flex items-center justify-between bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-100 dark:border-gray-800 shadow-sm">
+      <div className="flex items-center justify-between bg-white dark:bg-[#150F2A] rounded-2xl p-4 border border-gray-100 dark:border-[#2A214D] shadow-sm">
         <div>
           <p className="font-bold text-sm">Auto-Confirm Appointments</p>
           <p className="text-xs text-gray-500">Automatically approve bookings that fall within your working hours</p>
@@ -281,9 +257,12 @@ export default function DoctorDashboard({
         </button>
       </div>
 
-      <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-xl overflow-hidden border border-gray-100 dark:border-gray-800">
-        <div className="overflow-x-auto">
-          {activeTab === 'queue' ? (
+      {activeTab === 'schedule' ? (
+        <ClinicSchedule doctorId={doctorId} appointments={[...activeQueue, ...requests]} />
+      ) : (
+        <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-xl overflow-hidden border border-gray-100 dark:border-gray-800">
+          <div className="overflow-x-auto">
+            {activeTab === 'queue' ? (
             activeQueue.length === 0 ? (
               <div className="p-12 text-center text-gray-500">{t('no_patients')}</div>
             ) : (
@@ -467,6 +446,7 @@ export default function DoctorDashboard({
           )}
         </div>
       </div>
+      )}
 
       {showBooking && (
         <BookingModal

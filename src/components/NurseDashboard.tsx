@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useTranslations, useLocale } from 'next-intl'
+import { useSearchParams } from 'next/navigation'
 import PrescriptionViewerModal from './PrescriptionViewerModal'
+import ClinicSchedule from './ClinicSchedule'
 
 type Appointment = {
   id: string
@@ -23,6 +25,10 @@ export default function NurseDashboard({
 }) {
   const t = useTranslations('Dashboard')
   const locale = useLocale()
+  
+  const searchParams = useSearchParams()
+  const activeTab = searchParams.get('tab') || 'queue'
+
   const [queue, setQueue] = useState<Appointment[]>(clinicAppointments)
   const [viewingPrescription, setViewingPrescription] = useState<any | null>(null)
   const [activePatientName, setActivePatientName] = useState('')
@@ -143,8 +149,15 @@ export default function NurseDashboard({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          {queue.length === 0 ? (
+        {activeTab === 'schedule' ? (
+          <ClinicSchedule doctorId={''} appointments={queue} />
+        ) : (
+          <div className="overflow-x-auto">
+            {activeTab === 'requests' ? (
+              <div className="p-12 text-center text-gray-500">
+                Requests are managed directly from the Queue view.
+              </div>
+            ) : queue.length === 0 ? (
             <div className="p-12 text-center text-gray-500">
               No patients present in the clinic today.
             </div>
@@ -222,6 +235,7 @@ export default function NurseDashboard({
             </table>
           )}
         </div>
+      )}
       </div>
 
       {viewingPrescription && (

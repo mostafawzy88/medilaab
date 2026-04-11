@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useTranslations } from 'next-intl'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 
 type StaffMember = {
@@ -38,7 +39,16 @@ const DURATION_OPTIONS = [
 export default function AdminDashboard() {
   const t = useTranslations('Dashboard')
   const m = useTranslations('Management')
-  const [view, setView] = useState<'overview' | 'staff' | 'patients' | 'stats' | 'settings'>('overview')
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const view = searchParams.get('tab') || 'overview'
+
+  const setView = (newTab: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('tab', newTab)
+    router.push(`?${params.toString()}`)
+  }
+
   const [clinicStats, setClinicStats] = useState<any>(null)
   const [loadingStats, setLoadingStats] = useState(false)
   const [staff, setStaff] = useState<StaffMember[]>([])
@@ -300,26 +310,7 @@ export default function AdminDashboard() {
   const doctorList = staff.filter(s => s.role === 'doctor')
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-700 relative">
-      
-      {/* Navigation Tabs */}
-      <div className="flex gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-2xl w-fit flex-wrap">
-        {[
-          { key: 'overview', label: 'Overview' },
-          { key: 'staff', label: `Staff (${staff.length})` },
-          { key: 'patients', label: `Patients (${totalPatients})` },
-          { key: 'stats', label: 'Financials' },
-          { key: 'settings', label: 'Settings' },
-        ].map(tab => (
-          <button 
-            key={tab.key}
-            onClick={() => setView(tab.key as any)}
-            className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${view === tab.key ? 'bg-white dark:bg-gray-700 shadow-sm' : 'text-gray-500'}`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+    <div className="space-y-6">
 
       {/* ==================== OVERVIEW ==================== */}
       {view === 'overview' && (

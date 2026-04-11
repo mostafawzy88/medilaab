@@ -8,6 +8,7 @@ import DoctorDashboard from '@/components/DoctorDashboard';
 import AdminDashboard from '@/components/AdminDashboard';
 import NurseDashboard from '@/components/NurseDashboard';
 import Navbar from '@/components/Navbar';
+import Sidebar from '@/components/Sidebar';
 
 export default async function DashboardPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
@@ -185,29 +186,43 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-[family-name:var(--font-geist-sans)]">
-      <Navbar fullName={fullName} role={role} />
+    <div className="min-h-screen flex bg-[var(--color-cp-grey-bg)] dark:bg-[#0A0614] font-[family-name:var(--font-geist-sans)]">
+      <div className="hidden lg:block">
+        <Sidebar fullName={fullName} role={role} />
+      </div>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-10 gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{portalTitle}</h1>
+      <div className="flex-1 flex flex-col min-w-0">
+        <Navbar fullName={fullName} role={role} />
+
+        <main className="flex-1 p-6 md:p-10 overflow-y-auto w-full">
+          {/* Mobile Navigation Header */}
+          <div className="lg:hidden w-full p-4 bg-[var(--color-cp-navy)] text-white rounded-[24px] shadow-lg mb-8 flex justify-between items-center">
+             <div className="flex items-center gap-3">
+               <div className="w-10 h-10 rounded-full bg-[var(--color-cp-purple)] flex items-center justify-center font-black">
+                 {fullName?.charAt(0)}
+               </div>
+               <div>
+                 <span className="text-sm font-bold block">{fullName}</span>
+                 <span className="text-[10px] uppercase font-black text-gray-400">{role}</span>
+               </div>
+             </div>
+             <LogoutButton />
+          </div>
+
+          <div className="mb-10">
+            <h1 className="text-3xl font-black text-gray-900 dark:text-white mb-2">{portalTitle}</h1>
             <p className="text-gray-500 dark:text-gray-400">
               {role === 'patient' 
                 ? 'Manage your appointments and payments seamlessly.' 
                 : 'Manage your clinic flow securely.'}
             </p>
           </div>
-          
-          {/* Mobile Logout */}
-          <div className="sm:hidden w-full p-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 flex justify-between items-center">
-            <span className="text-sm font-bold truncate max-w-[200px]">{t('welcome', { name: fullName })}</span>
-            <LogoutButton />
-          </div>
-        </div>
 
-        {portalContent}
-      </main>
+          <div className="mx-auto w-full">
+            {portalContent}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

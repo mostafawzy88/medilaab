@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useTranslations } from 'next-intl'
+import { useSearchParams } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import BookingModal from './BookingModal'
 
@@ -69,7 +70,9 @@ export default function PatientDashboard({
   const [showBooking, setShowBooking] = useState(false)
   const [editAppointmentId, setEditAppointmentId] = useState<string | null>(null)
   
-  const [activeTab, setActiveTab] = useState<'bookings' | 'history' | 'doctors' | 'certs'>('bookings')
+  const searchParams = useSearchParams()
+  const activeTab = searchParams.get('tab') || 'bookings'
+
   const [viewMode, setViewMode] = useState<'cards' | 'calendar'>('cards')
   
   const [doctors, setDoctors] = useState<DoctorInfo[]>(initialDoctors)
@@ -253,23 +256,7 @@ export default function PatientDashboard({
 
   return (
     <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-700 max-w-5xl mx-auto">
-      {/* Tab Nav */}
-      <div className="flex flex-wrap gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-2xl w-fit">
-        <button onClick={() => setActiveTab('bookings')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'bookings' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600' : 'text-gray-500'}`}>
-          Active Bookings ({activeAppointments.length})
-        </button>
-         <button onClick={() => setActiveTab('history')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'history' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600' : 'text-gray-500'}`}>
-          History & Logs
-        </button>
-        <button onClick={() => setActiveTab('doctors')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'doctors' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600' : 'text-gray-500'}`}>
-          My Doctors
-        </button>
-        <button onClick={() => setActiveTab('certs')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'certs' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600' : 'text-gray-500'}`}>
-          My Medical Recs
-        </button>
-      </div>
-
-      {/* Bookings Tab */}
+      {/* Bookings View */}
       {activeTab === 'bookings' && (
         <div className="space-y-6">
           <div className="flex flex-wrap gap-4 justify-between items-center bg-white dark:bg-gray-900 p-4 rounded-3xl border border-gray-100 dark:border-gray-800">

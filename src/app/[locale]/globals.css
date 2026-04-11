@@ -10,6 +10,14 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  
+  /* Carepatron Colors */
+  --color-cp-purple: #6B46E5;
+  --color-cp-purple-light: #7C4DFF;
+  --color-cp-purple-bg: #F4F0FF;
+  --color-cp-navy: #150F2A; /* Sidebar background */
+  --color-cp-navy-light: #21193D; /* Sidebar hover */
+  --color-cp-grey-bg: #F8F9FC;
 }
 
 @media (prefers-color-scheme: dark) {
