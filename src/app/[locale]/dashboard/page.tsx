@@ -25,8 +25,21 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
   const profile = await getOrCreateProfile(supabase, user.id, user.email, user.user_metadata?.full_name);
 
   if (!profile) {
-    // This only happens on serious DB error
-    return <div className="p-10 text-center text-red-500">System Error: Could not load your profile. Please try again later.</div>;
+    // This only happens on serious DB error (e.g. missing RLS policies)
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--color-cp-grey-bg)] dark:bg-[#0A0614] p-8">
+        <div className="bg-white dark:bg-gray-900 p-8 rounded-3xl shadow-xl max-w-md w-full text-center border border-red-100 dark:border-red-900/30">
+          <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6 text-2xl">⚠️</div>
+          <h2 className="text-2xl font-black mb-4 text-gray-900 dark:text-white">Profile Access Error</h2>
+          <p className="text-gray-500 mb-8">
+            The system could not load your profile from the database. This is usually caused by missing Row Level Security (RLS) policies. Please contact the administrator.
+          </p>
+          <div className="flex justify-center">
+            <LogoutButton />
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!profile.has_completed_onboarding) {
