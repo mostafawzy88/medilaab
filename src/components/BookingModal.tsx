@@ -21,11 +21,12 @@ type BookingModalProps = {
   onSuccess: () => void
   initialDoctor?: Doctor | null
   editAppointmentId?: string | null
+  isStaff?: boolean
 }
 
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 
-export default function BookingModal({ onClose, onSuccess, initialDoctor, editAppointmentId }: BookingModalProps) {
+export default function BookingModal({ onClose, onSuccess, initialDoctor, editAppointmentId, isStaff }: BookingModalProps) {
   const t = useTranslations('Dashboard')
   const [step, setStep] = useState(1)
   const [doctors, setDoctors] = useState<Doctor[]>([])
@@ -186,7 +187,12 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
     finalDate.setHours(h, m, 0, 0)
     
     const autoConfirm = selectedDoctor.auto_confirm_appointments === true
-    const newStatus = autoConfirm ? 'scheduled' : 'waiting'
+    let newStatus = autoConfirm ? 'scheduled' : 'waiting'
+    
+    // If staff is rescheduling, it MUST be 'proposed' (waiting for patient)
+    if (isStaff && editAppointmentId) {
+      newStatus = 'proposed'
+    }
 
     let error;
 

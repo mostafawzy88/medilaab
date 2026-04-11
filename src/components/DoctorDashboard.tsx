@@ -12,7 +12,7 @@ type Appointment = {
   id: string
   patient_id: string
   scheduled_time: string
-  status: 'scheduled' | 'waiting' | 'in_progress' | 'completed' | 'cancelled'
+  status: 'scheduled' | 'waiting' | 'in_progress' | 'completed' | 'cancelled' | 'proposed'
   queue_position: number
   appointment_type?: string
   fees?: number
@@ -344,6 +344,12 @@ export default function DoctorDashboard({
                           {processing === apt.id ? '...' : '✓ Approve'}
                         </button>
                         <button 
+                          onClick={() => { setEditingApt(apt); setShowBooking(true); }} 
+                          className="bg-blue-50 dark:bg-blue-900/30 text-blue-600 px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-100 transition-all"
+                        >
+                          📅 Reschedule
+                        </button>
+                        <button 
                           onClick={() => setRejectingId(apt.id)} 
                           className="bg-gray-100 dark:bg-gray-800 text-gray-500 px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-red-50 hover:text-red-600 transition-all"
                         >
@@ -459,6 +465,7 @@ export default function DoctorDashboard({
           }}
           initialDoctor={{ id: doctorId } as any}
           editAppointmentId={editingApt?.id}
+          isStaff={true}
         />
       )}
 

@@ -56,6 +56,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
   in_progress: { label: 'In Progress', color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200', icon: '🔵' },
   completed: { label: 'Completed', color: 'text-gray-600', bg: 'bg-gray-50 border-gray-200', icon: '☑️' },
   cancelled: { label: 'Rejected / Cancelled', color: 'text-red-700', bg: 'bg-red-50 border-red-200', icon: '❌' },
+  proposed: { label: 'Doctor Proposed New Time', color: 'text-purple-700', bg: 'bg-purple-50 border-purple-200', icon: '📅' },
 }
 
 export default function PatientDashboard({
@@ -210,6 +211,21 @@ export default function PatientDashboard({
     }
   }
 
+  const handleProposalAction = async (apptId: string, action: 'approve' | 'reject') => {
+    const supabase = createClient()
+    const newStatus = action === 'approve' ? 'scheduled' : 'cancelled'
+    const { error } = await supabase
+      .from('appointments')
+      .update({ status: newStatus })
+      .eq('id', apptId)
+    
+    if (error) {
+      alert("Error: " + error.message)
+    } else {
+      setAppointments(prev => prev.map(a => a.id === apptId ? { ...a, status: newStatus } : a))
+    }
+  }
+
   // Fetch patient medical certifications
   useEffect(() => {
     if (activeTab !== 'certs') return
@@ -232,7 +248,7 @@ export default function PatientDashboard({
   }, [activeTab])
 
   // Separate active from past
-  const activeAppointments = appointments.filter(a => ['waiting', 'scheduled', 'in_progress'].includes(a.status || ''))
+  const activeAppointments = appointments.filter(a => ['waiting', 'scheduled', 'in_progress', 'proposed'].includes(a.status || ''))
   const pastAppointments = appointments.filter(a => ['completed', 'cancelled'].includes(a.status || ''))
 
   const renderDoctorWorkingHours = (workingHours: any) => {
@@ -309,6 +325,28 @@ export default function PatientDashboard({
                         </div>
                       </div>
                       <h4 className="font-bold text-lg">Dr. {apt.doctor_name}</h4>
+                      
+                      {apt.status === 'proposed' && (
+                        <div className="mt-4 p-4 bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-2xl flex flex-col gap-3 animate-in fade-in slide-in-from-top-2">
+                           <p className="text-xs font-bold text-purple-700 dark:text-purple-300 flex items-center gap-2">
+                             <span>📢</span> The doctor has proposed a new time for your appointment.
+                           </p>
+                           <div className="flex gap-2">
+                              <button 
+                                onClick={() => handleProposalAction(apt.id, 'approve')}
+                                className="flex-1 bg-purple-600 text-white font-bold py-2 rounded-xl text-xs shadow-lg shadow-purple-500/30 hover:bg-purple-700 transition-all"
+                              >
+                                Approve New Time
+                              </button>
+                              <button 
+                                onClick={() => handleProposalAction(apt.id, 'reject')}
+                                className="flex-1 bg-white dark:bg-gray-800 text-red-600 border border-red-200 dark:border-red-900 font-bold py-2 rounded-xl text-xs hover:bg-red-50 transition-all"
+                              >
+                                Reject & Cancel
+                              </button>
+                           </div>
+                        </div>
+                      )}
                       
                       {/* Wait Time Display */}
                       {isApproved && apt.scheduled_time?.startsWith(new Date().toISOString().split('T')[0]) && (

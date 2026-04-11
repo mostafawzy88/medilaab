@@ -6,13 +6,14 @@ import { useTranslations, useLocale } from 'next-intl'
 import { useSearchParams } from 'next/navigation'
 import PrescriptionViewerModal from './PrescriptionViewerModal'
 import ClinicSchedule from './ClinicSchedule'
+import BookingModal from './BookingModal'
 
 type Appointment = {
   id: string
   patient_id: string
   doctor_id: string
   scheduled_time: string
-  status: 'scheduled' | 'waiting' | 'in_progress' | 'completed' | 'cancelled'
+  status: 'scheduled' | 'waiting' | 'in_progress' | 'completed' | 'cancelled' | 'proposed'
   queue_position: number
   patient: { full_name: string }
   prescriptionData?: any // Attached dynamically
@@ -32,6 +33,8 @@ export default function NurseDashboard({
   const [queue, setQueue] = useState<Appointment[]>(clinicAppointments)
   const [viewingPrescription, setViewingPrescription] = useState<any | null>(null)
   const [activePatientName, setActivePatientName] = useState('')
+  const [showBooking, setShowBooking] = useState(false)
+  const [editingApt, setEditingApt] = useState<Appointment | null>(null)
 
   // Realtime subscription for the whole clinic
   useEffect(() => {
@@ -200,13 +203,21 @@ export default function NurseDashboard({
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                           {t('view_prescription')}
                         </button>
-                      ) : apt.status === 'waiting' ? (
+                      ) : (apt.status === 'waiting' || apt.status === 'scheduled') ? (
                         <div className="flex gap-2 justify-end">
+                          {apt.status === 'waiting' && (
+                            <button 
+                              onClick={() => handleApproveReschedule(apt.id)}
+                              className="bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-all hover:scale-105 active:scale-95"
+                            >
+                              Approve
+                            </button>
+                          )}
                           <button 
-                            onClick={() => handleApproveReschedule(apt.id)}
-                            className="bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-all hover:scale-105 active:scale-95"
+                            onClick={() => { setEditingApt(apt); setShowBooking(true); }}
+                            className="bg-blue-50 dark:bg-blue-900/30 text-blue-600 px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-blue-100 transition-all"
                           >
-                            Approve
+                            Reschedule
                           </button>
                           <button 
                             onClick={() => handleReject(apt.id)}
@@ -243,6 +254,21 @@ export default function NurseDashboard({
           prescription={viewingPrescription}
           patientName={activePatientName}
           onClose={() => setViewingPrescription(null)}
+        />
+      )}
+
+      {showBooking && editingApt && (
+        <BookingModal
+          onClose={() => { setShowBooking(false); setEditingApt(null) }}
+          onSuccess={async () => {
+            setShowBooking(false)
+            setEditingApt(null)
+            const supabase = createClient()
+            await refetchQueue(supabase)
+          }}
+          initialDoctor={{ id: editingApt.doctor_id } as any}
+          editAppointmentId={editingApt.id}
+          isStaff={true}
         />
       )}
     </div>
