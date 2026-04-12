@@ -9,11 +9,13 @@ type Appointment = {
   status: string
   patient: { full_name: string }
   appointment_type?: string
+  doctor_id?: string
 }
 
-export default function ClinicSchedule({ doctorId, appointments }: { doctorId: string, appointments: Appointment[] }) {
+export default function ClinicSchedule({ doctorId, appointments, onNewAppointment }: { doctorId: string, appointments: Appointment[], onNewAppointment?: () => void }) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [viewState, setViewState] = useState<'Day' | 'Week'>('Day')
+  const [viewMonth, setViewMonth] = useState(new Date()) // Month shown in mini calendar
 
   // Generate hours from 8 AM to 8 PM
   const hours = Array.from({ length: 13 }, (_, i) => i + 8)
@@ -23,7 +25,6 @@ export default function ClinicSchedule({ doctorId, appointments }: { doctorId: s
     const slotString = new Date(date)
     slotString.setHours(hour, isHalfHour ? 30 : 0, 0, 0)
     
-    // Normalize to timezone offset to compare with DB string
     return appointments.find(a => {
        const aptDate = new Date(a.scheduled_time)
        return aptDate.getFullYear() === slotString.getFullYear() &&
@@ -38,37 +39,71 @@ export default function ClinicSchedule({ doctorId, appointments }: { doctorId: s
      return date.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })
   }
 
+  // Mini Calendar Helpers
+  const daysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()
+  const firstDayOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay()
+
+  const changeMonth = (offset: number) => {
+    const d = new Date(viewMonth)
+    d.setMonth(d.getMonth() + offset)
+    setViewMonth(d)
+  }
+
   return (
     <div className="flex h-[800px] border border-gray-200 dark:border-[#2A214D] rounded-[24px] overflow-hidden bg-white dark:bg-[#150F2A] shadow-sm">
        {/* Left side panel (Mini Calendar & Team) */}
        <div className="w-64 border-r border-gray-200 dark:border-[#2A214D] bg-gray-50/50 dark:bg-[#0A0614] hidden md:flex flex-col p-4">
           <div className="mb-6">
-             <h3 className="font-bold text-gray-900 dark:text-white flex justify-between items-center">
-               {currentDate.toLocaleDateString('default', { month: 'long', year: 'numeric' })}
-               <div className="flex gap-1 text-gray-400">
-                  <span className="cursor-pointer hover:text-gray-900">&lt;</span>
-                  <span className="cursor-pointer hover:text-gray-900">&gt;</span>
-               </div>
+             <h3 className="font-bold text-gray-900 dark:text-white flex justify-between items-center text-sm">
+                {viewMonth.toLocaleDateString('default', { month: 'long', year: 'numeric' })}
+                <div className="flex gap-2">
+                   <button onClick={() => changeMonth(-1)} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-800 rounded text-gray-400 hover:text-gray-900 transition-colors">&lt;</button>
+                   <button onClick={() => changeMonth(1)} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-800 rounded text-gray-400 hover:text-gray-900 transition-colors">&gt;</button>
+                </div>
              </h3>
-             <div className="grid grid-cols-7 gap-1 mt-4 text-xs text-center text-gray-500 font-bold">
+             <div className="grid grid-cols-7 gap-1 mt-4 text-[10px] text-center text-gray-400 font-black uppercase tracking-widest">
                 <div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div>
              </div>
-             {/* Simple visual placeholder for mini calendar to match design */}
-             <div className="grid grid-cols-7 gap-y-2 mt-2">
-                {Array.from({length: 31}, (_, i) => (
-                   <div key={i} className={`w-6 h-6 rounded-full mx-auto flex items-center justify-center text-xs ${i+1 === currentDate.getDate() ? 'bg-[var(--color-cp-purple)] text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800'}`}>
-                      {i+1}
-                   </div>
+             <div className="grid grid-cols-7 gap-y-1 mt-2">
+                {/* Empty slots for first week offset */}
+                {Array.from({length: firstDayOfMonth(viewMonth)}).map((_, i) => (
+                   <div key={`empty-${i}`} className="w-7 h-7"></div>
                 ))}
+                {/* Days of month */}
+                {Array.from({length: daysInMonth(viewMonth)}, (_, i) => {
+                   const day = i + 1
+                   const isSelected = currentDate.getDate() === day && currentDate.getMonth() === viewMonth.getMonth() && currentDate.getFullYear() === viewMonth.getFullYear()
+                   const isToday = new Date().getDate() === day && new Date().getMonth() === viewMonth.getMonth() && new Date().getFullYear() === viewMonth.getFullYear()
+                   
+                   return (
+                    <button 
+                      key={day} 
+                      onClick={() => {
+                        const newDate = new Date(viewMonth)
+                        newDate.setDate(day)
+                        setCurrentDate(newDate)
+                      }}
+                      className={`w-7 h-7 rounded-lg mx-auto flex items-center justify-center text-[11px] font-bold transition-all ${
+                        isSelected 
+                          ? 'bg-[var(--color-cp-purple)] text-white shadow-md' 
+                          : isToday 
+                            ? 'text-[var(--color-cp-purple)] border border-[var(--color-cp-purple)]' 
+                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800'
+                      }`}
+                    >
+                       {day}
+                    </button>
+                   )
+                })}
              </div>
           </div>
 
           <div className="mt-8">
-             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Team members</p>
+             <p className="text-[10px] font-black text-gray-400 uppercase tracking-[2px] mb-4">TEAM MEMBERS</p>
              <div className="space-y-3">
                 <div className="flex items-center gap-3">
-                   <div className="w-6 h-6 rounded-full bg-[var(--color-cp-purple)] flex items-center justify-center text-white text-[10px]">Me</div>
-                   <span className="text-sm font-bold dark:text-white">Active Doctor</span>
+                   <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[var(--color-cp-purple)] to-indigo-600 flex items-center justify-center text-white text-[10px] font-bold">Me</div>
+                   <span className="text-sm font-bold text-gray-700 dark:text-gray-300">Dr. {appointments[0]?.doctor_id ? 'Me' : 'Active Doctor'}</span>
                 </div>
              </div>
           </div>
@@ -80,26 +115,35 @@ export default function ClinicSchedule({ doctorId, appointments }: { doctorId: s
           <div className="h-16 border-b border-gray-200 dark:border-[#2A214D] px-6 flex justify-between items-center bg-white dark:bg-[#150F2A]">
              <div className="flex items-center gap-4">
                 <button 
-                   onClick={() => setCurrentDate(new Date())}
-                   className="px-4 py-1.5 border border-gray-200 dark:border-[#2A214D] rounded-lg text-sm font-bold text-[var(--color-cp-purple)] hover:bg-gray-50 dark:hover:bg-[#1D1438]"
+                   onClick={() => {
+                     const now = new Date()
+                     setCurrentDate(now)
+                     setViewMonth(now)
+                   }}
+                   className="px-4 py-1.5 border border-gray-200 dark:border-[#2A214D] rounded-xl text-sm font-bold text-[var(--color-cp-purple)] hover:bg-gray-50 dark:hover:bg-[#1D1438] transition-colors"
                 >Today</button>
-                <div className="flex items-center gap-1 border border-gray-200 dark:border-[#2A214D] rounded-lg p-1">
-                   <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() - 1); setCurrentDate(d) }} className="px-2 hover:bg-gray-100 dark:hover:bg-[#1D1438] rounded">&lt;</button>
-                   <span className="text-sm px-2">📅</span>
-                   <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() + 1); setCurrentDate(d) }} className="px-2 hover:bg-gray-100 dark:hover:bg-[#1D1438] rounded">&gt;</button>
+                <div className="flex items-center gap-1 border border-gray-200 dark:border-[#2A214D] rounded-xl p-1 bg-gray-50 dark:bg-[#0A0614]">
+                   <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() - 1); setCurrentDate(d); setViewMonth(d) }} className="p-1 px-3 hover:bg-white dark:hover:bg-[#1D1438] hover:shadow-sm rounded-lg transition-all text-gray-500 font-bold">&lt;</button>
+                   <span className="text-xs px-2 font-bold text-gray-400">📅</span>
+                   <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() + 1); setCurrentDate(d); setViewMonth(d) }} className="p-1 px-3 hover:bg-white dark:hover:bg-[#1D1438] hover:shadow-sm rounded-lg transition-all text-gray-500 font-bold">&gt;</button>
                 </div>
                 <select 
                    value={viewState} 
                    onChange={(e) => setViewState(e.target.value as any)}
-                   className="text-sm font-bold border border-gray-200 dark:border-[#2A214D] rounded-lg px-3 py-1.5 bg-transparent dark:text-white"
+                   className="text-sm font-bold border border-gray-200 dark:border-[#2A214D] rounded-xl px-4 py-1.5 bg-transparent dark:text-white outline-none focus:ring-1 focus:ring-purple-500"
                 >
-                   <option value="Day">Day</option>
-                   <option value="Week" disabled>Week (Coming Soon)</option>
+                   <option value="Day">Day View</option>
+                   <option value="Week" disabled>Week View (Coming Soon)</option>
                 </select>
              </div>
              
              <div className="flex items-center gap-2">
-                <button className="px-4 py-1.5 bg-[var(--color-cp-purple)] text-white rounded-lg text-sm font-bold hover:bg-[var(--color-cp-purple-light)]">+ New</button>
+                <button 
+                  onClick={onNewAppointment}
+                  className="px-5 py-2 bg-[var(--color-cp-purple)] text-white rounded-xl text-sm font-black shadow-lg shadow-purple-500/20 hover:bg-[var(--color-cp-purple-light)] hover:-translate-y-0.5 transition-all"
+                >
+                  + New Appointment
+                </button>
              </div>
           </div>
 

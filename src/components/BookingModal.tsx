@@ -51,7 +51,8 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
       
       if (data) {
         setDoctors(data)
-        if (initialDoctor) {
+        // If we have an initial doctor (staff booking for themselves)
+        if (initialDoctor?.id) {
           setSelectedDoctorId(initialDoctor.id)
           setStep(2)
         }
@@ -59,7 +60,7 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
       setLoading(false)
     }
     fetchDoctors()
-  }, [initialDoctor])
+  }, [initialDoctor?.id])
 
   // Fetch booked slots for the chosen date
   useEffect(() => {

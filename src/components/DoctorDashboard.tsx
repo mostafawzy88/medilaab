@@ -78,18 +78,20 @@ export default function DoctorDashboard({
   }, [doctorId])
 
   const refetchQueue = async (supabase: any) => {
-    // Show everything from 12 hours ago up to end of today to avoid midnight UTC issues
     const startOfWindow = new Date()
-    startOfWindow.setHours(startOfWindow.getHours() - 12)
+    startOfWindow.setDate(startOfWindow.getDate() - 30) // 30 days back
+    const endOfWindow = new Date()
+    endOfWindow.setDate(endOfWindow.getDate() + 30) // 30 days forward
     
-    // Today's queue (scheduled/in_progress)
+    // All scheduled/in_progress/proposed/waiting for this period
     const { data: queueData } = await supabase
       .from('appointments')
       .select(`id, patient_id, scheduled_time, status, queue_position, appointment_type, fees, payment_status, patient:profiles!appointments_patient_id_fkey(full_name)`)
       .eq('doctor_id', doctorId)
-      .in('status', ['scheduled', 'in_progress'])
+      .neq('status', 'cancelled')
       .gte('scheduled_time', startOfWindow.toISOString())
-      .order('queue_position', { ascending: true })
+      .lte('scheduled_time', endOfWindow.toISOString())
+      .order('scheduled_time', { ascending: true })
       
     if (queueData) {
       setActiveQueue(queueData)
@@ -258,7 +260,11 @@ export default function DoctorDashboard({
       </div>
 
       {activeTab === 'schedule' ? (
-        <ClinicSchedule doctorId={doctorId} appointments={[...activeQueue, ...requests]} />
+        <ClinicSchedule 
+          doctorId={doctorId} 
+          appointments={[...activeQueue, ...requests]} 
+          onNewAppointment={() => { setEditingApt(null); setShowBooking(true); }}
+        />
       ) : (
         <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-xl overflow-hidden border border-gray-100 dark:border-gray-800">
           <div className="overflow-x-auto">
