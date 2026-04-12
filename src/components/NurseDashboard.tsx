@@ -7,22 +7,27 @@ import { useSearchParams } from 'next/navigation'
 import PrescriptionViewerModal from './PrescriptionViewerModal'
 import ClinicSchedule from './ClinicSchedule'
 import BookingModal from './BookingModal'
+import PatientsTab from './PatientsTab'
 
 type Appointment = {
   id: string
-  patient_id: string
+  patient_id: string | null
+  manual_patient_id?: string | null
   doctor_id: string
   scheduled_time: string
   status: 'scheduled' | 'waiting' | 'in_progress' | 'completed' | 'cancelled' | 'proposed'
   queue_position: number
-  patient: { full_name: string }
+  patient: { full_name: string } | null
+  manual_patient?: { full_name: string } | null
   prescriptionData?: any // Attached dynamically
 }
 
 export default function NurseDashboard({
-  clinicAppointments
+  clinicAppointments,
+  supervisorId
 }: {
-  clinicAppointments: Appointment[]
+  clinicAppointments: Appointment[],
+  supervisorId?: string
 }) {
   const t = useTranslations('Dashboard')
   const locale = useLocale()
@@ -67,8 +72,9 @@ export default function NurseDashboard({
     const { data } = await supabase
       .from('appointments')
       .select(`
-        id, patient_id, doctor_id, scheduled_time, status, queue_position,
-        patient:profiles!appointments_patient_id_fkey(full_name)
+        id, patient_id, manual_patient_id, doctor_id, scheduled_time, status, queue_position,
+        patient:profiles!appointments_patient_id_fkey(full_name),
+        manual_patient:manual_patients(full_name)
       `)
       .in('status', ['scheduled', 'waiting', 'in_progress', 'completed'])
       .gte('scheduled_time', startOfDay.toISOString())
@@ -182,7 +188,7 @@ export default function NurseDashboard({
                       <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-teal-500 to-green-400 text-white flex items-center justify-center text-xs font-bold">
                         {apt.patient?.full_name?.charAt(0) || 'P'}
                       </div>
-                      {apt.patient?.full_name || 'Unknown Patient'}
+                      {apt.patient?.full_name || apt.manual_patient?.full_name || 'Unknown Patient'}
                     </td>
                     <td className="p-4">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
@@ -197,7 +203,7 @@ export default function NurseDashboard({
                     <td className="p-4 text-right space-x-2 space-x-reverse">
                       {apt.status === 'completed' ? (
                         <button 
-                          onClick={() => handleViewPrescription(apt.id, apt.patient?.full_name)}
+                          onClick={() => handleViewPrescription(apt.id, apt.patient?.full_name || apt.manual_patient?.full_name || 'Patient')}
                           className="inline-flex items-center gap-1.5 bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors"
                         >
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
@@ -229,7 +235,7 @@ export default function NurseDashboard({
                       ) : apt.status !== 'in_progress' ? (
                         <>
                           <button 
-                            onClick={() => handleCallNext(apt.id, apt.patient?.full_name || 'Patient')}
+                            onClick={() => handleCallNext(apt.id, apt.patient?.full_name || apt.manual_patient?.full_name || 'Patient')}
                             className="inline-flex items-center gap-1.5 bg-teal-50 text-teal-600 hover:bg-teal-100 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors"
                           >
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" /></svg>
@@ -244,6 +250,14 @@ export default function NurseDashboard({
                 ))}
               </tbody>
             </table>
+          ) : activeTab === 'patients' ? (
+             <div className="p-8">
+               <PatientsTab doctorId={supervisorId || ''} />
+             </div>
+          ) : (
+            <div className="p-12 text-center text-gray-500">
+              No patients present in the clinic today.
+            </div>
           )}
         </div>
       )}

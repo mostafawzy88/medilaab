@@ -28,7 +28,7 @@ const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 
 export default function BookingModal({ onClose, onSuccess, initialDoctor, editAppointmentId, isStaff }: BookingModalProps) {
   const t = useTranslations('Dashboard')
-  const [step, setStep] = useState(1)
+  const [step, setStep] = useState(isStaff && !editAppointmentId ? 0 : 1)
   const [doctors, setDoctors] = useState<Doctor[]>([])
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>('')
   const [selectedDate, setSelectedDate] = useState<string>('')
@@ -39,6 +39,14 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
   const [loading, setLoading] = useState(true)
   const [bookedSlots, setBookedSlots] = useState<string[]>([])
   const [loadingSlots, setLoadingSlots] = useState(false)
+
+  // Staff-specific state
+  const [patientSearch, setPatientSearch] = useState('')
+  const [foundPatients, setFoundPatients] = useState<any[]>([])
+  const [selectedPatient, setSelectedPatient] = useState<any | null>(null)
+  const [isCreatingManual, setIsCreatingManual] = useState(false)
+  const [newManualName, setNewManualName] = useState('')
+  const [newManualPhone, setNewManualPhone] = useState('')
 
   useEffect(() => {
     const fetchDoctors = async () => {
@@ -54,13 +62,49 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
         // If we have an initial doctor (staff booking for themselves)
         if (initialDoctor?.id) {
           setSelectedDoctorId(initialDoctor.id)
-          setStep(2)
+          if (!isStaff || editAppointmentId) setStep(2)
         }
       }
       setLoading(false)
     }
     fetchDoctors()
-  }, [initialDoctor?.id])
+  }, [initialDoctor?.id, isStaff, editAppointmentId])
+
+  // Search patients
+  useEffect(() => {
+    if (!isStaff || patientSearch.length < 2) {
+      setFoundPatients([])
+      return
+    }
+
+    const searchPatients = async () => {
+      const supabase = createClient()
+      
+      // Search registered users
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, phone_number, email')
+        .eq('role', 'patient')
+        .ilike('full_name', `%${patientSearch}%`)
+        .limit(5)
+      
+      // Search manual patients
+      const { data: manual } = await supabase
+        .from('manual_patients')
+        .select('*')
+        .ilike('full_name', `%${patientSearch}%`)
+        .limit(5)
+      
+      const combined = [
+        ...(profiles || []).map(p => ({ ...p, is_manual: false })),
+        ...(manual || []).map(m => ({ ...m, is_manual: true }))
+      ]
+      setFoundPatients(combined)
+    }
+    
+    const timer = setTimeout(searchPatients, 300)
+    return () => clearTimeout(timer)
+  }, [patientSearch, isStaff])
 
   // Fetch booked slots for the chosen date
   useEffect(() => {
@@ -176,11 +220,39 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
 
   const handleBooking = async () => {
     if (!selectedDoctor || !selectedDate || !selectedTime) return
+    if (isStaff && !selectedPatient && !isCreatingManual) {
+      alert("Please select or create a patient first.");
+      return;
+    }
+
     setBooking(true)
-    
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
+
+    let targetPatientId = isStaff ? selectedPatient?.id : user.id
+    let manualPatientId = isStaff && selectedPatient?.is_manual ? selectedPatient.id : null
+
+    // Create manual patient if needed
+    if (isStaff && isCreatingManual && newManualName) {
+      const { data: newManual, error: manualErr } = await supabase
+        .from('manual_patients')
+        .insert({
+          full_name: newManualName,
+          phone_number: newManualPhone,
+          doctor_id: selectedDoctor.id
+        })
+        .select()
+        .single()
+      
+      if (manualErr) {
+        alert("Error creating patient: " + manualErr.message)
+        setBooking(false)
+        return
+      }
+      manualPatientId = newManual.id
+      targetPatientId = null // Registered profile ID is null for manual patients
+    }
 
     // Construct full DateTime
     const [h, m] = selectedTime.split(':').map(Number)
@@ -190,7 +262,6 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
     const autoConfirm = selectedDoctor.auto_confirm_appointments === true
     let newStatus = autoConfirm ? 'scheduled' : 'waiting'
     
-    // If staff is rescheduling, it MUST be 'proposed' (waiting for patient)
     if (isStaff && editAppointmentId) {
       newStatus = 'proposed'
     }
@@ -198,14 +269,12 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
     let error;
 
     if (editAppointmentId) {
-      // Edit existing
       const { error: updateError } = await supabase.from('appointments').update({
         scheduled_time: finalDate.toISOString(),
-        status: newStatus // Rescheduling drops it back to waiting, unless auto-confirm is enabled
+        status: newStatus
       }).eq('id', editAppointmentId)
       error = updateError
     } else {
-      // Calculate queue position for the selected doctor and date just as index
       const { count } = await supabase
         .from('appointments')
         .select('*', { count: 'exact', head: true })
@@ -215,16 +284,16 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
 
       const nextPosition = (count || 0) + 1
 
-      // Create new appointment
       const { error: insertError } = await supabase.from('appointments').insert({
-        patient_id: user.id,
+        patient_id: targetPatientId,
+        manual_patient_id: manualPatientId,
         doctor_id: selectedDoctor.id,
         scheduled_time: finalDate.toISOString(),
         queue_position: nextPosition,
         fees: currentFee,
         appointment_type: appointmentType,
         status: newStatus,
-        payment_status: paymentChoice === 'prepay' ? 'pending' : 'pending' // Usually pending at creation
+        payment_status: paymentChoice === 'prepay' ? 'pending' : 'pending'
       })
       error = insertError
     }
@@ -246,7 +315,7 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
         {/* Header */}
         <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50 flex-shrink-0">
           <h2 className="text-xl font-bold">
-            {editAppointmentId ? 'Reschedule Appointment' : (step === 3 ? 'Confirm & Secure Booking' : t('book_appointment'))}
+            {editAppointmentId ? 'Reschedule Appointment' : (step === 0 ? 'Select Patient' : (step === 3 ? 'Confirm & Secure Booking' : t('book_appointment')))}
           </h2>
           <button onClick={onClose} className="p-2 bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors shadow-sm">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -259,22 +328,111 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
           {loading ? (
             <div className="py-20 flex flex-col items-center justify-center gap-4">
                <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-               <p className="text-gray-400 font-medium tracking-wide">Loading doctors...</p>
+               <p className="text-gray-400 font-medium tracking-wide">Loading...</p>
             </div>
-          ) : doctors.length === 0 ? (
-            <div className="py-20 text-center text-gray-500">{t('no_doctors')}</div>
           ) : (
             <>
+              {/* Step 0: Patient Selection (Staff Only) */}
+              {step === 0 && isStaff && (
+                <div className="space-y-6 animate-in slide-in-from-right-4">
+                  {!isCreatingManual ? (
+                    <>
+                      <div className="space-y-2">
+                        <label className="text-xs font-black uppercase tracking-widest text-gray-500">Search Patient</label>
+                        <input 
+                          type="text"
+                          placeholder="Search registered or offline patients..."
+                          value={patientSearch}
+                          onChange={(e) => setPatientSearch(e.target.value)}
+                          className="w-full rounded-xl px-4 py-4 bg-gray-50 dark:bg-gray-800 border-2 border-transparent focus:border-blue-500 outline-none font-bold"
+                        />
+                      </div>
+
+                      {foundPatients.length > 0 ? (
+                        <div className="space-y-2">
+                          {foundPatients.map(p => (
+                            <button
+                              key={p.id}
+                              onClick={() => { setSelectedPatient(p); setStep(1); }}
+                              className="w-full text-left p-4 rounded-xl border border-gray-100 dark:border-gray-800 hover:border-blue-500 flex justify-between items-center group transition-all"
+                            >
+                              <div>
+                                <p className="font-bold">{p.full_name}</p>
+                                <p className="text-xs text-gray-500">{p.phone_number || 'No phone'} • {p.is_manual ? 'Manual Patient' : 'Registered User'}</p>
+                              </div>
+                              <span className="opacity-0 group-hover:opacity-100 text-blue-600 font-bold text-sm">Select →</span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : patientSearch.length >= 2 && (
+                        <div className="text-center py-4 text-gray-400 italic">No patients found.</div>
+                      )}
+
+                      <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
+                        <button 
+                          onClick={() => setIsCreatingManual(true)}
+                          className="w-full py-4 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-2xl text-gray-500 font-bold hover:border-blue-500 hover:text-blue-600 transition-all"
+                        >
+                          + Create New Offline Patient
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="space-y-4 animate-in slide-in-from-bottom-2">
+                       <h3 className="font-bold text-lg">Create Offline Patient</h3>
+                       <div className="space-y-2">
+                          <label className="text-xs font-black text-gray-500">Full Name</label>
+                          <input 
+                            value={newManualName}
+                            onChange={(e) => setNewManualName(e.target.value)}
+                            className="w-full rounded-xl px-4 py-3 bg-gray-50 border-2 border-transparent focus:border-blue-500 outline-none" 
+                            placeholder="Patient's Full Name"
+                          />
+                       </div>
+                       <div className="space-y-2">
+                          <label className="text-xs font-black text-gray-500">Phone Number</label>
+                          <input 
+                            value={newManualPhone}
+                            onChange={(e) => setNewManualPhone(e.target.value)}
+                            className="w-full rounded-xl px-4 py-3 bg-gray-50 border-2 border-transparent focus:border-blue-500 outline-none" 
+                            placeholder="Patient's Phone"
+                          />
+                       </div>
+                       <div className="flex gap-2 mt-6">
+                          <button onClick={() => setIsCreatingManual(false)} className="flex-1 py-3 font-bold text-gray-500">Cancel</button>
+                          <button 
+                            disabled={!newManualName}
+                            onClick={() => setStep(1)}
+                            className="flex-[2] bg-blue-600 text-white font-bold py-3 rounded-xl disabled:opacity-50"
+                          >
+                            Use This Patient
+                          </button>
+                       </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Step 1: Doctor & Type Selection */}
               {step === 1 && (
                 <div className="space-y-6 animate-in slide-in-from-right-4">
+                  {isStaff && (
+                    <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl flex justify-between items-center">
+                      <div>
+                        <p className="text-[10px] uppercase font-black text-blue-600">Booking for</p>
+                        <p className="font-bold">{isCreatingManual ? newManualName : selectedPatient?.full_name}</p>
+                      </div>
+                      <button onClick={() => { setStep(0); setSelectedPatient(null); setIsCreatingManual(false); }} className="text-xs font-bold text-blue-600 hover:underline">Change</button>
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <label className="text-xs font-black uppercase tracking-widest text-gray-500">{t('select_doctor')}</label>
                     <select 
                       value={selectedDoctorId}
                       onChange={(e) => setSelectedDoctorId(e.target.value)}
-                      className="w-full rounded-xl px-4 py-4 bg-gray-50 dark:bg-gray-800 border-2 border-transparent focus:border-blue-600 outline-none font-bold transition-all appearance-none"
-                      disabled={!!editAppointmentId} // Cannot change doctor when rescheduling
+                      className="w-full rounded-xl px-4 py-4 bg-gray-50 dark:bg-gray-800 border-2 border-transparent focus:border-blue-500 outline-none font-bold transition-all appearance-none"
+                      disabled={!!editAppointmentId}
                     >
                       <option value="">-- Choose a Doctor --</option>
                       {doctors.map(doc => (
@@ -402,31 +560,27 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
                   )}
 
                   <div className="flex gap-3 pt-4 border-t border-gray-100 dark:border-gray-800">
-                    {initialDoctor && !editAppointmentId ? null : (
-                      <button onClick={() => setStep(1)} className="flex-1 bg-gray-100 dark:bg-gray-800 font-bold py-4 rounded-2xl hover:bg-gray-200">Back</button>
-                    )}
+                    <button onClick={() => setStep(1)} className="flex-1 bg-gray-100 dark:bg-gray-800 font-bold py-4 rounded-2xl hover:bg-gray-200">Back</button>
                     <button 
-                      onClick={() => editAppointmentId ? handleBooking() : setStep(3)} // Skip payment step if editing
+                      onClick={() => (editAppointmentId || (isStaff && paymentChoice === 'pay_at_visit')) ? handleBooking() : setStep(3)}
                       disabled={!selectedDate || !selectedTime || booking}
-                      className={`${initialDoctor && !editAppointmentId ? 'w-full' : 'flex-[2]'} bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl shadow-lg shadow-blue-500/20 disabled:opacity-50 flex justify-center items-center`}
+                      className="flex-[2] bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl shadow-lg shadow-blue-500/20 disabled:opacity-50 flex justify-center items-center"
                     >
-                      {editAppointmentId ? (booking ? 'Confirming...' : 'Confirm Reschedule') : 'Next: Payment'}
+                      {editAppointmentId ? (booking ? 'Confirming...' : 'Confirm Reschedule') : (isStaff ? 'Confirm Booking' : 'Next: Payment')}
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* Step 3: Payment Choice & Confirmation */}
+              {/* Step 3: Payment Choice & Confirmation (Patient Only or for prepay selection) */}
               {step === 3 && !editAppointmentId && (
                 <div className="space-y-6 animate-in slide-in-from-right-4">
-                  
                   <div className="bg-gray-50 dark:bg-gray-800 rounded-2xl p-4 text-sm border border-gray-100 dark:border-gray-700">
                     <div className="flex justify-between py-1"><span className="text-gray-500">Doctor</span><span className="font-bold">Dr. {selectedDoctor?.full_name}</span></div>
                     <div className="flex justify-between py-1"><span className="text-gray-500">Date & Time</span><span className="font-bold">{new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at {selectedTime}</span></div>
                     <div className="flex justify-between py-1 border-t border-gray-200 dark:border-gray-700 mt-2 pt-2"><span className="text-gray-500">Total Fees</span><span className="font-black text-blue-600 text-lg">{currentFee} EGP</span></div>
                   </div>
 
-                  {/* Payment choice */}
                   <div className="space-y-3">
                     <label className="text-xs font-black uppercase tracking-widest text-gray-500">How would you like to pay?</label>
                     <div className="grid grid-cols-2 gap-3">
@@ -436,7 +590,6 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
                       >
                         <div className="text-2xl mb-1">💳</div>
                         <p className="font-bold text-sm">Prepay (InstaPay)</p>
-                        <p className="text-[10px] text-gray-500 mt-1">Secure your slot now</p>
                       </button>
                       <button
                         onClick={() => setPaymentChoice('pay_at_visit')}
@@ -444,50 +597,29 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
                       >
                         <div className="text-2xl mb-1">🏥</div>
                         <p className="font-bold text-sm">Pay at Visit</p>
-                        <p className="text-[10px] text-gray-500 mt-1">Pay when you arrive</p>
                       </button>
                     </div>
                   </div>
 
-                  {/* InstaPay QR shown only for prepay */}
                   {paymentChoice === 'prepay' && selectedDoctor?.instapay_address && (
-                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/50 rounded-2xl p-5 text-center animate-in zoom-in-95">
-                      <h3 className="font-black text-blue-900 dark:text-blue-100 text-lg mb-3">Pay via InstaPay</h3>
-                      <p className="text-sm text-blue-700 dark:text-blue-300 mb-4">
-                        Send <strong className="font-black">{currentFee} EGP</strong> to the doctor's InstaPay to secure your slot.
-                      </p>
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/50 rounded-2xl p-5 text-center">
+                      <h3 className="font-black text-lg mb-3">Pay via InstaPay</h3>
                       <div className="bg-white dark:bg-gray-900 rounded-xl p-4 inline-block shadow-sm">
                         <QRCodeSVG 
                           value={`instapay://payment?address=${selectedDoctor.instapay_address}&amount=${currentFee}`} 
                           size={120} bgColor="#ffffff" fgColor="#000000" 
                         />
-                        <p className="text-xs font-bold text-gray-500 mt-3 break-all">{selectedDoctor.instapay_address}</p>
+                        <p className="text-xs font-bold text-gray-500 mt-3">{selectedDoctor.instapay_address}</p>
                       </div>
                     </div>
                   )}
 
-                  {paymentChoice === 'pay_at_visit' && (
-                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/50 rounded-2xl p-5 text-center animate-in zoom-in-95">
-                      <p className="text-sm text-amber-800 dark:text-amber-200">
-                        ⚠️ You will need to pay <strong className="font-black">{currentFee} EGP</strong> at the clinic. The doctor may cancel your slot if you don't show up.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Auto-confirm badge */}
-                  {selectedDoctor?.auto_confirm_appointments && (
-                    <div className="flex items-center gap-2 px-4 py-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-900/50 rounded-xl">
-                      <span className="text-green-600 text-lg">⚡</span>
-                      <p className="text-sm text-green-700 dark:text-green-300 font-medium">This doctor has <strong>auto-confirm</strong> enabled. Your appointment will be confirmed instantly!</p>
-                    </div>
-                  )}
-
                   <div className="flex gap-3">
-                    <button onClick={() => setStep(2)} disabled={booking} className="flex-1 bg-gray-100 dark:bg-gray-800 font-bold py-4 rounded-2xl hover:bg-gray-200">Back</button>
+                    <button onClick={() => setStep(2)} disabled={booking} className="flex-1 bg-gray-100 dark:bg-gray-800 font-bold py-4 rounded-2xl">Back</button>
                     <button 
                       onClick={handleBooking}
                       disabled={booking}
-                      className="flex-[2] bg-gradient-to-r from-blue-600 to-teal-500 hover:from-blue-700 hover:to-teal-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-blue-500/30 disabled:opacity-50"
+                      className="flex-[2] bg-gradient-to-r from-blue-600 to-teal-500 text-white font-black py-4 rounded-2xl"
                     >
                       {booking ? 'Confirming...' : 'Confirm Booking'}
                     </button>

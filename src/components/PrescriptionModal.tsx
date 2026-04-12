@@ -6,7 +6,8 @@ import { useTranslations } from 'next-intl'
 
 type PrescriptionModalProps = {
   appointmentId: string
-  patientId: string
+  patientId: string | null
+  manualPatientId?: string | null
   patientName: string
   onClose: () => void
   onComplete: () => void
@@ -15,6 +16,7 @@ type PrescriptionModalProps = {
 export default function PrescriptionModal({ 
   appointmentId, 
   patientId, 
+  manualPatientId,
   patientName, 
   onClose,
   onComplete
@@ -93,6 +95,7 @@ export default function PrescriptionModal({
     const { error } = await supabase.from('prescriptions').insert({
       appointment_id: appointmentId,
       patient_id: patientId,
+      manual_patient_id: manualPatientId,
       doctor_id: user.id,
       symptoms,
       diagnosis,

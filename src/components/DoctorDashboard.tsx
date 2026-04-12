@@ -7,17 +7,20 @@ import { useSearchParams } from 'next/navigation'
 import PrescriptionModal from './PrescriptionModal'
 import BookingModal from './BookingModal'
 import ClinicSchedule from './ClinicSchedule'
+import PatientsTab from './PatientsTab'
 
 type Appointment = {
   id: string
-  patient_id: string
+  patient_id: string | null
+  manual_patient_id?: string | null
   scheduled_time: string
   status: 'scheduled' | 'waiting' | 'in_progress' | 'completed' | 'cancelled' | 'proposed'
   queue_position: number
   appointment_type?: string
   fees?: number
   payment_status?: string
-  patient: { full_name: string }
+  patient: { full_name: string } | null
+  manual_patient?: { full_name: string } | null
 }
 
 export default function DoctorDashboard({
@@ -86,7 +89,11 @@ export default function DoctorDashboard({
     // All scheduled/in_progress/proposed/waiting for this period
     const { data: queueData } = await supabase
       .from('appointments')
-      .select(`id, patient_id, scheduled_time, status, queue_position, appointment_type, fees, payment_status, patient:profiles!appointments_patient_id_fkey(full_name)`)
+      .select(`
+        id, patient_id, manual_patient_id, scheduled_time, status, queue_position, appointment_type, fees, payment_status, 
+        patient:profiles!appointments_patient_id_fkey(full_name),
+        manual_patient:manual_patients(full_name)
+      `)
       .eq('doctor_id', doctorId)
       .neq('status', 'cancelled')
       .gte('scheduled_time', startOfWindow.toISOString())
@@ -100,7 +107,11 @@ export default function DoctorDashboard({
     // All pending requests
     const { data: requestData } = await supabase
       .from('appointments')
-      .select(`id, patient_id, scheduled_time, status, queue_position, appointment_type, fees, payment_status, patient:profiles!appointments_patient_id_fkey(full_name)`)
+      .select(`
+        id, patient_id, manual_patient_id, scheduled_time, status, queue_position, appointment_type, fees, payment_status, 
+        patient:profiles!appointments_patient_id_fkey(full_name),
+        manual_patient:manual_patients(full_name)
+      `)
       .eq('doctor_id', doctorId)
       .eq('status', 'waiting')
       .order('scheduled_time', { ascending: true })
@@ -285,7 +296,7 @@ export default function DoctorDashboard({
                   {activeQueue.map((apt) => (
                     <tr key={apt.id} className="hover:bg-gray-50/50">
                       <td className="p-4 font-black text-gray-400">Q{apt.queue_position}</td>
-                      <td className="p-4 font-bold">{apt.patient?.full_name}</td>
+                      <td className="p-4 font-bold">{apt.patient?.full_name || apt.manual_patient?.full_name}</td>
                       <td className="p-4">
                         <span className={`px-2 py-1 rounded-full text-xs font-bold leading-none ${apt.status === 'in_progress' ? 'bg-blue-600 text-white' : 'bg-green-100 text-green-700'}`}>
                           {apt.status === 'in_progress' ? 'In Progress' : 'Scheduled'}
@@ -297,13 +308,13 @@ export default function DoctorDashboard({
                             <>
                               <button onClick={() => fetchPatientHistory(apt.patient_id)} className="text-blue-600 hover:text-blue-700 font-bold px-3 py-1.5 rounded-lg text-xs transition-colors">History</button>
                               <button onClick={() => { setEditingApt(apt); setShowBooking(true); }} className="bg-amber-100 text-amber-700 font-bold px-3 py-1.5 rounded-lg text-xs hover:bg-amber-200 transition-colors">Reschedule</button>
-                              <button onClick={() => handleCallNext(apt.id, apt.patient.full_name)} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-blue-500/20">{t('call_next')}</button>
+                              <button onClick={() => handleCallNext(apt.id, apt.patient?.full_name || apt.manual_patient?.full_name || 'Patient')} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-blue-500/20">{t('call_next')}</button>
                             </>
                           ) : (
                             <>
                               <button onClick={() => fetchPatientHistory(apt.patient_id)} className="text-blue-600 hover:text-blue-700 font-bold px-3 py-1.5 rounded-lg text-xs transition-colors">History</button>
                               <button onClick={() => { setEditingApt(apt); setShowBooking(true); }} className="bg-amber-100 text-amber-700 font-bold px-3 py-1.5 rounded-lg text-xs hover:bg-amber-200 transition-colors">Reschedule</button>
-                              <button onClick={() => handleCallNext(apt.id, apt.patient.full_name)} className="bg-amber-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs hover:bg-amber-600 transition-colors">Recall</button>
+                              <button onClick={() => handleCallNext(apt.id, apt.patient?.full_name || apt.manual_patient?.full_name || 'Patient')} className="bg-amber-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs hover:bg-amber-600 transition-colors">Recall</button>
                               <button onClick={() => setActivePrescription(apt)} className="bg-purple-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-purple-500/20">{t('write_prescription')}</button>
                               <button onClick={() => handleComplete(apt.id)} className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-emerald-500/20">{t('mark_completed')}</button>
                             </>
@@ -330,7 +341,7 @@ export default function DoctorDashboard({
                       <div className="flex-1 min-w-[200px]">
                         <div className="flex items-center gap-2">
                           <span className="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 flex items-center justify-center text-sm font-bold">🕐</span>
-                          <h4 className="font-bold">{apt.patient?.full_name}</h4>
+                          <h4 className="font-bold">{apt.patient?.full_name || apt.manual_patient?.full_name}</h4>
                         </div>
                         <div className="flex flex-wrap gap-3 mt-2 text-sm text-gray-500 ml-10">
                           <span>📅 {new Date(apt.scheduled_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
@@ -453,6 +464,10 @@ export default function DoctorDashboard({
                 </div>
               </div>
             </div>
+          ) : activeTab === 'patients' ? (
+            <div className="p-8">
+              <PatientsTab doctorId={doctorId} />
+            </div>
           ) : (
             <div className="p-12 text-center text-gray-400">Settings & Other features coming soon...</div>
           )}
@@ -560,7 +575,8 @@ export default function DoctorDashboard({
         <PrescriptionModal
           appointmentId={activePrescription.id}
           patientId={activePrescription.patient_id}
-          patientName={activePrescription.patient?.full_name}
+          manualPatientId={activePrescription.manual_patient_id}
+          patientName={activePrescription.patient?.full_name || activePrescription.manual_patient?.full_name || 'Patient'}
           onClose={() => setActivePrescription(null)}
           onComplete={() => setActivePrescription(null)}
         />

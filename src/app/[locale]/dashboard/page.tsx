@@ -192,7 +192,12 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
       .gte('scheduled_time', startOfWindow.toISOString())
       .order('queue_position', { ascending: true });
 
-    portalContent = <NurseDashboard clinicAppointments={(queue as any) || []} />;
+    portalContent = (
+      <NurseDashboard 
+        clinicAppointments={(queue as any) || []} 
+        supervisorId={profile.supervisor_id} 
+      />
+    );
   } else {
     portalTitle = t('role_admin');
     portalContent = <AdminDashboard />;
