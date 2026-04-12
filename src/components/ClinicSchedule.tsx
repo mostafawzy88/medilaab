@@ -4,10 +4,12 @@ import { useState } from 'react'
 
 type Appointment = {
   id: string
-  patient_id: string
+  patient_id: string | null
+  manual_patient_id?: string | null
   scheduled_time: string
   status: string
-  patient: { full_name: string }
+  patient: { full_name: string } | null
+  manual_patient?: { full_name: string } | null
   appointment_type?: string
   doctor_id?: string
 }
@@ -179,7 +181,7 @@ export default function ClinicSchedule({ doctorId, appointments, onNewAppointmen
                              {/* Render 00 min slot block */}
                              {topAppt && (
                                 <div className="absolute top-0 left-2 right-4 h-11 bg-[var(--color-cp-purple)] bg-opacity-90 rounded-md p-2 shadow-sm text-white border-l-4 border-[var(--color-cp-purple-light)] hover:-translate-y-0.5 transition-transform cursor-pointer">
-                                  <p className="text-xs font-black truncate">{topAppt.patient.full_name} - 30 min</p>
+                                  <p className="text-xs font-black truncate">{topAppt.patient?.full_name || topAppt.manual_patient?.full_name} - 30 min</p>
                                   <p className="text-[10px] opacity-80">{h % 12 === 0 ? 12 : h % 12}:00 {h >= 12 ? 'PM' : 'AM'}</p>
                                 </div>
                              )}
@@ -187,7 +189,7 @@ export default function ClinicSchedule({ doctorId, appointments, onNewAppointmen
                              {/* Render 30 min slot block */}
                              {bottomAppt && (
                                 <div className="absolute top-12 left-2 right-4 h-11 mb-1 bg-[#3A2292] bg-opacity-90 rounded-md p-2 shadow-sm text-white border-l-4 border-purple-400 hover:-translate-y-0.5 transition-transform cursor-pointer">
-                                  <p className="text-xs font-black truncate">{bottomAppt.patient.full_name} - 30 min</p>
+                                  <p className="text-xs font-black truncate">{bottomAppt.patient?.full_name || bottomAppt.manual_patient?.full_name} - 30 min</p>
                                   <p className="text-[10px] opacity-80">{h % 12 === 0 ? 12 : h % 12}:30 {h >= 12 ? 'PM' : 'AM'}</p>
                                 </div>
                              )}
