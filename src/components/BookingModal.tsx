@@ -379,27 +379,27 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
                     </>
                   ) : (
                     <div className="space-y-4 animate-in slide-in-from-bottom-2">
-                       <h3 className="font-bold text-lg">Create Offline Patient</h3>
+                       <h3 className="font-bold text-lg text-gray-900 dark:text-white">Create Offline Patient</h3>
                        <div className="space-y-2">
-                          <label className="text-xs font-black text-gray-500">Full Name</label>
+                          <label className="text-xs font-black text-gray-600 dark:text-gray-400">Full Name</label>
                           <input 
                             value={newManualName}
                             onChange={(e) => setNewManualName(e.target.value)}
-                            className="w-full rounded-xl px-4 py-3 bg-gray-50 border-2 border-transparent focus:border-blue-500 outline-none" 
+                            className="w-full rounded-xl px-4 py-3 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white border-2 border-gray-200 dark:border-gray-700 focus:border-blue-500 outline-none placeholder-gray-400" 
                             placeholder="Patient's Full Name"
                           />
                        </div>
                        <div className="space-y-2">
-                          <label className="text-xs font-black text-gray-500">Phone Number</label>
+                          <label className="text-xs font-black text-gray-600 dark:text-gray-400">Phone Number</label>
                           <input 
                             value={newManualPhone}
                             onChange={(e) => setNewManualPhone(e.target.value)}
-                            className="w-full rounded-xl px-4 py-3 bg-gray-50 border-2 border-transparent focus:border-blue-500 outline-none" 
+                            className="w-full rounded-xl px-4 py-3 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white border-2 border-gray-200 dark:border-gray-700 focus:border-blue-500 outline-none placeholder-gray-400" 
                             placeholder="Patient's Phone"
                           />
                        </div>
                        <div className="flex gap-2 mt-6">
-                          <button onClick={() => setIsCreatingManual(false)} className="flex-1 py-3 font-bold text-gray-500">Cancel</button>
+                          <button onClick={() => setIsCreatingManual(false)} className="flex-1 py-3 font-bold text-gray-500 dark:text-gray-400">Cancel</button>
                           <button 
                             disabled={!newManualName}
                             onClick={() => setStep(1)}
