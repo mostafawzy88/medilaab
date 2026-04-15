@@ -26,7 +26,8 @@ export default function Sidebar({ fullName, role }: { fullName: string, role?: s
         return [
           { id: 'schedule', name: 'Schedule', icon: '📅' },
           { id: 'queue', name: 'Queue', icon: '📋' },
-          { id: 'requests', name: 'Requests', icon: 'Inbox' }, // Replaced with emoji later
+          { id: 'requests', name: 'Requests', icon: 'Inbox' },
+          { id: 'patients', name: 'Patients', icon: '👥' },
           { id: 'stats', name: 'Statistics', icon: '📈' },
           { id: 'meds', name: 'Medications', icon: '💊' },
         ]
@@ -35,6 +36,7 @@ export default function Sidebar({ fullName, role }: { fullName: string, role?: s
           { id: 'schedule', name: 'Schedule', icon: '📅' },
           { id: 'queue', name: 'Queue', icon: '📋' },
           { id: 'requests', name: 'Requests', icon: 'Inbox' },
+          { id: 'patients', name: 'Patients', icon: '👥' },
         ]
       case 'patient':
         return [

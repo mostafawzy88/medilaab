@@ -220,7 +220,7 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
 
   const handleBooking = async () => {
     if (!selectedDoctor || !selectedDate || !selectedTime) return
-    if (isStaff && !selectedPatient && !isCreatingManual) {
+    if (isStaff && !editAppointmentId && !selectedPatient && !isCreatingManual) {
       alert("Please select or create a patient first.");
       return;
     }
