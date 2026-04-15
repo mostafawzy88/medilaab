@@ -77,6 +77,8 @@ export default function DoctorDashboard({
       )
       .subscribe()
 
+    refetchQueue(supabase) // initial fetch on mount
+
     return () => { supabase.removeChannel(channel) }
   }, [doctorId])
 
