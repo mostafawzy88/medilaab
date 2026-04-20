@@ -162,10 +162,10 @@ export default function ClinicSchedule({ doctorId, appointments, onNewAppointmen
                 <select 
                    value={viewState} 
                    onChange={(e) => setViewState(e.target.value as any)}
-                   className="text-sm font-bold border border-gray-200 dark:border-[#2A214D] rounded-xl px-4 py-1.5 bg-transparent dark:text-white outline-none focus:ring-1 focus:ring-purple-500"
+                   className="text-sm font-bold border border-gray-200 dark:border-[#2A214D] rounded-xl px-4 py-1.5 bg-white dark:bg-[#1D1438] text-gray-900 dark:text-white outline-none focus:ring-1 focus:ring-purple-500"
                 >
-                   <option value="Day">Day View</option>
-                   <option value="Week">Week View</option>
+                   <option value="Day" className="bg-white dark:bg-[#1D1438] text-gray-900 dark:text-white">Day View</option>
+                   <option value="Week" className="bg-white dark:bg-[#1D1438] text-gray-900 dark:text-white">Week View</option>
                 </select>
              </div>
              
@@ -195,7 +195,7 @@ export default function ClinicSchedule({ doctorId, appointments, onNewAppointmen
                 <div className="flex-1 flex pt-10 min-w-[600px] overflow-x-auto relative">
                    {daysToRender.map((day, idx) => (
                      <div key={idx} className="flex-1 relative border-r border-gray-100 dark:border-[#2A214D] last:border-r-0 min-w-[150px]">
-                        <div className="absolute top-0 transform -translate-y-full left-0 right-0 h-10 border-b border-gray-100 dark:border-[#2A214D] bg-white dark:bg-[#150F2A] flex items-center justify-center font-bold text-gray-700 dark:text-gray-300 z-10">
+                        <div className="absolute top-0 transform -translate-y-full left-0 right-0 h-10 border-b border-gray-100 dark:border-[#2A214D] bg-gray-50 dark:bg-[#0A0614] flex items-center justify-center font-bold text-blue-600 dark:text-blue-400 z-10">
                            {getDayLabel(day)}
                         </div>
                         

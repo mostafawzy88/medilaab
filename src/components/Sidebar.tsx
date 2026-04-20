@@ -26,7 +26,7 @@ export default function Sidebar({ fullName, role }: { fullName: string, role?: s
         return [
           { id: 'schedule', name: 'Schedule', icon: '📅' },
           { id: 'queue', name: 'Queue', icon: '📋' },
-          { id: 'requests', name: 'Requests', icon: 'Inbox' },
+          { id: 'requests', name: 'Requests', icon: '📥' },
           { id: 'patients', name: 'Patients', icon: '👥' },
           { id: 'stats', name: 'Statistics', icon: '📈' },
           { id: 'meds', name: 'Medications', icon: '💊' },
@@ -35,7 +35,7 @@ export default function Sidebar({ fullName, role }: { fullName: string, role?: s
         return [
           { id: 'schedule', name: 'Schedule', icon: '📅' },
           { id: 'queue', name: 'Queue', icon: '📋' },
-          { id: 'requests', name: 'Requests', icon: 'Inbox' },
+          { id: 'requests', name: 'Requests', icon: '📥' },
           { id: 'patients', name: 'Patients', icon: '👥' },
         ]
       case 'patient':
@@ -50,11 +50,6 @@ export default function Sidebar({ fullName, role }: { fullName: string, role?: s
   }
 
   const items = getNavItems()
-
-  // Replace 'Inbox' placeholder with emoji based on rendering limitations
-  items.forEach(item => {
-      if(item.icon === 'Inbox') item.icon = '📥'
-  })
 
   return (
     <div className="w-64 bg-[var(--color-cp-navy)] text-white flex flex-col h-screen sticky top-0 border-r border-[#2A214D]">
@@ -99,13 +94,7 @@ export default function Sidebar({ fullName, role }: { fullName: string, role?: s
          </div>
          
          <div className="space-y-2">
-           <LogoutButton />
-           <Link 
-             href="/" 
-             className="flex items-center justify-center gap-2 w-full py-2.5 text-[10px] font-black uppercase text-gray-500 hover:text-white transition-colors border border-dashed border-[#2A214D] rounded-xl"
-           >
-             <span>🌐</span> {t('back_to_website') || 'Back to Website'}
-           </Link>
+            <LogoutButton />
          </div>
       </div>
     </div>

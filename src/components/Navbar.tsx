@@ -14,16 +14,8 @@ export default function Navbar({ fullName, role }: { fullName: string, role?: st
   return (
     <div className="bg-white/90 backdrop-blur-md border-b border-gray-100 dark:bg-[#150F2A] dark:border-gray-800 sticky top-0 z-40 h-20 flex items-center px-8">
       <div className="flex justify-between items-center w-full">
-        {/* Left side: Navigation Back to Dashboard */}
-        <div>
-          <Link 
-            href={`/${locale}/dashboard`}
-            className="flex items-center gap-2 text-gray-500 hover:text-[var(--color-cp-purple)] font-bold transition-colors"
-          >
-            <span className="text-xl">🏠</span>
-            <span className="hidden sm:inline">{dt('dashboard') || 'Dashboard'}</span>
-          </Link>
-        </div>
+        {/* Left side empty for now (could be breadcrumbs or page title) */}
+        <div></div>
 
         <div className="flex items-center gap-6">
           <Link 

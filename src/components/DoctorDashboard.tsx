@@ -203,6 +203,7 @@ export default function DoctorDashboard({
   const [meds, setMeds] = useState<any[]>([])
   const [loadingMeds, setLoadingMeds] = useState(false)
   const [newMed, setNewMed] = useState({ name: '', dosage: '', symptoms: '' })
+  const [editingMedId, setEditingMedId] = useState<string | null>(null)
   const [patientHistory, setPatientHistory] = useState<any[] | null>(null)
   const [loadingHistory, setLoadingHistory] = useState(false)
 
@@ -223,12 +224,24 @@ export default function DoctorDashboard({
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    await supabase.from('doctor_medications').insert({
-      doctor_id: user.id,
-      name: newMed.name,
-      default_dosage: newMed.dosage,
-      common_symptoms: newMed.symptoms
-    })
+    if (editingMedId) {
+      await supabase.from('doctor_medications')
+        .update({
+          name: newMed.name,
+          default_dosage: newMed.dosage,
+          common_symptoms: newMed.symptoms
+        })
+        .eq('id', editingMedId)
+      setEditingMedId(null)
+    } else {
+      await supabase.from('doctor_medications').insert({
+        doctor_id: user.id,
+        name: newMed.name,
+        default_dosage: newMed.dosage,
+        common_symptoms: newMed.symptoms
+      })
+    }
+    
     setNewMed({ name: '', dosage: '', symptoms: '' })
     fetchMeds()
   }
@@ -425,8 +438,8 @@ export default function DoctorDashboard({
           ) : activeTab === 'meds' ? (
             <div className="p-8">
               <div className="max-w-2xl mx-auto space-y-8">
-                <div className="bg-blue-50 dark:bg-blue-900/10 p-6 rounded-3xl border border-blue-100 dark:border-blue-800">
-                  <h4 className="font-bold mb-4">Add Favorite Medication</h4>
+                <div className={`${editingMedId ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800' : 'bg-blue-50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-800'} p-6 rounded-3xl border`}>
+                  <h4 className="font-bold mb-4">{editingMedId ? 'Update Favorite Medication' : 'Add Favorite Medication'}</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <input 
                       placeholder="Medication Name" 
@@ -446,7 +459,15 @@ export default function DoctorDashboard({
                       onChange={e => setNewMed({...newMed, symptoms: e.target.value})}
                       className="rounded-xl px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500 sm:col-span-2"
                     />
-                    <button onClick={handleAddMedToFavs} className="bg-blue-600 text-white font-bold py-2 rounded-xl shadow-lg shadow-blue-500/30 sm:col-span-2">Add to Favorites</button>
+                    <button onClick={handleAddMedToFavs} className={`${editingMedId ? 'bg-amber-600 shadow-amber-500/30' : 'bg-blue-600 shadow-blue-500/30'} text-white font-bold py-2 rounded-xl shadow-lg sm:col-span-2 transition-all`}>
+                      {editingMedId ? 'Update Medication' : 'Add to Favorites'}
+                    </button>
+                    {editingMedId && (
+                      <button 
+                        onClick={() => { setEditingMedId(null); setNewMed({ name: '', dosage: '', symptoms: '' }); }} 
+                        className="text-xs font-bold text-gray-500 hover:text-red-500 sm:col-span-2 underline underline-offset-4"
+                      >Cancel Edit</button>
+                    )}
                   </div>
                 </div>
 
@@ -463,7 +484,19 @@ export default function DoctorDashboard({
                           <p className="font-bold">{m.name}</p>
                           <p className="text-xs text-gray-500">{m.default_dosage} • {m.common_symptoms}</p>
                         </div>
-                        <button onClick={() => handleDeleteMed(m.id)} className="p-2 text-gray-400 hover:text-red-500"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => {
+                              setEditingMedId(m.id);
+                              setNewMed({ name: m.name, dosage: m.default_dosage || '', symptoms: m.common_symptoms || '' });
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }} 
+                            className="p-2 text-gray-400 hover:text-amber-500 transition-colors" title="Edit"
+                          >
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                          </button>
+                          <button onClick={() => handleDeleteMed(m.id)} className="p-2 text-gray-400 hover:text-red-500"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                        </div>
                       </div>
                     ))
                   )}
