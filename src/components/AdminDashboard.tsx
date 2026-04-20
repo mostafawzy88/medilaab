@@ -68,6 +68,9 @@ export default function AdminDashboard() {
   const [editUser, setEditUser] = useState<StaffMember | any | null>(null)
   const [editForm, setEditForm] = useState<any>({})
   const [savingUser, setSavingUser] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState<{id: string, name: string} | null>(null)
+  const [deleteInput, setDeleteInput] = useState('')
+  const [deleting, setDeleting] = useState(false)
 
   // Stats
   const totalPatients = patients.length
@@ -96,7 +99,18 @@ export default function AdminDashboard() {
       .eq('role', 'patient')
       .order('created_at', { ascending: false })
     
-    if (pts) setPatients(pts)
+    // Fetch manual patients
+    const { data: manualPts } = await supabase
+      .from('manual_patients')
+      .select('id, full_name, phone_number, created_at')
+      .order('created_at', { ascending: false })
+
+    const mergedPatients = [
+      ...(pts || []).map(p => ({ ...p, is_manual: false })),
+      ...(manualPts || []).map(p => ({ ...p, is_manual: true, role: 'patient', email: 'Offline Patient' }))
+    ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+    setPatients(mergedPatients)
 
     // Fetch admin settings
     const { data: settingsData } = await supabase
@@ -141,7 +155,12 @@ export default function AdminDashboard() {
         revByDoc[docName] = (revByDoc[docName] || 0) + (Number(a.fees) || 0)
       })
 
-      setClinicStats({ totalRevenue, totalAppts, byType, revByDoc })
+      // Subscription Revenue Estimate
+      const activeStaff = staff.filter(s => s.is_authorized && s.subscription_expires_at)
+      const subRevenue = activeStaff.length * (settings.subscription_prices['1'] || 500)
+      const totalRevenuePlusSubs = totalRevenue + subRevenue
+
+      setClinicStats({ totalRevenue: totalRevenuePlusSubs, totalAppts, byType, revByDoc, subRevenue, apptRevenue: totalRevenue })
     }
     setLoadingStats(false)
   }
@@ -202,6 +221,34 @@ export default function AdminDashboard() {
       }
     }
     setProcessing(null)
+  }
+
+  const handleDeleteUser = async () => {
+    if (!deleteConfirm || deleteInput.toLowerCase() !== 'delete') return
+    setDeleting(true)
+    const supabase = createClient()
+    
+    const table = deleteConfirm.id.includes('-') && !isNaN(Number(deleteConfirm.id.charAt(0))) ? 'profiles' : 'profiles' 
+    // Wait, manual patients have id too. Let's find which table it is.
+    const isManual = patients.find(p => p.id === deleteConfirm.id)?.is_manual
+    
+    const { error } = isManual 
+      ? await supabase.from('manual_patients').delete().eq('id', deleteConfirm.id)
+      : await supabase.from('profiles').delete().eq('id', deleteConfirm.id)
+
+    if (!error) {
+      if (isManual) {
+        setPatients(prev => prev.filter(p => p.id !== deleteConfirm.id))
+      } else {
+        setStaff(prev => prev.filter(s => s.id !== deleteConfirm.id))
+        setPatients(prev => prev.filter(p => p.id !== deleteConfirm.id))
+      }
+      setDeleteConfirm(null)
+      setDeleteInput('')
+    } else {
+      alert("Error deleting: " + error.message)
+    }
+    setDeleting(false)
   }
 
   const handleSaveUser = async () => {
@@ -454,6 +501,13 @@ export default function AdminDashboard() {
                         >
                           🔔 Remind
                         </button>
+                        <button 
+                          onClick={() => setDeleteConfirm({ id: member.id, name: member.full_name })}
+                          className="px-3 py-2 rounded-xl text-xs font-bold bg-red-50 dark:bg-red-900/30 text-red-600 hover:bg-red-100 transition-all"
+                          title="Permanently remove account"
+                        >
+                          🗑️ Delete
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -483,7 +537,7 @@ export default function AdminDashboard() {
                 <tr className="bg-gray-50 dark:bg-gray-800/50 text-xs uppercase tracking-widest text-gray-500">
                   <th className="px-6 py-4">Name</th>
                   <th className="px-6 py-4">Contact</th>
-                  <th className="px-6 py-4">Since</th>
+                  <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -492,7 +546,10 @@ export default function AdminDashboard() {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                          <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 font-bold text-xs">{pt.full_name?.charAt(0)}</div>
-                         <span className="font-bold text-sm group-hover:text-blue-600 transition-colors">{pt.full_name}</span>
+                         <div className="flex flex-col">
+                            <span className="font-bold text-sm group-hover:text-blue-600 transition-colors">{pt.full_name}</span>
+                            {pt.is_manual && <span className="text-[10px] text-gray-400 font-black uppercase tracking-widest leading-none">Offline Patient</span>}
+                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -501,7 +558,15 @@ export default function AdminDashboard() {
                         <span className="text-xs text-gray-500">{pt.phone_number || 'No phone'}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-xs text-gray-400">{new Date(pt.created_at).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 text-right">
+                       <button 
+                         onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ id: pt.id, name: pt.full_name }); }}
+                         className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                         title="Permanently remove patient"
+                       >
+                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                       </button>
+                    </td>
                   </tr>
                 ))}
                 {patients.length === 0 && (
@@ -520,9 +585,14 @@ export default function AdminDashboard() {
           ) : clinicStats ? (
             <>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-emerald-50 dark:bg-emerald-900/20 p-8 rounded-[2rem] border border-emerald-100 dark:border-emerald-800 shadow-sm">
-                  <p className="text-emerald-600 dark:text-emerald-400 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Total Clinic Revenue</p>
+                <div className="bg-emerald-50 dark:bg-emerald-900/20 p-8 rounded-[2rem] border border-emerald-100 dark:border-emerald-800 shadow-sm relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">💰</div>
+                  <p className="text-emerald-600 dark:text-emerald-400 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Total Gross Revenue</p>
                   <p className="text-4xl font-black text-emerald-950 dark:text-emerald-50">{clinicStats.totalRevenue.toLocaleString()} <span className="text-sm font-medium">EGP</span></p>
+                  <div className="mt-4 flex gap-4 text-[10px] font-bold text-emerald-600/70">
+                      <span>Appts: {clinicStats.apptRevenue?.toLocaleString()}</span>
+                      <span>Subs: {clinicStats.subRevenue?.toLocaleString()}</span>
+                  </div>
                 </div>
                 <div className="bg-blue-50 dark:bg-blue-900/20 p-8 rounded-[2rem] border border-blue-100 dark:border-blue-800 shadow-sm">
                   <p className="text-blue-600 dark:text-blue-400 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Total Appointments</p>
@@ -791,6 +861,48 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* ==================== DELETE CONFIRMATION MODAL ==================== */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl border border-red-100 dark:border-red-900/30 animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-6 text-2xl">⚠️</div>
+            <h3 className="text-2xl font-black text-center mb-2">Confirm Destruction</h3>
+            <p className="text-center text-gray-500 text-sm mb-8">
+              Are you absolutely sure you want to delete <strong className="text-gray-900 dark:text-white">{deleteConfirm.name}</strong>? 
+              This action is <span className="text-red-600 font-bold">PERMANENT</span> and cannot be undone.
+            </p>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2 px-1">Type "delete" to proceed</label>
+                <input 
+                  type="text" 
+                  value={deleteInput}
+                  onChange={e => setDeleteInput(e.target.value)}
+                  placeholder="delete"
+                  className="w-full rounded-2xl px-5 py-4 bg-gray-50 dark:bg-gray-800 border-2 border-transparent focus:border-red-500 outline-none font-bold text-center transition-all"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 pt-2">
+                <button 
+                  onClick={() => { setDeleteConfirm(null); setDeleteInput(''); }}
+                  className="py-4 rounded-2xl font-black text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleDeleteUser}
+                  disabled={deleteInput.toLowerCase() !== 'delete' || deleting}
+                  className={`py-4 rounded-2xl font-black text-sm text-white shadow-lg transition-all ${deleteInput.toLowerCase() === 'delete' ? 'bg-red-600 shadow-red-500/30 hover:-translate-y-1' : 'bg-gray-300 cursor-not-allowed grayscale'}`}
+                >
+                  {deleting ? 'Deleting...' : 'Confirm Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
