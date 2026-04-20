@@ -103,7 +103,7 @@ export default function DoctorDashboard({
       .order('scheduled_time', { ascending: true })
       
     if (queueData) {
-      setActiveQueue(queueData)
+      setActiveQueue(queueData.filter((a: any) => a.status === 'scheduled' || a.status === 'in_progress'))
     }
 
     // All pending requests

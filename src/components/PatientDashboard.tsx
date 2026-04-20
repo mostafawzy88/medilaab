@@ -67,6 +67,7 @@ export default function PatientDashboard({
   initialDoctors: DoctorInfo[]
 }) {
   const t = useTranslations('Dashboard')
+  const tp = useTranslations('Patient')
   const [appointments, setAppointments] = useState(initialAppointments)
   const [showBooking, setShowBooking] = useState(false)
   const [editAppointmentId, setEditAppointmentId] = useState<string | null>(null)
@@ -277,22 +278,22 @@ export default function PatientDashboard({
         <div className="space-y-6">
           <div className="flex flex-wrap gap-4 justify-between items-center bg-white dark:bg-gray-900 p-4 rounded-3xl border border-gray-100 dark:border-gray-800">
             <div className="flex gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
-               <button onClick={() => setViewMode('cards')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'cards' ? 'bg-white dark:bg-gray-700 shadow-sm' : 'text-gray-500'}`}>Cards</button>
-               <button onClick={() => setViewMode('calendar')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'calendar' ? 'bg-white dark:bg-gray-700 shadow-sm' : 'text-gray-500'}`}>Calendar</button>
+               <button onClick={() => setViewMode('cards')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'cards' ? 'bg-white dark:bg-gray-700 shadow-sm' : 'text-gray-500'}`}>{tp('cards') || 'Cards'}</button>
+               <button onClick={() => setViewMode('calendar')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'calendar' ? 'bg-white dark:bg-gray-700 shadow-sm' : 'text-gray-500'}`}>{tp('calendar') || 'Calendar'}</button>
             </div>
             <button
               onClick={() => { setEditAppointmentId(null); setShowBooking(true); }}
               className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-6 rounded-xl shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2 text-sm"
             >
-              + Book New Visit
+              {tp('book_new_visit') || '+ Book New Visit'}
             </button>
           </div>
 
           {activeAppointments.length === 0 ? (
              <div className="text-center py-20 bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800">
               <div className="text-5xl mb-4">📅</div>
-              <h3 className="text-xl font-bold">No Active Bookings</h3>
-              <p className="text-gray-500 mt-2">You don't have any upcoming visits booked.</p>
+              <h3 className="text-xl font-bold">{tp('no_active_bookings') || 'No Active Bookings'}</h3>
+              <p className="text-gray-500 mt-2">{tp('no_active_desc') || "You don't have any upcoming visits booked."}</p>
             </div>
           ) : viewMode === 'cards' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -308,7 +309,7 @@ export default function PatientDashboard({
                       <div className="flex items-start justify-between gap-4 mb-4">
                         <div className="flex items-center gap-2">
                           <span className="text-lg">{cfg.icon}</span>
-                          <span className={`text-xs font-black uppercase tracking-wider ${cfg.color}`}>{needsPayment ? '💳 Awaiting Payment' : cfg.label}</span>
+                          <span className={`text-xs font-black uppercase tracking-wider ${cfg.color}`}>{needsPayment ? `💳 ${tp('awaiting_payment') || 'Awaiting Payment'}` : cfg.label}</span>
                         </div>
                         <div className="flex gap-2">
                            {isApproved && (
@@ -317,10 +318,10 @@ export default function PatientDashboard({
                                setSelectedDoctor(doc || null);
                                setEditAppointmentId(apt.id); 
                                setShowBooking(true); 
-                             }} className="text-xs font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-lg hover:bg-blue-100 transition-colors">Reschedule</button>
+                             }} className="text-xs font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-lg hover:bg-blue-100 transition-colors">{tp('reschedule') || 'Reschedule'}</button>
                            )}
                            {isPending && (
-                             <button onClick={() => handleDeleteAppointment(apt.id)} className="text-xs font-bold text-red-600 bg-red-50 dark:bg-red-900/30 px-3 py-1 rounded-lg hover:bg-red-100 transition-colors">Delete</button>
+                             <button onClick={() => handleDeleteAppointment(apt.id)} className="text-xs font-bold text-red-600 bg-red-50 dark:bg-red-900/30 px-3 py-1 rounded-lg hover:bg-red-100 transition-colors">{tp('delete') || 'Delete'}</button>
                            )}
                         </div>
                       </div>
@@ -329,20 +330,20 @@ export default function PatientDashboard({
                       {apt.status === 'proposed' && (
                         <div className="mt-4 p-4 bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-2xl flex flex-col gap-3 animate-in fade-in slide-in-from-top-2">
                            <p className="text-xs font-bold text-purple-700 dark:text-purple-300 flex items-center gap-2">
-                             <span>📢</span> The doctor has proposed a new time for your appointment.
+                             <span>📢</span> {tp('proposed_time_msg') || 'The doctor has proposed a new time for your appointment.'}
                            </p>
                            <div className="flex gap-2">
                               <button 
                                 onClick={() => handleProposalAction(apt.id, 'approve')}
                                 className="flex-1 bg-purple-600 text-white font-bold py-2 rounded-xl text-xs shadow-lg shadow-purple-500/30 hover:bg-purple-700 transition-all"
                               >
-                                Approve New Time
+                                {tp('approve_new_time') || 'Approve New Time'}
                               </button>
                               <button 
                                 onClick={() => handleProposalAction(apt.id, 'reject')}
                                 className="flex-1 bg-white dark:bg-gray-800 text-red-600 border border-red-200 dark:border-red-900 font-bold py-2 rounded-xl text-xs hover:bg-red-50 transition-all"
                               >
-                                Reject & Cancel
+                                {tp('reject_cancel') || 'Reject & Cancel'}
                               </button>
                            </div>
                         </div>
@@ -353,7 +354,7 @@ export default function PatientDashboard({
                         <div className="mt-2 flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800">
                           <span className="text-blue-600">⌛</span>
                           <p className="text-xs font-bold text-blue-700 dark:text-blue-300">
-                            Estimated Wait: {queueWaitTimes[apt.id] !== undefined ? `${queueWaitTimes[apt.id]} mins` : 'Calculating...'}
+                            {tp('estimated_wait') || 'Estimated Wait:'} {queueWaitTimes[apt.id] !== undefined ? `${queueWaitTimes[apt.id]} ${t('mins')}` : tp('calculating') || 'Calculating...'}
                           </p>
                         </div>
                       )}
@@ -378,12 +379,12 @@ export default function PatientDashboard({
                       <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 animate-in fade-in">
                         <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 text-center">
                           <p className="text-sm text-blue-700 dark:text-blue-300 font-medium mb-3">
-                            Pay <strong className="font-black">{apt.fees} EGP</strong> to InstaPay to secure this exact slot
+                            {tp('pay_to_secure', { fees: apt.fees }) || `Pay ${apt.fees} EGP to InstaPay to secure this exact slot`}
                           </p>
                           <div className="bg-white dark:bg-gray-900 rounded-lg p-2 inline-block shadow-sm">
                             <QRCodeSVG value={`instapay://payment?address=${apt.instapay_address}&amount=${apt.fees}`} size={80} bgColor="#ffffff" fgColor="#000000" />
                           </div>
-                          <p className="text-xs font-bold text-gray-500 mt-2 break-all">{apt.instapay_address}</p>
+                          <p className="text-xs font-bold text-gray-500 mt-2 break-all">{tp('payment_link') || 'payment link'}</p>
                         </div>
                       </div>
                     )}

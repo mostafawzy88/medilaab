@@ -40,9 +40,9 @@ export default function Sidebar({ fullName, role }: { fullName: string, role?: s
         ]
       case 'patient':
         return [
-          { id: 'overview', name: 'Dashboard', icon: '🏠' },
-          { id: 'doctors', name: 'My Doctors', icon: '⚕️' },
-          { id: 'bookings', name: 'My Bookings', icon: '📅' },
+          { id: 'overview', name: t('dashboard') || 'Dashboard', icon: '🏠' },
+          { id: 'doctors', name: t('my_doctors') || 'My Doctors', icon: '⚕️' },
+          { id: 'bookings', name: t('my_bookings') || 'My Bookings', icon: '📅' },
         ]
       default:
         return []

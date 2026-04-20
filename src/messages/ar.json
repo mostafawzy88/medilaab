@@ -10,6 +10,8 @@
   },
   "Dashboard": {
     "welcome": "مرحباً بك، {name}",
+    "manage_patient": "إدارة مواعيدك ومدفوعاتك بكل سهولة.",
+    "manage_admin": "إدارة سير عمل عيادتك بأمان.",
     "role_patient": "بوابة المريض",
     "role_doctor": "لوحة الطبيب",
     "role_nurse": "لوحة التمريض",
@@ -101,6 +103,8 @@
   },
   "Navigation": {
     "dashboard": "لوحة التحكم",
+    "my_doctors": "أطبائي",
+    "my_bookings": "حجوزاتي",
     "about": "من نحن",
     "contact": "اتصل بنا",
     "profile": "الملف الشخصي"
@@ -120,5 +124,27 @@
     "send": "إرسال الرسالة",
     "address": "القاهرة، مصر",
     "phone": "+20 123 456 789"
+  },
+  "Patient": {
+    "book_new_visit": "توقيع كشف جديد +",
+    "calendar": "التقويم",
+    "cards": "البطاقات",
+    "reschedule": "تعديل الموعد",
+    "delete": "إلغاء",
+    "awaiting_payment": "في انتظار الدفع",
+    "paid": "تم الدفع",
+    "unpaid": "غير مدفوع",
+    "pay_to_secure": "ادفع {fees} جنيه عبر إنستاباي لتأكيد الحجز",
+    "payment_link": "تأكيد الدفع",
+    "no_active_bookings": "لا توجد حجوزات نشطة",
+    "no_active_desc": "ليس لديك أي زيارات قادمة محجوزة.",
+    "proposed_time_msg": "اقترح الطبيب وقتاً جديداً لموعدك.",
+    "approve_new_time": "موافقة على الوقت الجديد",
+    "reject_cancel": "رفض وإلغاء",
+    "estimated_wait": "الوقت المقدر للانتظار:",
+    "calculating": "جاري الحساب...",
+    "medical_history": "التاريخ الطبي",
+    "past_visits": "الزيارات السابقة",
+    "no_history": "ليس لديك سجل بزيارات سابقة."
   }
 }

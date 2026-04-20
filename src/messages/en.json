@@ -10,6 +10,8 @@
   },
   "Dashboard": {
     "welcome": "Welcome back, {name}",
+    "manage_patient": "Manage your appointments and payments seamlessly.",
+    "manage_admin": "Manage your clinic flow securely.",
     "role_patient": "Patient Portal",
     "role_doctor": "Doctor Dashboard",
     "role_nurse": "Nurse Dashboard",
@@ -101,6 +103,8 @@
   },
   "Navigation": {
     "dashboard": "Dashboard",
+    "my_doctors": "My Doctors",
+    "my_bookings": "My Bookings",
     "about": "About Us",
     "contact": "Contact",
     "profile": "Profile"
@@ -120,5 +124,27 @@
     "send": "Send Message",
     "address": "Cairo, Egypt",
     "phone": "+20 123 456 789"
+  },
+  "Patient": {
+    "book_new_visit": "Book New Visit +",
+    "calendar": "Calendar",
+    "cards": "Cards",
+    "reschedule": "Reschedule",
+    "delete": "Delete",
+    "awaiting_payment": "Awaiting Payment",
+    "paid": "Paid",
+    "unpaid": "Unpaid",
+    "pay_to_secure": "Pay {fees} EGP to InstaPay to secure this exact slot",
+    "payment_link": "InstaPay Address",
+    "no_active_bookings": "No Active Bookings",
+    "no_active_desc": "You don't have any upcoming visits booked.",
+    "proposed_time_msg": "The doctor has proposed a new time for your appointment.",
+    "approve_new_time": "Approve New Time",
+    "reject_cancel": "Reject & Cancel",
+    "estimated_wait": "Estimated Wait:",
+    "calculating": "Calculating...",
+    "medical_history": "Medical History",
+    "past_visits": "Past Visits",
+    "no_history": "You do not have any past visits on record."
   }
 }

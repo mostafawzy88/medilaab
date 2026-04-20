@@ -231,8 +231,8 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
             <h1 className="text-3xl font-black text-gray-900 dark:text-white mb-2">{portalTitle}</h1>
             <p className="text-gray-500 dark:text-gray-400">
               {role === 'patient' 
-                ? 'Manage your appointments and payments seamlessly.' 
-                : 'Manage your clinic flow securely.'}
+                ? t('manage_patient') || 'Manage your appointments and payments seamlessly.' 
+                : t('manage_admin') || 'Manage your clinic flow securely.'}
             </p>
           </div>
 
