@@ -76,6 +76,16 @@ export default function SubscriptionRenewal({
     setUploading(false)
   }
 
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = () => {
+    const address = initialSettings.instapay_address || 'medilab@instapay'
+    navigator.clipboard.writeText(address).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
   if (step === 'pending') {
     return (
       <div className="bg-white dark:bg-gray-900 p-8 sm:p-12 rounded-3xl shadow-2xl max-w-lg w-full text-center border border-blue-100 dark:border-blue-900/30 animate-in fade-in zoom-in duration-500">
@@ -185,7 +195,12 @@ export default function SubscriptionRenewal({
               </p>
               <div className="bg-white dark:bg-gray-800 rounded-xl p-4 flex items-center justify-between border border-blue-100 dark:border-blue-900/50">
                 <span className="font-mono font-bold text-blue-900 dark:text-blue-100">{initialSettings.instapay_address || 'medilab@instapay'}</span>
-                <button onClick={() => navigator.clipboard.writeText(initialSettings.instapay_address || '')} className="text-xs font-black uppercase text-blue-600 hover:underline">Copy</button>
+                <button 
+                  onClick={handleCopy} 
+                  className={`text-xs font-black uppercase transition-all ${copied ? 'text-green-600 scale-110' : 'text-blue-600 hover:underline'}`}
+                >
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
               </div>
             </div>
 
