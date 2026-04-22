@@ -9,6 +9,7 @@ import AdminDashboard from '@/components/AdminDashboard';
 import NurseDashboard from '@/components/NurseDashboard';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
+import SubscriptionRenewal from '@/components/SubscriptionRenewal';
 
 export default async function DashboardPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
@@ -83,13 +84,18 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
     new Date(profile.subscription_expires_at) < new Date();
 
   if ((role === 'doctor' || role === 'nurse') && isAuthorized && subscriptionExpired) {
-    const expiredDate = new Date(profile.subscription_expires_at);
-    const daysAgo = Math.ceil((new Date().getTime() - expiredDate.getTime()) / (1000 * 60 * 60 * 24));
+    // 1. Check for any pending payments
+    const { data: pendingPayment } = await supabase
+      .from('subscription_payments')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('status', 'pending')
+      .maybeSingle();
 
-    // Fetch admin payment settings for display
+    // 2. Fetch admin payment settings
     const { data: adminSettings } = await supabase
       .from('admin_settings')
-      .select('instapay_address, payment_link, bank_details')
+      .select('*')
       .eq('id', 1)
       .single();
 
@@ -97,55 +103,28 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
       <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 font-[family-name:var(--font-geist-sans)]">
         <Navbar fullName={fullName} role={role} />
         <div className="flex-1 flex items-center justify-center p-8">
-          <div className="bg-white dark:bg-gray-900 p-8 sm:p-12 rounded-3xl shadow-2xl max-w-lg w-full text-center border border-red-100 dark:border-red-900/30 animate-in fade-in zoom-in duration-500">
-            <div className="w-20 h-20 bg-red-100 dark:bg-red-900/30 text-red-500 dark:text-red-400 rounded-2xl flex items-center justify-center mx-auto mb-8">
-              <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h2 className="text-3xl font-black mb-3 text-gray-900 dark:text-white">
-              Subscription Expired
-            </h2>
-            <div className="inline-flex items-center gap-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-4 py-2 rounded-full text-sm font-bold mb-6">
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-              Expired {daysAgo} day{daysAgo !== 1 ? 's' : ''} ago — {expiredDate.toLocaleDateString()}
-            </div>
-            <p className="text-gray-500 dark:text-gray-400 mb-8 text-lg leading-relaxed">
-              Your subscription has expired. Please renew to continue using the clinic system.
-              Contact the administrator to renew your access.
-            </p>
-
-            {/* Payment Information */}
-            {adminSettings && (adminSettings.instapay_address || adminSettings.payment_link || adminSettings.bank_details) && (
-              <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900 rounded-2xl p-5 mb-8 text-left space-y-3">
-                <h4 className="text-xs font-black uppercase tracking-widest text-blue-600 dark:text-blue-400">Payment Information</h4>
-                {adminSettings.instapay_address && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-gray-500">InstaPay:</span>
-                    <span className="font-bold text-gray-900 dark:text-white">{adminSettings.instapay_address}</span>
-                  </div>
-                )}
-                {adminSettings.payment_link && (
-                  <div className="text-sm">
-                    <span className="text-gray-500">Payment Link: </span>
-                    <a href={adminSettings.payment_link} target="_blank" rel="noopener noreferrer" className="font-bold text-blue-600 hover:underline break-all">
-                      {adminSettings.payment_link}
-                    </a>
-                  </div>
-                )}
-                {adminSettings.bank_details && (
-                  <div className="text-sm">
-                    <span className="text-gray-500">Bank Details:</span>
-                    <p className="font-medium text-gray-900 dark:text-white whitespace-pre-line mt-1">{adminSettings.bank_details}</p>
-                  </div>
-                )}
+          {pendingPayment ? (
+            <div className="bg-white dark:bg-gray-900 p-8 sm:p-12 rounded-3xl shadow-2xl max-w-lg w-full text-center border border-blue-100 dark:border-blue-900/30 animate-in fade-in zoom-in duration-500">
+              <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/30 text-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-8">
+                <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
               </div>
-            )}
-
-            <div className="flex justify-center">
-              <LogoutButton />
+              <h2 className="text-3xl font-black mb-3 text-gray-900 dark:text-white">Payment Under Review</h2>
+              <p className="text-gray-500 dark:text-gray-400 mb-8 text-lg leading-relaxed">
+                Your payment proof has been submitted and is currently being reviewed by our team. 
+                Your dashboard will be unlocked as soon as we verify the transfer.
+              </p>
+              <div className="flex justify-center">
+                <LogoutButton />
+              </div>
             </div>
-          </div>
+          ) : (
+            <SubscriptionRenewal 
+              userId={user.id} 
+              initialSettings={adminSettings || { instapay_address: null, payment_link: null, bank_details: null }} 
+            />
+          )}
         </div>
       </div>
     );

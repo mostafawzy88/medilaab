@@ -19,6 +19,23 @@ type StaffMember = {
   subscription_expires_at: string | null
   supervisor_id: string | null
   created_at: string
+  plan_id?: string | null
+}
+
+type SubscriptionPayment = {
+  id: string
+  user_id: string
+  plan_id: string
+  duration_months: number
+  amount: number
+  receipt_url: string
+  status: string
+  admin_notes: string | null
+  created_at: string
+  user?: {
+    full_name: string
+    email: string
+  }
 }
 
 type AdminSettings = {
@@ -53,6 +70,7 @@ export default function AdminDashboard() {
   const [loadingStats, setLoadingStats] = useState(false)
   const [staff, setStaff] = useState<StaffMember[]>([])
   const [patients, setPatients] = useState<any[]>([])
+  const [payments, setPayments] = useState<SubscriptionPayment[]>([])
   const [loading, setLoading] = useState(true)
   const [settings, setSettings] = useState<AdminSettings>({
     payment_link: null,
@@ -131,6 +149,14 @@ export default function AdminDashboard() {
         subscription_prices: settingsData.subscription_prices || { '1': 500, '3': 1200, '6': 2000, '12': 3500 }
       })
     }
+
+    // Fetch payments
+    const { data: payData } = await supabase
+      .from('subscription_payments')
+      .select('*, user:profiles(full_name, email)')
+      .order('created_at', { ascending: false })
+    
+    if (payData) setPayments(payData)
 
     setLoading(false)
   }
@@ -319,6 +345,66 @@ export default function AdminDashboard() {
     return cleaned.replace('+', '')
   }
 
+  const handleApprovePayment = async (payment: SubscriptionPayment) => {
+    setProcessing(payment.id)
+    const supabase = createClient()
+
+    // 1. Calculate new expiry
+    const user = staff.find(s => s.id === payment.user_id)
+    const baseDate = user?.subscription_expires_at 
+      ? new Date(Math.max(new Date(user.subscription_expires_at).getTime(), new Date().getTime()))
+      : new Date()
+    
+    const newExpiry = new Date(baseDate)
+    newExpiry.setMonth(newExpiry.getMonth() + payment.duration_months)
+
+    // 2. Update profile
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .update({
+        subscription_expires_at: newExpiry.toISOString(),
+        subscription_status: 'active',
+        plan_id: payment.plan_id
+      })
+      .eq('id', payment.user_id)
+
+    if (profileError) {
+      alert('Error updating profile: ' + profileError.message)
+      setProcessing(null)
+      return
+    }
+
+    // 3. Update payment status
+    const { error: payError } = await supabase
+      .from('subscription_payments')
+      .update({ status: 'approved' })
+      .eq('id', payment.id)
+
+    if (payError) {
+      alert('Error updating payment: ' + payError.message)
+    } else {
+      setPayments(prev => prev.map(p => p.id === payment.id ? { ...p, status: 'approved' } : p))
+      setStaff(prev => prev.map(s => s.id === payment.user_id ? { ...s, subscription_expires_at: newExpiry.toISOString(), subscription_status: 'active', plan_id: payment.plan_id } : s))
+    }
+    setProcessing(null)
+  }
+
+  const handleRejectPayment = async (paymentId: string) => {
+    const reason = prompt('Enter rejection reason:')
+    if (reason === null) return
+
+    setProcessing(paymentId)
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('subscription_payments')
+      .update({ status: 'rejected', admin_notes: reason })
+      .eq('id', paymentId)
+
+    if (!error) {
+      setPayments(prev => prev.map(p => p.id === paymentId ? { ...p, status: 'rejected', admin_notes: reason } : p))
+    }
+    setProcessing(null)
+  }
   const handleQuickExtend = async (userId: string, days: number) => {
     setProcessing(userId)
     const supabase = createClient()
@@ -399,16 +485,39 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Tab Navigation */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
+        <button onClick={() => setView('overview')} className={`px-6 py-3 rounded-2xl text-sm font-black transition-all ${view === 'overview' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+          Overview
+        </button>
+        <button onClick={() => setView('staff')} className={`px-6 py-3 rounded-2xl text-sm font-black transition-all ${view === 'staff' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+          Staff
+        </button>
+        <button onClick={() => setView('patients')} className={`px-6 py-3 rounded-2xl text-sm font-black transition-all ${view === 'patients' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+          Patients
+        </button>
+        <button onClick={() => setView('payments')} className={`px-6 py-3 rounded-2xl text-sm font-black transition-all relative ${view === 'payments' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+          Payments
+          {payments.filter(p => p.status === 'pending').length > 0 && (
+            <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] flex items-center justify-center rounded-full border-2 border-white dark:border-gray-950 font-bold">
+              {payments.filter(p => p.status === 'pending').length}
+            </span>
+          )}
+        </button>
+        <button onClick={() => setView('settings')} className={`px-6 py-3 rounded-2xl text-sm font-black transition-all ${view === 'settings' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+          Settings
+        </button>
+      </div>
 
       {/* ==================== OVERVIEW ==================== */}
       {view === 'overview' && (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <button onClick={() => setView('staff')} className="bg-white dark:bg-gray-900 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800 text-left hover:scale-[1.02] transition-all group">
               <p className="text-sm font-medium text-gray-500 mb-1 uppercase tracking-wider">Active Doctors</p>
               <div className="flex items-end justify-between">
                 <span className="text-3xl font-bold">{activeDoctors}</span>
-                <span className="text-xs font-bold text-green-500 bg-green-50 dark:bg-green-900/30 px-2 py-1 rounded">View Staff →</span>
+                <span className="text-xs font-bold text-green-500 bg-green-50 dark:bg-green-900/30 px-2 py-1 rounded">View →</span>
               </div>
             </button>
             <button onClick={() => setView('staff')} className="bg-white dark:bg-gray-900 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800 text-left hover:scale-[1.02] transition-all group">
@@ -718,6 +827,75 @@ export default function AdminDashboard() {
             </>
           ) : (
             <div className="p-20 text-center text-gray-400">Failed to aggregate clinic statistics.</div>
+          )}
+        </div>
+      )}
+
+      {/* ==================== PAYMENTS ==================== */}
+      {view === 'payments' && (
+        <div className="space-y-4">
+          <h3 className="text-sm font-black uppercase tracking-widest text-gray-400">Subscription Payments</h3>
+          {payments.length === 0 ? (
+            <div className="py-20 text-center text-gray-400 italic bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800">No payment records found.</div>
+          ) : (
+            <div className="space-y-4">
+              {payments.map(payment => (
+                <div key={payment.id} className="bg-white dark:bg-gray-900 rounded-[2.5rem] p-6 border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col lg:flex-row lg:items-center gap-6">
+                  {/* Receipt Thumbnail */}
+                  <div className="w-full lg:w-32 h-40 lg:h-32 rounded-2xl bg-gray-100 dark:bg-gray-800 flex-shrink-0 overflow-hidden border border-gray-100 dark:border-gray-700">
+                    <a href={payment.receipt_url} target="_blank" rel="noopener noreferrer" className="w-full h-full block group relative">
+                      <img src={payment.receipt_url} alt="Receipt" className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">View Full</div>
+                    </a>
+                  </div>
+
+                  {/* Payment Details */}
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <p className="font-black text-lg">{payment.user?.full_name}</p>
+                      <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                        payment.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                        payment.status === 'approved' ? 'bg-green-100 text-green-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {payment.status}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                      <span className="text-gray-500">Plan: <strong className="text-gray-900 dark:text-white uppercase">{payment.plan_id}</strong></span>
+                      <span className="text-gray-500">Duration: <strong className="text-gray-900 dark:text-white">{payment.duration_months}m</strong></span>
+                      <span className="text-gray-500">Amount: <strong className="text-blue-600 font-black">{payment.amount} EGP</strong></span>
+                    </div>
+                    <p className="text-xs text-gray-400">Submitted on {new Date(payment.created_at).toLocaleString()}</p>
+                    {payment.admin_notes && (
+                      <div className="bg-red-50 dark:bg-red-900/10 p-3 rounded-xl border border-red-100 dark:border-red-900/30 text-xs text-red-700 dark:text-red-400 mt-2">
+                        <strong>Rejection Reason:</strong> {payment.admin_notes}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  {payment.status === 'pending' && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button 
+                        onClick={() => handleApprovePayment(payment)}
+                        disabled={processing === payment.id}
+                        className="flex-1 lg:flex-none px-6 py-3 rounded-xl bg-green-600 text-white font-black text-sm shadow-lg shadow-green-500/20 hover:scale-[1.02] transition-all disabled:opacity-50"
+                      >
+                        {processing === payment.id ? '...' : 'Approve'}
+                      </button>
+                      <button 
+                        onClick={() => handleRejectPayment(payment.id)}
+                        disabled={processing === payment.id}
+                        className="flex-1 lg:flex-none px-6 py-3 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-500 font-bold text-sm hover:bg-red-50 hover:text-red-600 transition-all disabled:opacity-50"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}

@@ -21,6 +21,8 @@ type Profile = {
   fees_home_visit?: number | null
   email?: string | null
   subscription_expires_at?: string | null
+  avatar_url?: string | null
+  plan_id?: string | null
 }
 
 type Certificate = {
@@ -53,6 +55,7 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
   const [newCertTitle, setNewCertTitle] = useState('')
   const [newCertDesc, setNewCertDesc] = useState('')
   const [addingCert, setAddingCert] = useState(false)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
 
   const getHours = (): Record<string, string> => {
     if (!profile.working_hours) return DEFAULT_HOURS
@@ -144,6 +147,44 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
     setCertificates((prev: Certificate[]) => prev.filter(c => c.id !== certId))
   }
 
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploadingAvatar(true)
+    const supabase = createClient()
+    
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${profile.id}-${Math.random()}.${fileExt}`
+    const filePath = `avatars/${fileName}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(filePath, file)
+
+    if (uploadError) {
+      alert('Error uploading avatar: ' + uploadError.message)
+      setUploadingAvatar(false)
+      return
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(filePath)
+
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ avatar_url: publicUrl })
+      .eq('id', profile.id)
+
+    if (updateError) {
+      alert('Error updating profile: ' + updateError.message)
+    } else {
+      setProfile({ ...profile, avatar_url: publicUrl } as any)
+    }
+    setUploadingAvatar(false)
+  }
+
   // Subscription info
   const getSubInfo = () => {
     if (!profile.subscription_expires_at) return null
@@ -162,8 +203,26 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
       <div className="bg-gradient-to-br from-blue-600 to-teal-500 rounded-3xl p-8 text-white shadow-xl shadow-blue-500/20 relative overflow-hidden">
         <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
         <div className="flex items-center gap-6 relative z-10">
-          <div className="w-20 h-20 rounded-2xl bg-white/20 backdrop-blur border border-white/30 flex items-center justify-center text-white text-3xl font-black shadow-lg">
-            {profile.full_name?.charAt(0) || '?'}
+          <div className="relative group">
+            <div className="w-20 h-20 rounded-2xl bg-white/20 backdrop-blur border border-white/30 flex items-center justify-center text-white text-3xl font-black shadow-lg overflow-hidden">
+              {profile.avatar_url ? (
+                <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+              ) : (
+                profile.full_name?.charAt(0) || '?'
+              )}
+              {uploadingAvatar && (
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+            </div>
+            <label className="absolute -bottom-2 -right-2 w-8 h-8 bg-white text-blue-600 rounded-full flex items-center justify-center shadow-lg cursor-pointer hover:scale-110 transition-transform">
+              <input type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} disabled={uploadingAvatar} />
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </label>
           </div>
           <div>
             <h1 className="text-3xl font-black tracking-tight">{profile.full_name || 'Your Profile'}</h1>
@@ -171,6 +230,11 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
               <span className="text-xs font-black uppercase tracking-widest bg-white/20 px-3 py-1 rounded-full">
                 {profile.role}
               </span>
+              {profile.plan_id && (
+                <span className="text-xs font-black uppercase tracking-widest bg-amber-400 text-amber-900 px-3 py-1 rounded-full">
+                  {profile.plan_id} Plan
+                </span>
+              )}
               {profile.specialization && (
                 <span className="text-xs font-medium text-blue-100">{profile.specialization}</span>
               )}
