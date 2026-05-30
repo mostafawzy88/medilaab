@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/utils/supabase/client'
+import PrescriptionViewerModal from './PrescriptionViewerModal'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type Patient = {
@@ -75,6 +76,7 @@ function PatientDetailModal({
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [activeTab, setActiveTab] = useState<'overview' | 'visits' | 'prescriptions'>('overview')
+  const [viewingPrescription, setViewingPrescription] = useState<any | null>(null)
 
   const handleSaveNote = async () => {
     setSaving(true)
@@ -294,7 +296,18 @@ function PatientDetailModal({
                           {new Date(rx.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                         </p>
                       </div>
-                      <span className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-xs font-bold rounded-full">Rx</span>
+                      <div className="flex gap-2 items-center">
+                        <button
+                          onClick={() => setViewingPrescription(rx)}
+                          className="px-3 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/40 rounded-xl font-bold text-xs transition-all flex items-center gap-1"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                          PDF
+                        </button>
+                        <span className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-xs font-bold rounded-full">Rx</span>
+                      </div>
                     </div>
                     {rx.symptoms && <p className="text-sm text-gray-600 dark:text-gray-400">{rx.symptoms}</p>}
                     {rx.medications?.length > 0 && (
@@ -316,6 +329,13 @@ function PatientDetailModal({
           )}
         </div>
       </div>
+      {viewingPrescription && (
+        <PrescriptionViewerModal
+          prescription={viewingPrescription}
+          patientName={patient.full_name}
+          onClose={() => setViewingPrescription(null)}
+        />
+      )}
     </div>
   )
 }

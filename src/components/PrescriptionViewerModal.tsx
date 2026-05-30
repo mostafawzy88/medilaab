@@ -56,7 +56,7 @@ export default function PrescriptionViewerModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in print:bg-white print:p-0">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in print:bg-white print:p-0">
       <div 
         ref={pdfRef}
         className={`bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-gray-100 dark:border-gray-800 print:shadow-none print:border-none print:w-full print:max-h-full print:overflow-visible text-gray-900 dark:text-gray-100 print:text-black ${isGeneratingPdf ? 'bg-white text-black p-8' : ''}`}
@@ -136,11 +136,11 @@ export default function PrescriptionViewerModal({
           </div>
 
           {/* Notes */}
-          {prescription.notes && (
+          {(prescription.notes || prescription.doctor_notes) && (
             <div>
               <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">Doctor Notes</h3>
               <div className={`p-4 bg-yellow-50 dark:bg-yellow-900/10 rounded-xl border border-yellow-100 dark:border-yellow-900/30 print:bg-white print:border-gray-300 ${isGeneratingPdf ? 'bg-white border-gray-300' : ''}`}>
-                <p className="text-md" dir="auto">{prescription.notes}</p>
+                <p className="text-md" dir="auto">{prescription.notes || prescription.doctor_notes}</p>
               </div>
             </div>
           )}

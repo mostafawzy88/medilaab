@@ -43,6 +43,7 @@ export default function Sidebar({ fullName, role }: { fullName: string, role?: s
           { id: 'overview', name: t('dashboard') || 'Dashboard', icon: '🏠' },
           { id: 'doctors', name: t('my_doctors') || 'My Doctors', icon: '⚕️' },
           { id: 'bookings', name: t('my_bookings') || 'My Bookings', icon: '📅' },
+          { id: 'prescriptions', name: 'Prescriptions', icon: '💊' },
         ]
       default:
         return []

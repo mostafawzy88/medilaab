@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl'
 import { useSearchParams } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import BookingModal from './BookingModal'
+import PrescriptionViewerModal from './PrescriptionViewerModal'
 
 type AppointmentProps = {
   id: string
@@ -71,6 +72,10 @@ export default function PatientDashboard({
   const [appointments, setAppointments] = useState(initialAppointments)
   const [showBooking, setShowBooking] = useState(false)
   const [editAppointmentId, setEditAppointmentId] = useState<string | null>(null)
+  const [prescriptions, setPrescriptions] = useState<any[]>([])
+  const [loadingPrescriptions, setLoadingPrescriptions] = useState(false)
+  const [viewingPrescription, setViewingPrescription] = useState<any | null>(null)
+  const [patientName, setPatientName] = useState('Patient')
   
   const searchParams = useSearchParams()
   const activeTab = searchParams.get('tab') || 'bookings'
@@ -246,6 +251,39 @@ export default function PatientDashboard({
       setLoadingCerts(false)
     }
     fetchCerts()
+  }, [activeTab])
+
+  // Fetch patient prescriptions
+  useEffect(() => {
+    if (activeTab !== 'prescriptions') return
+    const fetchPrescriptions = async () => {
+      setLoadingPrescriptions(true)
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      
+      // Get patient name
+      const { data: prof } = await supabase.from('profiles').select('full_name').eq('id', user.id).single()
+      if (prof) setPatientName(prof.full_name || 'Patient')
+
+      const { data } = await supabase
+        .from('prescriptions')
+        .select(`
+          id, created_at, diagnosis, symptoms, medications, doctor_notes,
+          doctor:profiles!prescriptions_doctor_id_fkey(full_name)
+        `)
+        .eq('patient_id', user.id)
+        .order('created_at', { ascending: false })
+      
+      if (data) {
+        setPrescriptions(data.map((rx: any) => ({
+          ...rx,
+          doctor_name: rx.doctor?.full_name || 'Doctor'
+        })))
+      }
+      setLoadingPrescriptions(false)
+    }
+    fetchPrescriptions()
   }, [activeTab])
 
   // Separate active from past
@@ -701,6 +739,66 @@ export default function PatientDashboard({
         </div>
       )}
 
+      {/* Prescriptions Tab */}
+      {activeTab === 'prescriptions' && (
+        <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
+          <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-800">
+            <h3 className="text-lg font-bold">My Prescriptions</h3>
+            <p className="text-sm text-gray-500">Official prescriptions issued to you by your doctor.</p>
+          </div>
+          {loadingPrescriptions ? (
+            <div className="py-20 text-center animate-pulse text-gray-400">Loading prescriptions...</div>
+          ) : prescriptions.length === 0 ? (
+            <div className="py-20 text-center space-y-3">
+              <div className="text-5xl">💊</div>
+              <p className="text-gray-400 font-medium">No prescriptions yet.</p>
+              <p className="text-sm text-gray-300">Prescriptions issued by your doctor will appear here.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+              {prescriptions.map(rx => (
+                <div key={rx.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-4 flex-1">
+                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-100 to-indigo-100 dark:from-purple-900/30 dark:to-indigo-900/30 text-purple-600 flex items-center justify-center shrink-0 text-2xl shadow-sm">💊</div>
+                      <div className="space-y-2 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-lg">{rx.diagnosis || 'General Prescription'}</p>
+                          <span className="px-2 py-0.5 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 text-xs font-bold rounded-md">Rx</span>
+                        </div>
+                        {rx.symptoms && <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"><span className="font-bold text-gray-400 uppercase text-xs">Symptoms:</span> {rx.symptoms}</p>}
+                        {rx.medications?.length > 0 && (
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            {rx.medications.map((m: any, idx: number) => (
+                              <span key={idx} className="px-3 py-1 bg-purple-50 dark:bg-purple-900/20 rounded-full text-xs font-bold border border-purple-100 dark:border-purple-900/30 text-purple-700 dark:text-purple-300">
+                                {m.name} {m.dosage ? `· ${m.dosage}` : ''}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="mt-4 flex gap-4 text-xs font-bold text-gray-400">
+                          <span className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">👨‍⚕️ Dr. {rx.doctor_name}</span>
+                          <span className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">📅 {rx.created_at ? new Date(rx.created_at).toLocaleDateString() : ''}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setViewingPrescription(rx)}
+                      className="px-4 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/40 rounded-xl font-bold text-sm transition-all flex items-center gap-1.5 shadow-sm"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      PDF
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Booking Modal */}
       {showBooking && <BookingModal 
         onClose={() => { setShowBooking(false); setEditAppointmentId(null); }} 
@@ -708,6 +806,14 @@ export default function PatientDashboard({
         initialDoctor={selectedDoctor ? { id: selectedDoctor.id, full_name: selectedDoctor.full_name } as any : undefined}
         editAppointmentId={editAppointmentId}
       />}
+
+      {viewingPrescription && (
+        <PrescriptionViewerModal
+          prescription={viewingPrescription}
+          patientName={patientName}
+          onClose={() => setViewingPrescription(null)}
+        />
+      )}
     </div>
   )
 }
