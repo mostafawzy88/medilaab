@@ -15,14 +15,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Medilab - Clinic Management",
+  title: "MediLab - Clinic Management",
   description: "Comprehensive Clinic Management System for Egypt",
   manifest: "/manifest.json",
   themeColor: "#2563eb",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Medilab",
+    title: "MediLab",
   },
 };
 

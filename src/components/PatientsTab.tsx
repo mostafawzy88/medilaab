@@ -451,7 +451,7 @@ export default function PatientsTab({ doctorId }: { doctorId: string }) {
 
     // Fetch prescriptions
     let rxQuery = supabase.from('prescriptions')
-      .select('id, created_at, diagnosis, symptoms, medications, doctor_notes')
+      .select('id, doctor_id, created_at, diagnosis, symptoms, medications, doctor_notes')
       .eq('doctor_id', doctorId)
       .order('created_at', { ascending: false })
 

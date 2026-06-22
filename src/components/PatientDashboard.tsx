@@ -269,7 +269,7 @@ export default function PatientDashboard({
       const { data } = await supabase
         .from('prescriptions')
         .select(`
-          id, created_at, diagnosis, symptoms, medications, doctor_notes,
+          id, doctor_id, created_at, diagnosis, symptoms, medications, doctor_notes,
           doctor:profiles!prescriptions_doctor_id_fkey(full_name)
         `)
         .eq('patient_id', user.id)
@@ -321,7 +321,7 @@ export default function PatientDashboard({
             </div>
             <button
               onClick={() => { setEditAppointmentId(null); setShowBooking(true); }}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-6 rounded-xl shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2 text-sm"
+              className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] hover:bg-blue-700 text-white font-bold py-2.5 px-6 rounded-xl shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2 text-sm"
             >
               {tp('book_new_visit') || '+ Book New Visit'}
             </button>
@@ -564,7 +564,7 @@ export default function PatientDashboard({
         <div className="space-y-6">
           <div className="flex justify-between items-center">
             <h3 className="text-sm font-black uppercase tracking-widest text-gray-400 px-2">Linked Clinics</h3>
-            <button onClick={() => setShowAddDoctor(true)} className="text-sm font-black text-white bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-xl transition-colors shadow-lg shadow-blue-500/20">+ Add Doctor</button>
+            <button onClick={() => setShowAddDoctor(true)} className="text-sm font-black text-white bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] hover:bg-blue-700 px-5 py-2 rounded-xl transition-colors shadow-lg shadow-blue-500/20">+ Add Doctor</button>
           </div>
           
           {doctors.length === 0 ? (
@@ -572,7 +572,7 @@ export default function PatientDashboard({
               <div className="text-5xl mb-4">👨‍⚕️</div>
               <h3 className="text-xl font-bold">No Doctors Yet</h3>
               <p className="text-gray-500 mt-2 mb-6">Connect with a doctor to view their profile and book appointments instantly.</p>
-              <button onClick={() => setShowAddDoctor(true)} className="bg-blue-600 hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20 text-white px-6 py-3 rounded-xl font-bold">Find a Doctor</button>
+              <button onClick={() => setShowAddDoctor(true)} className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20 text-white px-6 py-3 rounded-xl font-bold">Find a Doctor</button>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4">
@@ -607,7 +607,7 @@ export default function PatientDashboard({
                         >✕</button>
                         <button 
                            onClick={() => { setSelectedDoctor(doc); setEditAppointmentId(null); setShowBooking(true); }}
-                           className="bg-blue-600 text-white text-sm font-black px-6 py-2.5 rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20"
+                           className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white text-sm font-black px-6 py-2.5 rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20"
                          >
                            Book Appointment
                         </button>
@@ -683,7 +683,7 @@ export default function PatientDashboard({
                        <button 
                          disabled={addingDoctor !== null}
                          onClick={() => handleAddDoctor(doc.id)}
-                         className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-black transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50"
+                         className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-black transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50"
                        >
                          {addingDoctor === doc.id ? '...' : '+ Add'}
                        </button>

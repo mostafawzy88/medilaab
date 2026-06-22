@@ -424,7 +424,7 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
                         <button
                           type="button"
                           onClick={() => setDayHours(key, isClosed ? '09:00-17:00' : 'Closed')}
-                          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${isClosed ? 'bg-gray-200 dark:bg-gray-700' : 'bg-blue-600'}`}
+                          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${isClosed ? 'bg-gray-200 dark:bg-gray-700' : 'bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)]'}`}
                         >
                           <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow ring-0 transition-transform ${isClosed ? 'translate-x-0' : 'translate-x-5'}`} />
                         </button>
@@ -508,7 +508,7 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
         <button
           type="submit"
           disabled={saving}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl shadow-lg shadow-blue-500/20 transition-all disabled:opacity-50"
+          className="w-full bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] hover:bg-blue-700 text-white font-black py-4 rounded-2xl shadow-lg shadow-blue-500/20 transition-all disabled:opacity-50"
         >
           {saving ? 'Saving...' : t('save')}
         </button>

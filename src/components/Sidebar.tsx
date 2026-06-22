@@ -53,11 +53,14 @@ export default function Sidebar({ fullName, role }: { fullName: string, role?: s
   const items = getNavItems()
 
   return (
-    <div className="w-64 bg-[var(--color-cp-navy)] text-white flex flex-col h-screen sticky top-0 border-r border-[#2A214D]">
+    <div className="w-64 bg-[var(--color-ml-navy)] text-white flex flex-col h-screen sticky top-0 border-r border-[var(--color-ml-navy-light)]">
       {/* Brand */}
-      <div className="h-20 flex items-center px-6 border-b border-[#2A214D]">
-        <Link href={`/${locale}/dashboard`} className="flex font-black text-2xl tracking-tighter text-white hover:scale-105 transition-all">
-          Medilab
+      <div className="h-20 flex items-center px-6 border-b border-[var(--color-ml-navy-light)]">
+        <Link href={`/${locale}/dashboard`} className="flex items-center gap-3 font-black text-2xl tracking-tighter text-white hover:scale-105 transition-all">
+          <div className="w-10 h-10 overflow-hidden relative rounded-xl bg-white/10 p-1 flex items-center justify-center">
+            <img src="/logo.png" alt="MediLab" className="w-[140%] max-w-none absolute top-[-10%]" />
+          </div>
+          MediLab
         </Link>
       </div>
 
@@ -71,8 +74,8 @@ export default function Sidebar({ fullName, role }: { fullName: string, role?: s
               href={`/${locale}/dashboard?tab=${item.id}`}
               className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
                 isActive 
-                  ? 'bg-[var(--color-cp-purple)] text-white shadow-lg shadow-purple-500/20' 
-                  : 'text-gray-400 hover:text-white hover:bg-[#2A214D]'
+                  ? 'bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white shadow-lg shadow-blue-500/20' 
+                  : 'text-gray-400 hover:text-white hover:bg-[var(--color-ml-navy-light)]'
               }`}
             >
               <span className="text-xl">{item.icon}</span>
@@ -83,9 +86,9 @@ export default function Sidebar({ fullName, role }: { fullName: string, role?: s
       </nav>
 
       {/* User Area at bottom of Sidebar */}
-      <div className="p-4 border-t border-[#2A214D] space-y-4">
-         <div className="flex items-center gap-3 px-4 py-3 bg-[#1D1438] rounded-xl border border-[#2A214D]">
-            <div className="w-8 h-8 rounded-full bg-[var(--color-cp-purple)] text-white flex items-center justify-center text-xs font-black">
+      <div className="p-4 border-t border-[var(--color-ml-navy-light)] space-y-4">
+         <div className="flex items-center gap-3 px-4 py-3 bg-white/5 rounded-xl border border-[var(--color-ml-navy-light)]">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white flex items-center justify-center text-xs font-black">
               {fullName?.charAt(0)}
             </div>
             <div className="flex-1 min-w-0">

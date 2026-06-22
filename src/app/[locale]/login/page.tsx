@@ -23,8 +23,8 @@ export default async function LoginPage({
           </div>
         </div>
         
-        <h2 className="text-3xl font-bold text-center mb-8 bg-gradient-to-r from-blue-600 to-teal-400 bg-clip-text text-transparent">
-          Welcome to Medilab
+        <h2 className="text-3xl font-bold text-center mb-8 bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] bg-clip-text text-transparent">
+          Welcome to MediLab
         </h2>
 
         <form className="animate-in flex-1 flex flex-col w-full justify-center gap-4 text-foreground">
@@ -54,8 +54,7 @@ export default async function LoginPage({
           <div className="flex gap-4 mt-6">
             <button
               formAction={login.bind(null, locale)}
-              className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 
-              text-white px-4 py-3 rounded-xl shadow-lg shadow-blue-500/30 transition-all font-semibold hover:-translate-y-0.5"
+              className="flex-1 font-bold bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] hover:opacity-90 transition-opacity text-white px-4 py-3 rounded-xl shadow-lg shadow-blue-500/20"
             >
               {t('login')}
             </button>

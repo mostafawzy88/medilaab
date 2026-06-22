@@ -487,16 +487,16 @@ export default function AdminDashboard() {
     <div className="space-y-6">
       {/* Tab Navigation */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
-        <button onClick={() => setView('overview')} className={`px-6 py-3 rounded-2xl text-sm font-black transition-all ${view === 'overview' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+        <button onClick={() => setView('overview')} className={`px-6 py-3 rounded-2xl text-sm font-black transition-all ${view === 'overview' ? 'bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white shadow-lg shadow-blue-500/20' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
           Overview
         </button>
-        <button onClick={() => setView('staff')} className={`px-6 py-3 rounded-2xl text-sm font-black transition-all ${view === 'staff' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+        <button onClick={() => setView('staff')} className={`px-6 py-3 rounded-2xl text-sm font-black transition-all ${view === 'staff' ? 'bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white shadow-lg shadow-blue-500/20' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
           Staff
         </button>
-        <button onClick={() => setView('patients')} className={`px-6 py-3 rounded-2xl text-sm font-black transition-all ${view === 'patients' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+        <button onClick={() => setView('patients')} className={`px-6 py-3 rounded-2xl text-sm font-black transition-all ${view === 'patients' ? 'bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white shadow-lg shadow-blue-500/20' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
           Patients
         </button>
-        <button onClick={() => setView('payments')} className={`px-6 py-3 rounded-2xl text-sm font-black transition-all relative ${view === 'payments' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+        <button onClick={() => setView('payments')} className={`px-6 py-3 rounded-2xl text-sm font-black transition-all relative ${view === 'payments' ? 'bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white shadow-lg shadow-blue-500/20' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
           Payments
           {payments.filter(p => p.status === 'pending').length > 0 && (
             <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] flex items-center justify-center rounded-full border-2 border-white dark:border-gray-950 font-bold">
@@ -504,7 +504,7 @@ export default function AdminDashboard() {
             </span>
           )}
         </button>
-        <button onClick={() => setView('settings')} className={`px-6 py-3 rounded-2xl text-sm font-black transition-all ${view === 'settings' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+        <button onClick={() => setView('settings')} className={`px-6 py-3 rounded-2xl text-sm font-black transition-all ${view === 'settings' ? 'bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white shadow-lg shadow-blue-500/20' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
           Settings
         </button>
       </div>
@@ -612,7 +612,7 @@ export default function AdminDashboard() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-bold text-sm group-hover:text-blue-600 transition-colors">{member.full_name}</p>
-                            <span className={`text-[10px] font-black uppercase px-1.5 py-0.5 rounded ${member.role === 'doctor' ? 'bg-blue-600 text-white' : 'bg-teal-600 text-white'}`}>{member.role}</span>
+                            <span className={`text-[10px] font-black uppercase px-1.5 py-0.5 rounded ${member.role === 'doctor' ? 'bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white' : 'bg-teal-600 text-white'}`}>{member.role}</span>
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${sub.color}`}>
                               <span className={`w-1.5 h-1.5 rounded-full ${sub.dot}`}></span>
                               {sub.label}
@@ -655,7 +655,7 @@ export default function AdminDashboard() {
                           <button 
                             onClick={() => handleActivate(member.id)}
                             disabled={processing === member.id}
-                            className="px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 text-white shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all disabled:opacity-50"
+                            className="px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all disabled:opacity-50"
                           >
                             {processing === member.id ? '...' : 'Activate'}
                           </button>
@@ -795,7 +795,7 @@ export default function AdminDashboard() {
                             <span className="text-blue-600">{rev.toLocaleString()} EGP</span>
                           </div>
                           <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                            <div className="h-full bg-blue-600 rounded-full transition-all duration-1000" style={{ width: `${(rev / (clinicStats.totalRevenue || 1)) * 100}%` }}></div>
+                            <div className="h-full bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] rounded-full transition-all duration-1000" style={{ width: `${(rev / (clinicStats.totalRevenue || 1)) * 100}%` }}></div>
                           </div>
                        </div>
                      ))}
@@ -1098,7 +1098,7 @@ export default function AdminDashboard() {
                 <button 
                   onClick={handleSaveUser}
                   disabled={savingUser}
-                  className="px-5 py-2.5 rounded-xl font-bold text-sm bg-blue-600 text-white shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all disabled:opacity-50 flex items-center gap-2"
+                  className="px-5 py-2.5 rounded-xl font-bold text-sm bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all disabled:opacity-50 flex items-center gap-2"
                 >
                   {savingUser ? (
                     <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> Saving...</>
@@ -1186,7 +1186,7 @@ export default function AdminDashboard() {
               {reminderTarget.email && (
                 <a
                   href={`mailto:${reminderTarget.email}?subject=Subscription Renewal Reminder&body=${encodeURIComponent(getReminderMessage(reminderTarget))}`}
-                  className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-bold text-sm text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all hover:-translate-y-0.5"
+                  className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-bold text-sm text-white bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all hover:-translate-y-0.5"
                 >
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
                   Send via Email

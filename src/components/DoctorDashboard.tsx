@@ -313,7 +313,7 @@ export default function DoctorDashboard({
                       <td className="p-4 font-black text-gray-400">Q{apt.queue_position}</td>
                       <td className="p-4 font-bold">{apt.patient?.full_name || apt.manual_patient?.full_name}</td>
                       <td className="p-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-bold leading-none ${apt.status === 'in_progress' ? 'bg-blue-600 text-white' : 'bg-green-100 text-green-700'}`}>
+                        <span className={`px-2 py-1 rounded-full text-xs font-bold leading-none ${apt.status === 'in_progress' ? 'bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white' : 'bg-green-100 text-green-700'}`}>
                           {apt.status === 'in_progress' ? 'In Progress' : 'Scheduled'}
                         </span>
                       </td>
@@ -325,7 +325,7 @@ export default function DoctorDashboard({
                                 <button onClick={() => fetchPatientHistory(apt.patient_id!)} className="text-blue-600 hover:text-blue-700 font-bold px-3 py-1.5 rounded-lg text-xs transition-colors">History</button>
                               )}
                               <button onClick={() => { setEditingApt(apt); setShowBooking(true); }} className="bg-amber-100 text-amber-700 font-bold px-3 py-1.5 rounded-lg text-xs hover:bg-amber-200 transition-colors">Reschedule</button>
-                              <button onClick={() => handleCallNext(apt.id, apt.patient?.full_name || apt.manual_patient?.full_name || 'Patient')} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-blue-500/20">{t('call_next')}</button>
+                              <button onClick={() => handleCallNext(apt.id, apt.patient?.full_name || apt.manual_patient?.full_name || 'Patient')} className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-blue-500/20">{t('call_next')}</button>
                             </>
                           ) : (
                             <>
@@ -425,7 +425,7 @@ export default function DoctorDashboard({
                         <div key={type} className="flex items-center gap-4">
                           <div className="w-32 text-xs font-bold uppercase text-gray-500 truncate">{type.replace('_', ' ')}</div>
                           <div className="flex-1 bg-gray-200 dark:bg-gray-700 h-3 rounded-full overflow-hidden">
-                            <div className="bg-blue-600 h-full transition-all duration-1000" style={{ width: `${(count / (stats.patientCount || 1)) * 100}%` }}></div>
+                            <div className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] h-full transition-all duration-1000" style={{ width: `${(count / (stats.patientCount || 1)) * 100}%` }}></div>
                           </div>
                           <div className="w-8 text-right font-black text-sm">{count}</div>
                         </div>
@@ -459,7 +459,7 @@ export default function DoctorDashboard({
                       onChange={e => setNewMed({...newMed, symptoms: e.target.value})}
                       className="rounded-xl px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500 sm:col-span-2"
                     />
-                    <button onClick={handleAddMedToFavs} className={`${editingMedId ? 'bg-amber-600 shadow-amber-500/30' : 'bg-blue-600 shadow-blue-500/30'} text-white font-bold py-2 rounded-xl shadow-lg sm:col-span-2 transition-all`}>
+                    <button onClick={handleAddMedToFavs} className={`${editingMedId ? 'bg-amber-600 shadow-amber-500/30' : 'bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] shadow-blue-500/30'} text-white font-bold py-2 rounded-xl shadow-lg sm:col-span-2 transition-all`}>
                       {editingMedId ? 'Update Medication' : 'Add to Favorites'}
                     </button>
                     {editingMedId && (

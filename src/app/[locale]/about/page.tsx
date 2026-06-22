@@ -46,7 +46,7 @@ export default async function AboutPage({ params }: { params: Promise<{ locale: 
               </div>
               <h3 className="text-2xl font-bold mb-4">{t('values')}</h3>
               <p className="text-gray-500 text-sm leading-relaxed italic">
-                Transparency, Reliability, and Patient-Centric Innovation are the cornerstones of everything we build at Medilab.
+                Transparency, Reliability, and Patient-Centric Innovation are the cornerstones of everything we build at MediLab.
               </p>
             </div>
           </div>

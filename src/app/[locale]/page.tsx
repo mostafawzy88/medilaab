@@ -26,7 +26,7 @@ export default async function IndexPage({ params }: { params: Promise<{ locale: 
         </div>
         
         <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 max-w-4xl text-balance animate-in zoom-in-95 duration-700">
-          Transform your clinic with <span className="bg-gradient-to-r from-blue-600 to-teal-400 bg-clip-text text-transparent">Medilab</span>
+          Transform your clinic with <span className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] bg-clip-text text-transparent">MediLab</span>
         </h1>
         
         <p className="text-xl md:text-2xl text-slate-600 dark:text-slate-400 mb-12 max-w-2xl text-balance animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-150">
@@ -36,7 +36,7 @@ export default async function IndexPage({ params }: { params: Promise<{ locale: 
         <div className="flex flex-col sm:flex-row gap-4 justify-center animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-300">
           <Link
             href="/login"
-            className="group relative inline-flex justify-center items-center gap-2 overflow-hidden rounded-full bg-blue-600 px-8 py-4 font-semibold text-white transition-all hover:bg-blue-700 hover:scale-105 shadow-xl shadow-blue-500/20"
+            className="group relative inline-flex justify-center items-center gap-2 overflow-hidden rounded-full bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] px-8 py-4 font-semibold text-white transition-all hover:opacity-90 hover:scale-105 shadow-xl shadow-blue-500/20"
           >
             Get Started
             <svg className="w-4 h-4 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">

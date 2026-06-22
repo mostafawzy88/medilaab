@@ -1,6 +1,6 @@
 {
   "Index": {
-    "title": "Medilab - Clinic Management System"
+    "title": "MediLab - Clinic Management System"
   },
   "Auth": {
     "login": "Login",
@@ -53,7 +53,7 @@
     "no_requests": "No pending appointment requests."
   },
   "Onboarding": {
-    "title": "Welcome to Medilab",
+    "title": "Welcome to MediLab",
     "subtitle": "Before we begin, please tell us who you are.",
     "select_role": "Select your role",
     "doctor": "Doctor",
@@ -110,8 +110,8 @@
     "profile": "Profile"
   },
   "About": {
-    "title": "About Medilab",
-    "description": "Medilab is a leading clinic management solution provider in Egypt, focused on digitizing the healthcare experience. Our mission is to reduce wait times and improve the quality of clinical care through seamless automation.",
+    "title": "About MediLab",
+    "description": "MediLab is a leading clinic management solution provider in Egypt, focused on digitizing the healthcare experience. Our mission is to reduce wait times and improve the quality of clinical care through seamless automation.",
     "mission": "Our Mission",
     "values": "Our Values"
   },
