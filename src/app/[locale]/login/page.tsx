@@ -74,6 +74,7 @@ export default async function LoginPage({
           </div>
 
           <button
+            formNoValidate
             formAction={signInWithGoogle.bind(null, locale)}
             className="mt-4 flex items-center justify-center gap-3 w-full bg-white dark:bg-gray-800 text-gray-900 
             dark:text-white border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 
