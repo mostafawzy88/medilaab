@@ -24,8 +24,13 @@ export default async function IndexPage({ params }: { params: Promise<{ locale: 
           <span className="flex h-2 w-2 rounded-full bg-blue-600 animate-pulse"></span>
           Next-Generation Clinic OS
         </div>
+        <div className="flex justify-center mb-6">
+          <div className="relative w-24 h-24 overflow-hidden flex-shrink-0 bg-white rounded-full shadow-2xl shadow-blue-500/20 flex items-center justify-center border border-gray-100 animate-in zoom-in-95 duration-700">
+            <img src="/logo.png" alt="MediLab Logo" className="w-[140%] max-w-none absolute top-[-10%]" />
+          </div>
+        </div>
         
-        <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 max-w-4xl text-balance animate-in zoom-in-95 duration-700">
+        <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 max-w-4xl text-balance animate-in zoom-in-95 duration-700 delay-100">
           Transform your clinic with <span className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] bg-clip-text text-transparent">MediLab</span>
         </h1>
         

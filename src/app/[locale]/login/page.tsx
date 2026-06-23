@@ -16,10 +16,8 @@ export default async function LoginPage({
     <div className="flex-1 flex flex-col w-full px-8 sm:max-w-md justify-center gap-2 mt-20 mx-auto">
       <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl p-8 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800">
         <div className="flex justify-center mb-8">
-          <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center shadow-lg shadow-blue-500/30">
-            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-            </svg>
+          <div className="relative w-20 h-20 overflow-hidden flex-shrink-0 bg-white rounded-full shadow-lg shadow-blue-500/30 flex items-center justify-center border border-gray-100">
+            <img src="/logo.png" alt="MediLab Logo" className="w-[140%] max-w-none absolute top-[-10%]" />
           </div>
         </div>
         
