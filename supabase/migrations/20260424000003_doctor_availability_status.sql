@@ -2,6 +2,9 @@
 ALTER TABLE public.profiles 
 ADD COLUMN IF NOT EXISTS availability_status text DEFAULT 'available';
 
+-- Drop existing function first because changing return type from json to jsonb requires DROP FUNCTION in Postgres
+DROP FUNCTION IF EXISTS public.get_doctor_live_queue(uuid);
+
 -- Update get_doctor_live_queue RPC to return doctor availability status
 CREATE OR REPLACE FUNCTION public.get_doctor_live_queue(p_doctor_id uuid)
 RETURNS jsonb
@@ -83,3 +86,5 @@ BEGIN
   );
 END;
 $func$;
+
+GRANT EXECUTE ON FUNCTION public.get_doctor_live_queue(uuid) TO authenticated, anon;
