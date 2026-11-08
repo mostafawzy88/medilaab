@@ -28,7 +28,7 @@ export default function Sidebar({ fullName, role }: { fullName: string, role?: s
           { id: 'queue', name: 'Queue', icon: '📋' },
           { id: 'requests', name: 'Requests', icon: '📥' },
           { id: 'patients', name: 'Patients', icon: '👥' },
-          { id: 'stats', name: 'Statistics', icon: '📈' },
+          { id: 'stats', name: 'Reports & Stats', icon: '📈' },
           { id: 'meds', name: 'Medications', icon: '💊' },
         ]
       case 'nurse':

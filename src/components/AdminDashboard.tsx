@@ -5,6 +5,7 @@ import { createClient } from '@/utils/supabase/client'
 import { useTranslations } from 'next-intl'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
+import AdminFinancials from './AdminFinancials'
 
 type StaffMember = {
   id: string
@@ -496,6 +497,9 @@ export default function AdminDashboard() {
         <button onClick={() => setView('patients')} className={`px-6 py-3 rounded-2xl text-sm font-black transition-all ${view === 'patients' ? 'bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white shadow-lg shadow-blue-500/20' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
           Patients
         </button>
+        <button onClick={() => setView('stats')} className={`px-6 py-3 rounded-2xl text-sm font-black transition-all ${(view === 'stats' || view === 'financials') ? 'bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white shadow-lg shadow-blue-500/20' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+          Financials 💰
+        </button>
         <button onClick={() => setView('payments')} className={`px-6 py-3 rounded-2xl text-sm font-black transition-all relative ${view === 'payments' ? 'bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white shadow-lg shadow-blue-500/20' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
           Payments
           {payments.filter(p => p.status === 'pending').length > 0 && (
@@ -756,79 +760,9 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
-      {/* ==================== STATISTICS ==================== */}
-      {view === 'stats' && (
-        <div className="space-y-6">
-          {loadingStats ? (
-            <div className="py-20 text-center animate-spin text-blue-600 font-black tracking-widest italic">LOADING CLINIC DATA...</div>
-          ) : clinicStats ? (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-emerald-50 dark:bg-emerald-900/20 p-8 rounded-[2rem] border border-emerald-100 dark:border-emerald-800 shadow-sm relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">💰</div>
-                  <p className="text-emerald-600 dark:text-emerald-400 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Total Gross Revenue</p>
-                  <p className="text-4xl font-black text-emerald-950 dark:text-emerald-50">{clinicStats.totalRevenue.toLocaleString()} <span className="text-sm font-medium">EGP</span></p>
-                  <div className="mt-4 flex gap-4 text-[10px] font-bold text-emerald-600/70">
-                      <span>Appts: {clinicStats.apptRevenue?.toLocaleString()}</span>
-                      <span>Subs: {clinicStats.subRevenue?.toLocaleString()}</span>
-                  </div>
-                </div>
-                <div className="bg-blue-50 dark:bg-blue-900/20 p-8 rounded-[2rem] border border-blue-100 dark:border-blue-800 shadow-sm">
-                  <p className="text-blue-600 dark:text-blue-400 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Total Appointments</p>
-                  <p className="text-4xl font-black text-blue-950 dark:text-blue-50">{clinicStats.totalAppts.toLocaleString()}</p>
-                </div>
-                <div className="bg-purple-50 dark:bg-purple-900/20 p-8 rounded-[2rem] border border-purple-100 dark:border-purple-800 shadow-sm">
-                  <p className="text-purple-600 dark:text-purple-400 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Patient Growth</p>
-                  <p className="text-4xl font-black text-purple-950 dark:text-purple-50">+{Math.round(clinicStats.totalAppts / (staff.length || 1))} <span className="text-sm font-medium">avg/dr</span></p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                 {/* Revenue by Doctor */}
-                 <div className="bg-white dark:bg-gray-900 p-8 rounded-[2.5rem] border border-gray-100 dark:border-gray-800 shadow-xl">
-                   <h4 className="font-black text-lg mb-6">Revenue by Doctor</h4>
-                   <div className="space-y-4">
-                     {Object.entries(clinicStats.revByDoc).map(([name, rev]: [string, any]) => (
-                       <div key={name}>
-                          <div className="flex justify-between items-end mb-1 text-sm font-bold">
-                            <span>{name}</span>
-                            <span className="text-blue-600">{rev.toLocaleString()} EGP</span>
-                          </div>
-                          <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                            <div className="h-full bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] rounded-full transition-all duration-1000" style={{ width: `${(rev / (clinicStats.totalRevenue || 1)) * 100}%` }}></div>
-                          </div>
-                       </div>
-                     ))}
-                   </div>
-                 </div>
-
-                 {/* Distribution */}
-                 <div className="bg-white dark:bg-gray-900 p-8 rounded-[2.5rem] border border-gray-100 dark:border-gray-800 shadow-xl">
-                   <h4 className="font-black text-lg mb-6">Appointment Distribution</h4>
-                   <div className="space-y-4">
-                     {Object.entries(clinicStats.byType).map(([type, count]: [string, any]) => (
-                        <div key={type} className="flex items-center gap-4">
-                          <div className="w-32 text-[10px] font-black uppercase text-gray-500 tracking-wider font-mono">{(type as string).replace('_', ' ')}</div>
-                          <div className="flex-1 bg-gray-100 dark:bg-gray-800 h-2 rounded-full overflow-hidden">
-                             <div className="h-full bg-emerald-500 rounded-full transition-all duration-700" style={{ width: `${(count / (clinicStats.totalAppts || 1)) * 100}%` }}></div>
-                          </div>
-                          <div className="w-10 text-right font-black text-sm">{count}</div>
-                        </div>
-                     ))}
-                   </div>
-                   <div className="mt-8 p-4 bg-amber-50 dark:bg-amber-900/10 rounded-2xl border border-amber-100 dark:border-amber-900/40">
-                     <p className="text-[10px] text-amber-700 dark:text-amber-400 font-bold leading-relaxed">
-                       <strong>Note:</strong> Financial data is calculated from confirmed appointment fees. 
-                       Subscription revenue from staff is not yet included in this view.
-                     </p>
-                   </div>
-                 </div>
-              </div>
-            </>
-          ) : (
-            <div className="p-20 text-center text-gray-400">Failed to aggregate clinic statistics.</div>
-          )}
-        </div>
+      {/* ==================== FINANCIALS & STATISTICS ==================== */}
+      {(view === 'stats' || view === 'financials') && (
+        <AdminFinancials />
       )}
 
       {/* ==================== PAYMENTS ==================== */}

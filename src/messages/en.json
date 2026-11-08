@@ -1,6 +1,12 @@
 {
   "Index": {
-    "title": "MediLab - Clinic Management System"
+    "title": "MediLab - Clinic Management System",
+    "badge": "Next-Generation Clinic OS",
+    "hero_title_1": "Transform your clinic with",
+    "hero_title_2": "MediLab",
+    "description": "Streamline appointments, reduce wait times, and accept InstaPay seamlessly. Built perfectly for the Egyptian healthcare ecosystem.",
+    "get_started": "Get Started",
+    "explore_features": "Explore Features"
   },
   "Auth": {
     "login": "Login",

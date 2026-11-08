@@ -8,6 +8,7 @@ import PrescriptionModal from './PrescriptionModal'
 import BookingModal from './BookingModal'
 import ClinicSchedule from './ClinicSchedule'
 import PatientsTab from './PatientsTab'
+import DoctorAnalytics from './DoctorAnalytics'
 
 type Appointment = {
   id: string
@@ -398,42 +399,8 @@ export default function DoctorDashboard({
               </div>
             )
           ) : activeTab === 'stats' ? (
-            <div className="p-8">
-              {loadingStats ? (
-                <div className="flex justify-center p-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>
-              ) : stats ? (
-                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-3xl border border-blue-100 dark:border-blue-800">
-                      <p className="text-blue-600 text-xs font-black uppercase tracking-widest mb-1">Total Revenue</p>
-                      <p className="text-3xl font-black text-blue-900 dark:text-blue-100">{stats.totalRevenue} <span className="text-sm">EGP</span></p>
-                    </div>
-                    <div className="bg-purple-50 dark:bg-purple-900/20 p-6 rounded-3xl border border-purple-100 dark:border-purple-800">
-                      <p className="text-purple-600 text-xs font-black uppercase tracking-widest mb-1">Patients Seen</p>
-                      <p className="text-3xl font-black text-purple-900 dark:text-purple-100">{stats.patientCount}</p>
-                    </div>
-                    <div className="bg-emerald-50 dark:bg-emerald-900/20 p-6 rounded-3xl border border-emerald-100 dark:border-emerald-800">
-                      <p className="text-emerald-600 text-xs font-black uppercase tracking-widest mb-1">Active Queue</p>
-                      <p className="text-3xl font-black text-emerald-900 dark:text-emerald-100">{activeQueue.length}</p>
-                    </div>
-                  </div>
-                  
-                  <div className="bg-gray-50 dark:bg-gray-800/50 p-6 rounded-3xl">
-                    <h4 className="font-bold mb-4">Patient Distribution by Type</h4>
-                    <div className="space-y-4">
-                      {Object.entries(stats.byType).map(([type, count]: [string, any]) => (
-                        <div key={type} className="flex items-center gap-4">
-                          <div className="w-32 text-xs font-bold uppercase text-gray-500 truncate">{type.replace('_', ' ')}</div>
-                          <div className="flex-1 bg-gray-200 dark:bg-gray-700 h-3 rounded-full overflow-hidden">
-                            <div className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] h-full transition-all duration-1000" style={{ width: `${(count / (stats.patientCount || 1)) * 100}%` }}></div>
-                          </div>
-                          <div className="w-8 text-right font-black text-sm">{count}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
+            <div className="p-6 md:p-8">
+              <DoctorAnalytics doctorId={doctorId} />
             </div>
           ) : activeTab === 'meds' ? (
             <div className="p-8">
