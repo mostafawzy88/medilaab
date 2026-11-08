@@ -2,15 +2,13 @@
 ALTER TABLE public.profiles 
 ADD COLUMN IF NOT EXISTS availability_status text DEFAULT 'available';
 
--- Ensure values are constrained to 'available', 'busy', 'unavailable'
-COMMENT ON COLUMN public.profiles.availability_status IS 'Doctor live availability: available, busy, unavailable';
-
 -- Update get_doctor_live_queue RPC to return doctor availability status
 CREATE OR REPLACE FUNCTION public.get_doctor_live_queue(p_doctor_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-AS $$
+SET search_path = public
+AS $func$
 DECLARE
   v_today date := CURRENT_DATE;
   v_in_progress record;
@@ -22,7 +20,7 @@ BEGIN
   -- Get doctor availability status from profiles
   SELECT coalesce(availability_status, working_hours->>'current_status', 'available')
   INTO v_status
-  FROM profiles
+  FROM public.profiles
   WHERE id = p_doctor_id;
 
   IF v_status IS NULL THEN
@@ -32,7 +30,7 @@ BEGIN
   -- Find active consultation
   SELECT queue_position, id
   INTO v_in_progress
-  FROM appointments
+  FROM public.appointments
   WHERE doctor_id = p_doctor_id
     AND scheduled_time::date = v_today
     AND status = 'in_progress'
@@ -42,7 +40,7 @@ BEGIN
   -- Count total clinic visits today
   SELECT count(*)
   INTO v_total_today
-  FROM appointments
+  FROM public.appointments
   WHERE doctor_id = p_doctor_id
     AND scheduled_time::date = v_today
     AND coalesce(appointment_type, '') != 'home_visit'
@@ -51,7 +49,7 @@ BEGIN
   -- Count patients waiting outside
   SELECT count(*)
   INTO v_waiting_count
-  FROM appointments
+  FROM public.appointments
   WHERE doctor_id = p_doctor_id
     AND scheduled_time::date = v_today
     AND coalesce(appointment_type, '') != 'home_visit'
@@ -68,7 +66,7 @@ BEGIN
     ) ORDER BY a.queue_position ASC
   ), '[]'::jsonb)
   INTO v_queue
-  FROM appointments a
+  FROM public.appointments a
   WHERE a.doctor_id = p_doctor_id
     AND a.scheduled_time::date = v_today
     AND coalesce(a.appointment_type, '') != 'home_visit'
@@ -84,4 +82,4 @@ BEGIN
     'is_unavailable', (v_status = 'unavailable')
   );
 END;
-$$;
+$func$;
