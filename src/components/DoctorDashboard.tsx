@@ -60,17 +60,31 @@ export default function DoctorDashboard({
   const [stats, setStats] = useState<any>(null)
   const [loadingStats, setLoadingStats] = useState(false)
   const [autoConfirm, setAutoConfirm] = useState(false)
+  const [doctorStatus, setDoctorStatus] = useState<'available' | 'busy' | 'unavailable'>('available')
+  const [currentTime, setCurrentTime] = useState(new Date())
   const [rejectingId, setRejectingId] = useState<string | null>(null)
   const [rejectionReason, setRejectionReason] = useState('')
 
-  // Fetch auto-confirm preference
+  // Live ticking clock for doctor
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+
+  // Fetch auto-confirm preference and live availability status
   useEffect(() => {
     const fetchPrefs = async () => {
       const supabase = createClient()
-      const { data } = await supabase.from('profiles').select('auto_confirm_appointments, full_name').eq('id', doctorId).single()
+      const { data } = await supabase
+        .from('profiles')
+        .select('auto_confirm_appointments, full_name, availability_status, working_hours')
+        .eq('id', doctorId)
+        .single()
       if (data) {
         setAutoConfirm(data.auto_confirm_appointments || false)
         if (data.full_name) setDoctorName(data.full_name)
+        const st = data.availability_status || (data.working_hours as any)?.current_status || 'available'
+        setDoctorStatus(st)
       }
     }
     fetchPrefs()
@@ -81,6 +95,30 @@ export default function DoctorDashboard({
     setAutoConfirm(newVal)
     const supabase = createClient()
     await supabase.from('profiles').update({ auto_confirm_appointments: newVal }).eq('id', doctorId)
+  }
+
+  const handleUpdateDoctorStatus = async (newStatus: 'available' | 'busy' | 'unavailable') => {
+    setDoctorStatus(newStatus)
+    const supabase = createClient()
+    
+    // Read current working_hours first
+    const { data: prof } = await supabase.from('profiles').select('working_hours').eq('id', doctorId).single()
+    let wh = prof?.working_hours || {}
+    if (typeof wh === 'string') {
+      try { wh = JSON.parse(wh) } catch { wh = {} }
+    }
+    const updatedWh = { ...wh, current_status: newStatus }
+
+    const updatePayload: any = {
+      working_hours: updatedWh,
+      availability_status: newStatus
+    }
+
+    let { error } = await supabase.from('profiles').update(updatePayload).eq('id', doctorId)
+    if (error && error.message?.includes('availability_status')) {
+      delete updatePayload.availability_status
+      await supabase.from('profiles').update(updatePayload).eq('id', doctorId)
+    }
   }
 
   useEffect(() => {
@@ -297,7 +335,7 @@ export default function DoctorDashboard({
     const match = notes.match(/\[ARRIVED:\s*([^\]]+)\]/)
     if (match && match[1]) {
       try {
-        return new Date(match[1]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        return new Date(match[1]).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })
       } catch {
         return null
       }
@@ -305,12 +343,112 @@ export default function DoctorDashboard({
     return null
   }
 
+  const activeConsultation = activeQueue.find(a => a.status === 'in_progress')
+  const effectiveStatus: 'available' | 'busy' | 'unavailable' = 
+    doctorStatus === 'unavailable' 
+      ? 'unavailable' 
+      : (activeConsultation || doctorStatus === 'busy')
+        ? 'busy'
+        : 'available'
+
+  const statusConfig = {
+    available: {
+      label: locale === 'ar' ? 'متاح / جاهز' : 'Free / Available',
+      badge: 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800',
+      dot: 'bg-emerald-500',
+      glow: 'bg-emerald-400',
+    },
+    busy: {
+      label: locale === 'ar' ? 'مع مريض حالياً' : 'With a Patient',
+      badge: 'bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800',
+      dot: 'bg-amber-500',
+      glow: 'bg-amber-400',
+    },
+    unavailable: {
+      label: locale === 'ar' ? 'غير متاح / استراحة' : 'Unavailable (On Break)',
+      badge: 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800',
+      dot: 'bg-rose-500',
+      glow: 'bg-rose-400',
+    }
+  }
+
+  const currentStatusStyle = statusConfig[effectiveStatus]
+  const currentTimeFormatted = currentTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })
+  const currentDateFormatted = currentTime.toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+
   return (
     <div className="space-y-6">
+      {/* Live Date, Time & Doctor Status Bar for all non-overview tabs */}
+      {activeTab !== 'overview' && (
+        <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-3xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm animate-in fade-in">
+          {/* Live Date, Time & Colored Doctor Status */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className={`px-4 py-2 rounded-2xl text-xs font-bold border flex items-center gap-2.5 shadow-sm transition-all ${currentStatusStyle.badge}`}>
+              <span className="relative flex h-2.5 w-2.5">
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${currentStatusStyle.glow}`} />
+                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${currentStatusStyle.dot}`} />
+              </span>
+              <span className="font-black uppercase tracking-wider">{currentStatusStyle.label}</span>
+              <span className="opacity-40">|</span>
+              <span className="font-mono font-bold tracking-tight">
+                📅 {currentDateFormatted} • 🕒 {currentTimeFormatted}
+              </span>
+            </div>
+          </div>
+
+          {/* Quick Doctor Status Control */}
+          <div className="flex items-center gap-1 bg-gray-50 dark:bg-gray-800/80 p-1 rounded-2xl border border-gray-200/50 dark:border-gray-700/50">
+            <button
+              type="button"
+              onClick={() => handleUpdateDoctorStatus('available')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                doctorStatus === 'available'
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                  : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+              }`}
+              title="Mark Free / Available"
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              <span>{locale === 'ar' ? 'متاح' : 'Free'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleUpdateDoctorStatus('busy')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                doctorStatus === 'busy'
+                  ? 'bg-amber-500 text-white shadow-md shadow-amber-500/30'
+                  : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+              }`}
+              title="Mark With Patient"
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-400" />
+              <span>{locale === 'ar' ? 'مع مريض' : 'With Patient'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleUpdateDoctorStatus('unavailable')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                doctorStatus === 'unavailable'
+                  ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
+                  : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+              }`}
+              title="Mark Unavailable / On Break"
+            >
+              <span className="w-2 h-2 rounded-full bg-rose-400" />
+              <span>{locale === 'ar' ? 'استراحة' : 'On Break'}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'overview' ? (
         <DoctorOverview
           doctorId={doctorId}
           doctorName={doctorName}
+          doctorStatus={doctorStatus}
+          onUpdateDoctorStatus={handleUpdateDoctorStatus}
           activeQueue={activeQueue}
           homeVisits={homeVisits}
           requests={requests}

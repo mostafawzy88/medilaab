@@ -5,7 +5,7 @@ import { createClient } from '@/utils/supabase/client'
 import { useTranslations } from 'next-intl'
 
 type PrescriptionModalProps = {
-  appointmentId: string
+  appointmentId?: string | null
   patientId: string | null
   manualPatientId?: string | null
   patientName: string
@@ -93,7 +93,7 @@ export default function PrescriptionModal({
 
     // Insert into prescriptions table
     const { error } = await supabase.from('prescriptions').insert({
-      appointment_id: appointmentId,
+      appointment_id: appointmentId || null,
       patient_id: patientId,
       manual_patient_id: manualPatientId,
       doctor_id: user.id,
@@ -109,8 +109,10 @@ export default function PrescriptionModal({
       return
     }
 
-    // Update appointment to completed
-    await supabase.from('appointments').update({ status: 'completed' }).eq('id', appointmentId)
+    // Update appointment to completed if an appointmentId is linked
+    if (appointmentId) {
+      await supabase.from('appointments').update({ status: 'completed' }).eq('id', appointmentId)
+    }
 
     setSaving(false)
     onComplete()

@@ -23,6 +23,7 @@ type Profile = {
   subscription_expires_at?: string | null
   avatar_url?: string | null
   plan_id?: string | null
+  availability_status?: 'available' | 'busy' | 'unavailable' | null
 }
 
 type Certificate = {
@@ -57,13 +58,18 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
   const [addingCert, setAddingCert] = useState(false)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
 
-  const getHours = (): Record<string, string> => {
+  const getHours = (): Record<string, any> => {
     if (!profile.working_hours) return DEFAULT_HOURS
     if (typeof profile.working_hours === 'string') {
       try { return JSON.parse(profile.working_hours) } catch { return DEFAULT_HOURS }
     }
     return profile.working_hours
   }
+
+  const [doctorStatus, setDoctorStatus] = useState<'available' | 'busy' | 'unavailable'>(() => {
+    const hours = getHours()
+    return initialProfile.availability_status || hours?.current_status || 'available'
+  })
 
   const setDayHours = (day: string, value: string) => {
     const current = getHours()
@@ -76,24 +82,43 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
     setMessage('')
 
     const supabase = createClient()
-    const { error } = await supabase
+    const currentHours = getHours()
+    const updatedHours = {
+      ...currentHours,
+      current_status: doctorStatus
+    }
+
+    const updatePayload: any = {
+      full_name: profile.full_name,
+      phone_number: profile.phone_number,
+      instapay_address: profile.instapay_address,
+      clinic_location: profile.clinic_location,
+      latitude: profile.latitude,
+      longitude: profile.longitude,
+      working_hours: updatedHours,
+      specialization: profile.specialization,
+      bio: profile.bio,
+      fees_normal: profile.fees_normal,
+      fees_urgent: profile.fees_urgent,
+      fees_home_visit: profile.fees_home_visit,
+      email: profile.email,
+    }
+
+    if (profile.role === 'doctor') {
+      updatePayload.availability_status = doctorStatus
+    }
+
+    let { error } = await supabase
       .from('profiles')
-      .update({
-        full_name: profile.full_name,
-        phone_number: profile.phone_number,
-        instapay_address: profile.instapay_address,
-        clinic_location: profile.clinic_location,
-        latitude: profile.latitude,
-        longitude: profile.longitude,
-        working_hours: getHours(),
-        specialization: profile.specialization,
-        bio: profile.bio,
-        fees_normal: profile.fees_normal,
-        fees_urgent: profile.fees_urgent,
-        fees_home_visit: profile.fees_home_visit,
-        email: profile.email,
-      })
+      .update(updatePayload)
       .eq('id', profile.id)
+
+    // Fallback if availability_status column not yet migrated in database
+    if (error && error.message?.includes('availability_status')) {
+      delete updatePayload.availability_status
+      const retry = await supabase.from('profiles').update(updatePayload).eq('id', profile.id)
+      error = retry.error
+    }
 
     setSaving(false)
     if (!error) {
@@ -255,6 +280,77 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
         {message && (
           <div className={`p-4 rounded-2xl text-sm font-bold ${message.includes('Error') ? 'bg-red-50 dark:bg-red-900/20 text-red-600 border border-red-200' : 'bg-green-50 dark:bg-green-900/20 text-green-600 border border-green-200'}`}>
             {message}
+          </div>
+        )}
+
+        {/* Doctor Operational Availability Status */}
+        {profile.role === 'doctor' && (
+          <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h2 className="text-sm font-black uppercase tracking-widest text-gray-400">Doctor Operational Status</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Control your live availability for consultations and clinic waiting room</p>
+              </div>
+              <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
+                doctorStatus === 'unavailable' 
+                  ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300' 
+                  : doctorStatus === 'busy' 
+                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300' 
+                    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+              }`}>
+                {doctorStatus === 'unavailable' ? '🔴 Unavailable (On Break)' : doctorStatus === 'busy' ? '🟡 With Patient' : '🟢 Free / Available'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDoctorStatus('available')}
+                className={`p-4 rounded-2xl border-2 text-left transition-all ${
+                  doctorStatus === 'available'
+                    ? 'border-emerald-500 bg-emerald-50/60 dark:bg-emerald-950/40 shadow-md shadow-emerald-500/10'
+                    : 'border-gray-100 dark:border-gray-800 hover:border-gray-200'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="w-3 h-3 rounded-full bg-emerald-500"></span>
+                  <span className="font-black text-sm text-gray-900 dark:text-white">Free / Ready</span>
+                </div>
+                <p className="text-xs text-gray-500">Ready to call next patients and receive appointments</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDoctorStatus('busy')}
+                className={`p-4 rounded-2xl border-2 text-left transition-all ${
+                  doctorStatus === 'busy'
+                    ? 'border-amber-500 bg-amber-50/60 dark:bg-amber-950/40 shadow-md shadow-amber-500/10'
+                    : 'border-gray-100 dark:border-gray-800 hover:border-gray-200'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="w-3 h-3 rounded-full bg-amber-500"></span>
+                  <span className="font-black text-sm text-gray-900 dark:text-white">With Patient</span>
+                </div>
+                <p className="text-xs text-gray-500">Currently in examination room with a patient</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDoctorStatus('unavailable')}
+                className={`p-4 rounded-2xl border-2 text-left transition-all ${
+                  doctorStatus === 'unavailable'
+                    ? 'border-rose-500 bg-rose-50/60 dark:bg-rose-950/40 shadow-md shadow-rose-500/10'
+                    : 'border-gray-100 dark:border-gray-800 hover:border-gray-200'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="w-3 h-3 rounded-full bg-rose-500"></span>
+                  <span className="font-black text-sm text-gray-900 dark:text-white">Unavailable / Break</span>
+                </div>
+                <p className="text-xs text-gray-500">Ask not to see patients for a while (queue paused)</p>
+              </button>
+            </div>
           </div>
         )}
 

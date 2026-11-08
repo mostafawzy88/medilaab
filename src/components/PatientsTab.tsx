@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import PrescriptionViewerModal from './PrescriptionViewerModal'
+import PrescriptionModal from './PrescriptionModal'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type Patient = {
@@ -67,10 +68,12 @@ function PatientDetailModal({
   patient,
   doctorId,
   onClose,
+  onWritePrescription,
 }: {
   patient: PatientDetail
   doctorId: string
   onClose: (updatedNote?: string) => void
+  onWritePrescription: () => void
 }) {
   const [doctorNote, setDoctorNote] = useState(patient.doctor_note || '')
   const [saving, setSaving] = useState(false)
@@ -117,9 +120,18 @@ function PatientDetailModal({
               </span>
             </div>
           </div>
-          <button onClick={() => onClose(doctorNote)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onWritePrescription}
+              className="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl text-xs sm:text-sm shadow-md shadow-blue-500/20 transition-all flex items-center gap-1.5"
+            >
+              <span>💊</span>
+              <span>+ Write Prescription</span>
+            </button>
+            <button onClick={() => onClose(doctorNote)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
         </div>
 
         {/* Stats Row */}
@@ -284,8 +296,27 @@ function PatientDetailModal({
           {/* Prescriptions Tab */}
           {activeTab === 'prescriptions' && (
             <div className="space-y-4 animate-in fade-in">
+              <div className="flex justify-between items-center mb-1">
+                <p className="text-xs font-black uppercase tracking-wider text-gray-400">Prescription History</p>
+                <button
+                  onClick={onWritePrescription}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400 font-bold rounded-xl text-xs transition-colors"
+                >
+                  <span>💊</span>
+                  <span>+ New Prescription</span>
+                </button>
+              </div>
               {patient.prescriptions?.length === 0 ? (
-                <div className="text-center py-10 text-gray-400 italic">No prescriptions recorded yet.</div>
+                <div className="text-center py-12 bg-gray-50/50 dark:bg-gray-800/30 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700 space-y-3">
+                  <p className="text-3xl">💊</p>
+                  <p className="text-gray-500 font-medium text-sm">No prescriptions recorded yet.</p>
+                  <button
+                    onClick={onWritePrescription}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-500/20"
+                  >
+                    + Write First Prescription
+                  </button>
+                </div>
               ) : (
                 patient.prescriptions?.map((rx: any) => (
                   <div key={rx.id} className="p-5 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm space-y-3">
@@ -351,6 +382,7 @@ export default function PatientsTab({ doctorId }: { doctorId: string }) {
   const [selectedPatient, setSelectedPatient] = useState<PatientDetail | null>(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [detailCache, setDetailCache] = useState<Record<string, PatientDetail>>({})
+  const [prescriptionPatient, setPrescriptionPatient] = useState<{ id: string; name: string; is_manual: boolean } | null>(null)
 
   useEffect(() => {
     fetchPatients()
@@ -514,6 +546,38 @@ export default function PatientsTab({ doctorId }: { doctorId: string }) {
     else { setSortKey(key); setSortDir('desc') }
   }
 
+  const handlePrescriptionComplete = async () => {
+    if (prescriptionPatient) {
+      const targetId = prescriptionPatient.id
+      const isManual = prescriptionPatient.is_manual
+      const supabase = createClient()
+      
+      let rxQuery = supabase.from('prescriptions')
+        .select('id, doctor_id, created_at, diagnosis, symptoms, medications, doctor_notes')
+        .eq('doctor_id', doctorId)
+        .order('created_at', { ascending: false })
+
+      if (isManual) rxQuery = rxQuery.eq('manual_patient_id', targetId)
+      else rxQuery = rxQuery.eq('patient_id', targetId)
+      const { data: rxs } = await rxQuery
+
+      if (rxs) {
+        setDetailCache(prev => {
+          const existing = prev[targetId]
+          if (!existing) return prev
+          return {
+            ...prev,
+            [targetId]: { ...existing, prescriptions: rxs }
+          }
+        })
+        if (selectedPatient && selectedPatient.id === targetId) {
+          setSelectedPatient(prev => prev ? { ...prev, prescriptions: rxs } : null)
+        }
+      }
+    }
+    setPrescriptionPatient(null)
+  }
+
   const SortIcon = ({ k }: { k: SortKey }) => (
     <span className="ml-1 opacity-50">
       {sortKey === k ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
@@ -639,9 +703,23 @@ export default function PatientsTab({ doctorId }: { doctorId: string }) {
                       {(p.total_fees || 0).toLocaleString()} EGP
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button className="text-xs font-bold text-blue-600 dark:text-blue-400 group-hover:underline">
-                        {loadingDetail ? '...' : 'View →'}
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPrescriptionPatient({ id: p.id, name: p.full_name, is_manual: p.is_manual });
+                          }}
+                          className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-300 rounded-xl font-bold text-xs transition-colors flex items-center gap-1 shadow-sm"
+                          title="Write prescription for patient"
+                        >
+                          <span>💊</span>
+                          <span>+ Rx</span>
+                        </button>
+                        <button className="text-xs font-bold text-blue-600 dark:text-blue-400 group-hover:underline">
+                          {loadingDetail ? '...' : 'View →'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -657,6 +735,19 @@ export default function PatientsTab({ doctorId }: { doctorId: string }) {
           patient={selectedPatient}
           doctorId={doctorId}
           onClose={handleDetailClose}
+          onWritePrescription={() => setPrescriptionPatient({ id: selectedPatient.id, name: selectedPatient.full_name, is_manual: selectedPatient.is_manual })}
+        />
+      )}
+
+      {/* Standalone / Direct Prescription Modal */}
+      {prescriptionPatient && (
+        <PrescriptionModal
+          patientName={prescriptionPatient.name}
+          patientId={prescriptionPatient.is_manual ? null : prescriptionPatient.id}
+          manualPatientId={prescriptionPatient.is_manual ? prescriptionPatient.id : null}
+          appointmentId={null}
+          onClose={() => setPrescriptionPatient(null)}
+          onComplete={handlePrescriptionComplete}
         />
       )}
     </div>

@@ -955,7 +955,7 @@ export default function AdminFinancials() {
                     combinedLedger.map(tx => (
                       <tr key={tx.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/40 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500">
-                          {new Date(tx.date).toLocaleDateString()} {new Date(tx.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(tx.date).toLocaleDateString()} {new Date(tx.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${

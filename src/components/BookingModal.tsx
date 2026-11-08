@@ -28,6 +28,16 @@ type BookingModalProps = {
 
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 
+function format12Hour(timeStr?: string | null): string {
+  if (!timeStr) return ''
+  const [hStr, mStr] = timeStr.split(':')
+  const h = parseInt(hStr, 10)
+  if (isNaN(h)) return timeStr
+  const period = h >= 12 ? 'PM' : 'AM'
+  const hour12 = h % 12 === 0 ? 12 : h % 12
+  return `${hour12}:${mStr || '00'} ${period}`
+}
+
 export default function BookingModal({ onClose, onSuccess, initialDoctor, editAppointmentId, isStaff }: BookingModalProps) {
   const t = useTranslations('Dashboard')
   const [step, setStep] = useState(isStaff && !editAppointmentId ? 0 : 1)
@@ -599,7 +609,7 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
                                   }
                                 `}
                               >
-                                {slot.time}
+                                {format12Hour(slot.time)}
                               </button>
                             ))}
                           </div>
@@ -626,7 +636,7 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
                 <div className="space-y-6 animate-in slide-in-from-right-4">
                   <div className="bg-gray-50 dark:bg-gray-800 rounded-2xl p-4 text-sm border border-gray-100 dark:border-gray-700">
                     <div className="flex justify-between py-1"><span className="text-gray-500">Doctor</span><span className="font-bold">Dr. {selectedDoctor?.full_name}</span></div>
-                    <div className="flex justify-between py-1"><span className="text-gray-500">Date & Time</span><span className="font-bold">{new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at {selectedTime}</span></div>
+                    <div className="flex justify-between py-1"><span className="text-gray-500">Date & Time</span><span className="font-bold">{new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at {format12Hour(selectedTime)}</span></div>
                     <div className="flex justify-between py-1 border-t border-gray-200 dark:border-gray-700 mt-2 pt-2"><span className="text-gray-500">Total Fees</span><span className="font-black text-blue-600 text-lg">{currentFee} EGP</span></div>
                   </div>
 

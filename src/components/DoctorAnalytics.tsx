@@ -926,7 +926,7 @@ export default function DoctorAnalytics({ doctorId }: { doctorId: string }) {
                     filteredAppointments.map(a => (
                       <tr key={a.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/40 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500">
-                          {new Date(a.scheduled_time || a.created_at).toLocaleDateString()} {new Date(a.scheduled_time || a.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(a.scheduled_time || a.created_at).toLocaleDateString()} {new Date(a.scheduled_time || a.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
                         </td>
                         <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">
                           {a.patient_name}

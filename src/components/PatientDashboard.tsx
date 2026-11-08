@@ -108,6 +108,8 @@ export default function PatientDashboard({
     current_serving_position: number
     total_clinic_today: number
     waiting_outside_count: number
+    doctor_status?: string
+    is_unavailable?: boolean
     queue: Array<{
       id: string
       queue_position: number
@@ -160,10 +162,20 @@ export default function PatientDashboard({
 
             if (qData) {
               const inProgress = qData.find((a: any) => a.status === 'in_progress');
+              const { data: docProf } = await supabase
+                .from('profiles')
+                .select('availability_status, working_hours')
+                .eq('id', docId)
+                .single();
+              const docSt = docProf?.availability_status || (docProf?.working_hours as any)?.current_status || 'available';
+              const isUnavail = docSt === 'unavailable';
+
               setLiveDoctorData(prev => ({
                 ...prev,
                 [docId]: {
-                  is_in_consultation: !!inProgress,
+                  is_in_consultation: !!inProgress || docSt === 'busy',
+                  doctor_status: docSt,
+                  is_unavailable: isUnavail,
                   current_serving_position: inProgress?.queue_position || 0,
                   total_clinic_today: qData.length,
                   waiting_outside_count: qData.filter((a: any) => a.status === 'scheduled').length,
@@ -234,7 +246,7 @@ export default function PatientDashboard({
     const match = notes.match(/\[ARRIVED:\s*([^\]]+)\]/);
     if (match && match[1]) {
       try {
-        return new Date(match[1]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return new Date(match[1]).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
       } catch {
         return null;
       }
@@ -556,13 +568,15 @@ export default function PatientDashboard({
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2 text-xs font-bold text-gray-700 dark:text-gray-300">
                                   <span className="relative flex h-2.5 w-2.5">
-                                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${docStatus?.is_in_consultation ? 'bg-amber-400' : 'bg-emerald-400'}`}></span>
-                                    <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${docStatus?.is_in_consultation ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
+                                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${docStatus?.is_unavailable ? 'bg-rose-400' : docStatus?.is_in_consultation ? 'bg-amber-400' : 'bg-emerald-400'}`}></span>
+                                    <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${docStatus?.is_unavailable ? 'bg-rose-500' : docStatus?.is_in_consultation ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
                                   </span>
-                                  <span>
-                                    {docStatus?.is_in_consultation 
-                                      ? (tp('doctor_busy') || 'Doctor is consulting with a patient') 
-                                      : (tp('doctor_free') || 'Doctor is ready for next patient')}
+                                  <span className={docStatus?.is_unavailable ? 'text-rose-600 dark:text-rose-400 font-black' : ''}>
+                                    {docStatus?.is_unavailable
+                                      ? (tp('doctor_on_break') || '🔴 Doctor is currently on break / unavailable')
+                                      : docStatus?.is_in_consultation 
+                                        ? (tp('doctor_busy') || '🟡 Doctor is consulting with a patient') 
+                                        : (tp('doctor_free') || '🟢 Doctor is ready for next patient')}
                                   </span>
                                 </div>
                                 <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300">
@@ -667,7 +681,7 @@ export default function PatientDashboard({
                                 const isPending = apt.status === 'waiting'
                                 return (
                                   <div key={apt.id} className={`p-1 rounded-lg text-[9px] border ${isPending ? 'bg-amber-50 border-amber-200 dark:bg-amber-900/10' : 'bg-green-50 border-green-200 dark:bg-green-900/10'}`}>
-                                    <p className="font-bold">{new Date(apt.scheduled_time!).toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit', hour12: false})}</p>
+                                    <p className="font-bold">{new Date(apt.scheduled_time!).toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit', hour12: true})}</p>
                                     <p className="truncate opacity-75">Dr. {apt.doctor_name.split(' ')[0]}</p>
                                   </div>
                                 )

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 
 type Appointment = {
@@ -21,6 +21,8 @@ type Appointment = {
 export default function DoctorOverview({
   doctorId,
   doctorName,
+  doctorStatus = 'available',
+  onUpdateDoctorStatus,
   activeQueue,
   homeVisits,
   requests,
@@ -35,6 +37,8 @@ export default function DoctorOverview({
 }: {
   doctorId: string
   doctorName?: string
+  doctorStatus?: 'available' | 'busy' | 'unavailable'
+  onUpdateDoctorStatus?: (status: 'available' | 'busy' | 'unavailable') => void
   activeQueue: Appointment[]
   homeVisits: Appointment[]
   requests: Appointment[]
@@ -50,6 +54,12 @@ export default function DoctorOverview({
   const t = useTranslations('Dashboard')
   const locale = useLocale()
 
+  const [currentTime, setCurrentTime] = useState(new Date())
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+
   const todayStr = new Date().toISOString().split('T')[0]
 
   // Filter today's specific subsets
@@ -58,6 +68,42 @@ export default function DoctorOverview({
   
   // Find currently active consultation
   const activeConsultation = activeQueue.find(a => a.status === 'in_progress')
+
+  // Effective doctor status:
+  // If doctor manually set 'unavailable' -> 'unavailable' (Red)
+  // If doctor set 'busy' OR consultation is in_progress -> 'busy' (Yellow)
+  // Else -> 'available' (Green)
+  const effectiveStatus: 'available' | 'busy' | 'unavailable' = 
+    doctorStatus === 'unavailable' 
+      ? 'unavailable' 
+      : (activeConsultation || doctorStatus === 'busy')
+        ? 'busy'
+        : 'available'
+
+  const statusConfig = {
+    available: {
+      label: locale === 'ar' ? 'متاح / جاهز' : 'Free / Available',
+      badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/50 shadow-emerald-500/10',
+      dot: 'bg-emerald-400',
+      glow: 'bg-emerald-400',
+    },
+    busy: {
+      label: locale === 'ar' ? 'مع مريض حالياً' : 'With a Patient',
+      badge: 'bg-amber-500/20 text-amber-300 border-amber-400/50 shadow-amber-500/10',
+      dot: 'bg-amber-400',
+      glow: 'bg-amber-400',
+    },
+    unavailable: {
+      label: locale === 'ar' ? 'غير متاح / استراحة' : 'Unavailable (On Break)',
+      badge: 'bg-rose-500/20 text-rose-300 border-rose-400/50 shadow-rose-500/10',
+      dot: 'bg-rose-400',
+      glow: 'bg-rose-400',
+    }
+  }
+
+  const currentStatusStyle = statusConfig[effectiveStatus]
+  const currentTimeFormatted = currentTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })
+  const currentDateFormatted = currentTime.toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
   
   // Count arrived patients in waiting room
   const arrivedPatients = todayClinicVisits.filter(a => a.notes?.includes('[ARRIVED:'))
@@ -73,7 +119,7 @@ export default function DoctorOverview({
     const match = notes.match(/\[ARRIVED:\s*([^\]]+)\]/)
     if (match && match[1]) {
       try {
-        return new Date(match[1]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        return new Date(match[1]).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })
       } catch {
         return null
       }
@@ -88,14 +134,25 @@ export default function DoctorOverview({
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[var(--color-ml-navy)] via-[#1E163B] to-[var(--color-ml-navy)] p-6 sm:p-8 text-white border border-[var(--color-ml-navy-light)] shadow-xl">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
-            <div className="flex items-center gap-3 mb-2 flex-wrap">
+            <div className="flex items-center gap-3 mb-3 flex-wrap">
               <span className="px-3 py-1 bg-white/10 text-white/90 rounded-full text-xs font-black tracking-wider uppercase backdrop-blur-md border border-white/10">
                 👨‍⚕️ {locale === 'ar' ? 'لوحة قيادة الطبيب اليومية' : "Doctor's Daily Hub"}
               </span>
-              <span className="text-xs text-gray-300 font-medium">
-                📅 {new Date().toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-              </span>
+
+              {/* Dynamic Live Clock & Date Badge with Status Color Representation */}
+              <div className={`px-3.5 py-1.5 rounded-2xl text-xs font-bold border backdrop-blur-md flex items-center gap-2.5 transition-all shadow-md ${currentStatusStyle.badge}`}>
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${currentStatusStyle.glow}`} />
+                  <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${currentStatusStyle.dot}`} />
+                </span>
+                <span className="font-black uppercase tracking-wider">{currentStatusStyle.label}</span>
+                <span className="opacity-40">|</span>
+                <span className="font-mono font-bold tracking-tight">
+                  📅 {currentDateFormatted} • 🕒 {currentTimeFormatted}
+                </span>
+              </div>
             </div>
+
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
               {locale === 'ar' ? `مرحباً د. ${doctorName || ''}` : `Welcome back, Dr. ${doctorName || ''}`}
             </h1>
@@ -106,25 +163,68 @@ export default function DoctorOverview({
             </p>
           </div>
 
-          {/* Quick Auto-Confirm & Live Indicator */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-white/5 p-4 rounded-2xl border border-white/10 backdrop-blur-sm">
-            <div className="text-right sm:text-left">
-              <p className="text-xs font-black text-gray-300 uppercase tracking-wider">
-                {locale === 'ar' ? 'الموافقة التلقائية' : 'Auto-Confirm'}
-              </p>
-              <p className="text-[11px] text-gray-400">
-                {autoConfirm 
-                  ? (locale === 'ar' ? 'مفعلة للحجوزات' : 'Auto-approving slots') 
-                  : (locale === 'ar' ? 'يدوية عبر الطلبات' : 'Manual approval mode')}
-              </p>
+          {/* Quick Doctor Status Selector & Auto-Confirm Switch */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 bg-white/5 p-3 rounded-2xl border border-white/10 backdrop-blur-sm">
+            {/* Status Selector */}
+            <div className="flex items-center gap-1 bg-black/30 p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => onUpdateDoctorStatus?.('available')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 ${
+                  doctorStatus === 'available'
+                    ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30'
+                    : 'text-gray-300 hover:text-white'
+                }`}
+                title="Mark Free / Ready for patients"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-300" />
+                <span>{locale === 'ar' ? 'متاح' : 'Free'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onUpdateDoctorStatus?.('busy')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 ${
+                  doctorStatus === 'busy'
+                    ? 'bg-amber-500 text-white shadow-md shadow-amber-500/30'
+                    : 'text-gray-300 hover:text-white'
+                }`}
+                title="Mark With Patient"
+              >
+                <span className="w-2 h-2 rounded-full bg-amber-300" />
+                <span>{locale === 'ar' ? 'مع مريض' : 'With Patient'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onUpdateDoctorStatus?.('unavailable')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 ${
+                  doctorStatus === 'unavailable'
+                    ? 'bg-rose-500 text-white shadow-md shadow-rose-500/30'
+                    : 'text-gray-300 hover:text-white'
+                }`}
+                title="Mark Unavailable / On Break"
+              >
+                <span className="w-2 h-2 rounded-full bg-rose-300" />
+                <span>{locale === 'ar' ? 'استراحة' : 'On Break'}</span>
+              </button>
             </div>
-            <button 
-              onClick={onToggleAutoConfirm}
-              className={`relative w-12 h-7 rounded-full transition-colors ${autoConfirm ? 'bg-emerald-500' : 'bg-gray-600'}`}
-              title="Toggle Auto-Confirmation of Appointments"
-            >
-              <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform ${autoConfirm ? 'translate-x-5' : ''}`} />
-            </button>
+
+            {/* Quick Auto-Confirm Toggle */}
+            <div className="flex items-center justify-between sm:justify-start gap-2.5 pl-2 sm:border-l sm:border-white/10">
+              <div className="text-right sm:text-left">
+                <p className="text-[11px] font-black text-gray-300 uppercase tracking-wider">
+                  {locale === 'ar' ? 'الموافقة التلقائية' : 'Auto-Confirm'}
+                </p>
+              </div>
+              <button 
+                onClick={onToggleAutoConfirm}
+                className={`relative w-11 h-6 rounded-full transition-colors ${autoConfirm ? 'bg-emerald-500' : 'bg-gray-600'}`}
+                title="Toggle Auto-Confirmation of Appointments"
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform ${autoConfirm ? 'translate-x-5' : ''}`} />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -132,19 +232,24 @@ export default function DoctorOverview({
         <div className="mt-6 pt-5 border-t border-white/10 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <span className="relative flex h-3 w-3">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${activeConsultation ? 'bg-emerald-400' : 'bg-blue-400'}`}></span>
-              <span className={`relative inline-flex rounded-full h-3 w-3 ${activeConsultation ? 'bg-emerald-500' : 'bg-blue-500'}`}></span>
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${currentStatusStyle.glow}`}></span>
+              <span className={`relative inline-flex rounded-full h-3 w-3 ${currentStatusStyle.dot}`}></span>
             </span>
             <span className="text-xs sm:text-sm font-bold text-gray-200">
-              {activeConsultation ? (
+              {effectiveStatus === 'unavailable' ? (
+                <span className="text-rose-400 font-black flex items-center gap-2">
+                  <span>🔴</span>
+                  <span>{locale === 'ar' ? 'أنت في وضع الاستراحة حالياً (موقوف عن استقبال مرضى مؤقتاً).' : 'You are currently on break / unavailable. Clinic queue paused.'}</span>
+                </span>
+              ) : activeConsultation ? (
                 <>
-                  <span className="text-emerald-400 font-black">{locale === 'ar' ? 'جلسة كشف جارية الآن:' : 'Currently Consulting:'}</span>{' '}
-                  <span className="underline decoration-emerald-500/50">{activeConsultation.patient?.full_name || activeConsultation.manual_patient?.full_name}</span>{' '}
+                  <span className="text-amber-400 font-black">{locale === 'ar' ? 'جلسة كشف جارية الآن:' : 'Currently Consulting:'}</span>{' '}
+                  <span className="underline decoration-amber-500/50">{activeConsultation.patient?.full_name || activeConsultation.manual_patient?.full_name}</span>{' '}
                   <span className="text-xs text-gray-400">(Q{activeConsultation.queue_position})</span>
                 </>
               ) : todayClinicVisits.length > 0 ? (
                 <>
-                  <span className="text-blue-400 font-black">{locale === 'ar' ? 'العيادة جاهزة للمريض التالي:' : 'Clinic Ready:'}</span>{' '}
+                  <span className="text-emerald-400 font-black">{locale === 'ar' ? 'العيادة جاهزة للمريض التالي:' : 'Clinic Ready:'}</span>{' '}
                   <span>{todayClinicVisits.length} {locale === 'ar' ? 'مرضى في طابور اليوم' : 'clinic patients scheduled'}</span>
                   {arrivedPatients.length > 0 && (
                     <span className="text-emerald-400 font-bold ml-2">({arrivedPatients.length} {locale === 'ar' ? 'وصلوا للعيادة' : 'in waiting room'})</span>
@@ -156,7 +261,7 @@ export default function DoctorOverview({
             </span>
           </div>
 
-          {todayClinicVisits.length > 0 && !activeConsultation && (
+          {todayClinicVisits.length > 0 && !activeConsultation && effectiveStatus !== 'unavailable' && (
             <button
               onClick={() => {
                 const next = todayClinicVisits[0]
@@ -374,7 +479,7 @@ export default function DoctorOverview({
                           </span>
                         </div>
                         <p className="text-xs text-gray-500 mt-1 flex items-center gap-2">
-                          <span>🕒 {new Date(visit.scheduled_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          <span>🕒 {new Date(visit.scheduled_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}</span>
                           <span>•</span>
                           <span>💰 {visit.fees} EGP</span>
                           <span className={`font-bold ${visit.payment_status === 'paid' ? 'text-green-600' : 'text-amber-600'}`}>
@@ -507,7 +612,7 @@ export default function DoctorOverview({
                           )}
                         </div>
                         <p className="text-xs text-gray-400 mt-0.5">
-                          🕒 {new Date(apt.scheduled_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {(apt.appointment_type || 'clinic_normal').replace(/_/g, ' ')}
+                          🕒 {new Date(apt.scheduled_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })} • {(apt.appointment_type || 'clinic_normal').replace(/_/g, ' ')}
                         </p>
                       </div>
                     </div>
