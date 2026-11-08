@@ -2,6 +2,7 @@ import { getTranslations } from 'next-intl/server';
 import { createClient } from '@/utils/supabase/server';
 import { getOrCreateProfile } from '@/utils/supabase/profiles';
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 import LogoutButton from '@/components/LogoutButton';
 import PatientDashboard from '@/components/PatientDashboard';
 import DoctorDashboard from '@/components/DoctorDashboard';
@@ -267,7 +268,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
         <main className="flex-1 p-6 md:p-10 overflow-y-auto w-full">
           {/* Mobile Navigation Header */}
           <div className="lg:hidden w-full p-4 bg-[var(--color-cp-navy)] text-white rounded-[24px] shadow-lg mb-8 flex justify-between items-center">
-             <div className="flex items-center gap-3">
+             <Link href={`/${locale}/profile`} className="flex items-center gap-3 hover:opacity-80 transition-opacity" title="My Profile">
                <div className="w-10 h-10 rounded-full bg-[var(--color-cp-purple)] flex items-center justify-center font-black">
                  {fullName?.charAt(0)}
                </div>
@@ -275,7 +276,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
                  <span className="text-sm font-bold block">{fullName}</span>
                  <span className="text-[10px] uppercase font-black text-gray-400">{role}</span>
                </div>
-             </div>
+             </Link>
              <LogoutButton />
           </div>
 

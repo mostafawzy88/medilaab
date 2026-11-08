@@ -39,12 +39,11 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
     setFetchingDoctors(false)
   }
 
-  const handleComplete = async () => {
+  const handleComplete = async (skipDoctors = false) => {
     if (!role) return
-    if (role === 'patient' && selectedDoctors.length === 0) return
 
     setLoading(true)
-    console.log('[Onboarding] Handling complete for role:', role)
+    console.log('[Onboarding] Handling complete for role:', role, 'skipDoctors:', skipDoctors)
     
     const supabase = createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -83,8 +82,8 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
       return
     }
 
-    // If patient, insert doctor relationships
-    if (role === 'patient' && selectedDoctors.length > 0) {
+    // If patient and not skipping, insert selected doctor relationships
+    if (role === 'patient' && !skipDoctors && selectedDoctors.length > 0) {
       const doctorRels = selectedDoctors.map(docId => ({
         patient_id: user.id,
         doctor_id: docId
@@ -185,9 +184,12 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
                   <p className="text-gray-400">Finding doctors...</p>
                 </div>
               ) : doctors.length === 0 ? (
-                <div className="py-20 text-center space-y-4">
+                <div className="py-12 px-6 text-center space-y-3 bg-gray-50 dark:bg-gray-800/40 rounded-3xl border border-gray-100 dark:border-gray-800">
                   <div className="text-4xl">👨‍⚕️</div>
-                  <p className="text-gray-500">No authorized doctors found in this clinic yet.</p>
+                  <h3 className="font-bold text-gray-800 dark:text-gray-200 text-lg">No doctors registered yet</h3>
+                  <p className="text-sm text-gray-500 max-w-sm mx-auto">
+                    {t('no_doctors_found')}
+                  </p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-3">
@@ -222,19 +224,35 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
                 </div>
               )}
 
-              <div className="flex gap-4">
+              <div className="space-y-3">
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setStep(1)}
+                    className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold py-4 rounded-2xl transition-all hover:bg-gray-200"
+                  >
+                    Back
+                  </button>
+                  <button
+                    disabled={loading}
+                    onClick={() => handleComplete(false)}
+                    className="flex-[2] bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold py-4 rounded-2xl shadow-lg shadow-blue-500/30 transition-all disabled:opacity-50"
+                  >
+                    {loading 
+                      ? t('completing') 
+                      : selectedDoctors.length > 0 
+                        ? (selectedDoctors.length === 1 ? 'Connect & Finish' : `Connect ${selectedDoctors.length} Doctors & Finish`)
+                        : t('finish')}
+                  </button>
+                </div>
+
                 <button
-                  onClick={() => setStep(1)}
-                  className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold py-4 rounded-2xl transition-all"
+                  type="button"
+                  disabled={loading}
+                  onClick={() => handleComplete(true)}
+                  className="w-full text-center text-sm font-bold text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2 group"
                 >
-                  Back
-                </button>
-                 <button
-                  disabled={selectedDoctors.length === 0 || loading}
-                  onClick={handleComplete}
-                  className="flex-[2] bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold py-4 rounded-2xl shadow-lg shadow-blue-500/30 transition-all disabled:opacity-50"
-                >
-                  {loading ? t('completing') : t('finish')}
+                  <span>{t('skip_doctor')}</span>
+                  <span className="group-hover:translate-x-1 transition-transform">→</span>
                 </button>
               </div>
             </div>
@@ -288,7 +306,7 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
                 <button onClick={() => setStep(1)} className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold py-4 rounded-2xl transition-all">Back</button>
                 <button
                   disabled={selectedDoctors.length === 0 || loading}
-                  onClick={handleComplete}
+                  onClick={() => handleComplete()}
                   className="flex-[2] bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-teal-500/30 transition-all disabled:opacity-50"
                 >
                   {loading ? t('completing') : t('finish')}

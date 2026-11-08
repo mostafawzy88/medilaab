@@ -72,6 +72,8 @@
     "select_doctor_description": "Select the doctor you want to follow in this clinic.",
     "completing": "Completing onboarding...",
     "finish": "Finish Setup",
+    "skip_doctor": "Skip for now — I'll choose doctors later",
+    "no_doctors_found": "No authorized doctors found yet. You can skip and connect later.",
     "error": "Something went wrong. Please try again."
   },
   "Authorization": {

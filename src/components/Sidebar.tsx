@@ -87,15 +87,22 @@ export default function Sidebar({ fullName, role }: { fullName: string, role?: s
 
       {/* User Area at bottom of Sidebar */}
       <div className="p-4 border-t border-[var(--color-ml-navy-light)] space-y-4">
-         <div className="flex items-center gap-3 px-4 py-3 bg-white/5 rounded-xl border border-[var(--color-ml-navy-light)]">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white flex items-center justify-center text-xs font-black">
+         <Link
+            href={`/${locale}/profile`}
+            className="flex items-center gap-3 px-4 py-3 bg-white/5 hover:bg-white/10 rounded-xl border border-[var(--color-ml-navy-light)] hover:border-blue-500/40 hover:scale-[1.02] transition-all group cursor-pointer"
+            title="View & Edit Profile"
+         >
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white flex items-center justify-center text-xs font-black shadow-sm group-hover:scale-105 transition-transform">
               {fullName?.charAt(0)}
             </div>
             <div className="flex-1 min-w-0">
-               <p className="text-sm font-bold text-white truncate">{fullName}</p>
-               <p className="text-[10px] text-gray-400 uppercase font-black">{role}</p>
+               <p className="text-sm font-bold text-white truncate group-hover:text-blue-300 transition-colors">{fullName}</p>
+               <p className="text-[10px] text-gray-400 uppercase font-black tracking-wider">{role}</p>
             </div>
-         </div>
+            <svg className="w-4 h-4 text-gray-500 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+         </Link>
          
          <div className="space-y-2">
             <LogoutButton />
