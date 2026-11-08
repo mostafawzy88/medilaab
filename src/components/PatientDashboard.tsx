@@ -7,6 +7,7 @@ import { useSearchParams } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import BookingModal from './BookingModal'
 import PrescriptionViewerModal from './PrescriptionViewerModal'
+import DoctorProfileModal from './DoctorProfileModal'
 
 type AppointmentProps = {
   id: string
@@ -84,6 +85,7 @@ export default function PatientDashboard({
   
   const [doctors, setDoctors] = useState<DoctorInfo[]>(initialDoctors)
   const [selectedDoctor, setSelectedDoctor] = useState<DoctorInfo | null>(null)
+  const [viewingDoctorId, setViewingDoctorId] = useState<string | null>(null)
   const [allDoctors, setAllDoctors] = useState<DoctorInfo[]>([])
   const [showAddDoctor, setShowAddDoctor] = useState(false)
   const [searching, setSearching] = useState(false)
@@ -349,21 +351,45 @@ export default function PatientDashboard({
                           <span className="text-lg">{cfg.icon}</span>
                           <span className={`text-xs font-black uppercase tracking-wider ${cfg.color}`}>{needsPayment ? `💳 ${tp('awaiting_payment') || 'Awaiting Payment'}` : cfg.label}</span>
                         </div>
-                        <div className="flex gap-2">
-                           {isApproved && (
-                             <button onClick={() => { 
-                               const doc = doctors.find(d => d.id === apt.doctor_id);
-                               setSelectedDoctor(doc || null);
-                               setEditAppointmentId(apt.id); 
-                               setShowBooking(true); 
-                             }} className="text-xs font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-lg hover:bg-blue-100 transition-colors">{tp('reschedule') || 'Reschedule'}</button>
+                        <div className="flex items-center gap-2">
+                           {(isPending || isApproved) && (
+                             <button 
+                               onClick={() => { 
+                                 const doc = doctors.find(d => d.id === apt.doctor_id) || allDoctors.find(d => d.id === apt.doctor_id);
+                                 setSelectedDoctor(doc || ({ id: apt.doctor_id, full_name: apt.doctor_name } as any));
+                                 setEditAppointmentId(apt.id); 
+                                 setShowBooking(true); 
+                               }} 
+                               className="text-xs font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-3 py-1.5 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors flex items-center gap-1.5 shadow-sm"
+                               title="Modify or reschedule this visit"
+                             >
+                               <span>✏️</span>
+                               <span>{isPending ? 'Edit' : (tp('reschedule') || 'Reschedule')}</span>
+                             </button>
                            )}
                            {isPending && (
-                             <button onClick={() => handleDeleteAppointment(apt.id)} className="text-xs font-bold text-red-600 bg-red-50 dark:bg-red-900/30 px-3 py-1 rounded-lg hover:bg-red-100 transition-colors">{tp('delete') || 'Delete'}</button>
+                             <button 
+                               onClick={() => handleDeleteAppointment(apt.id)} 
+                               className="text-xs font-bold text-red-600 bg-red-50 dark:bg-red-900/30 px-3 py-1.5 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors flex items-center gap-1.5 shadow-sm"
+                               title="Cancel and remove this request"
+                             >
+                               <span>🗑️</span>
+                               <span>{tp('delete') || 'Delete'}</span>
+                             </button>
                            )}
                         </div>
                       </div>
-                      <h4 className="font-bold text-lg">Dr. {apt.doctor_name}</h4>
+                      <div className="flex items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={() => setViewingDoctorId(apt.doctor_id)}
+                          className="font-black text-lg text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center gap-1.5 text-left group"
+                          title="Click to view Dr. profile, rush hours & stats"
+                        >
+                          <span>Dr. {apt.doctor_name}</span>
+                          <span className="text-xs text-blue-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity">ℹ️ View Profile →</span>
+                        </button>
+                      </div>
                       
                       {apt.status === 'proposed' && (
                         <div className="mt-4 p-4 bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-2xl flex flex-col gap-3 animate-in fade-in slide-in-from-top-2">
@@ -605,12 +631,30 @@ export default function PatientDashboard({
                           className="text-gray-300 hover:text-red-500 transition-colors p-1"
                           title="Remove Doctor"
                         >✕</button>
-                        <button 
-                           onClick={() => { setSelectedDoctor(doc); setEditAppointmentId(null); setShowBooking(true); }}
-                           className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white text-sm font-black px-6 py-2.5 rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20"
-                         >
-                           Book Appointment
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button 
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setViewingDoctorId(doc.id);
+                            }}
+                            className="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs font-bold px-3.5 py-2.5 rounded-xl hover:bg-blue-100 transition-all border border-blue-200 dark:border-blue-800 flex items-center gap-1.5 shadow-sm"
+                            title="View doctor's public statistics, rush hours and bio"
+                          >
+                            <span>ℹ️ Profile & Stats</span>
+                          </button>
+                          <button 
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               setSelectedDoctor(doc);
+                               setEditAppointmentId(null);
+                               setShowBooking(true);
+                             }}
+                             className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white text-xs font-black px-4 py-2.5 rounded-xl hover:opacity-95 transition-all shadow-md shadow-blue-500/20"
+                           >
+                             Book Visit
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -675,18 +719,33 @@ export default function PatientDashboard({
                    {searching ? (
                      <div className="py-12 flex justify-center"><div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" /></div>
                    ) : allDoctors.filter(d => !doctors.find(myD => myD.id === d.id)).map(doc => (
-                     <div key={doc.id} className="w-full p-4 rounded-2xl border-2 border-gray-100 dark:border-gray-800 flex items-center justify-between gap-4 bg-gray-50 dark:bg-gray-800/50">
-                       <div>
-                         <p className="font-bold">Dr. {doc.full_name}</p>
-                         <p className="text-xs text-blue-600 font-medium">{doc.specialization}</p>
-                       </div>
-                       <button 
-                         disabled={addingDoctor !== null}
-                         onClick={() => handleAddDoctor(doc.id)}
-                         className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-black transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50"
+                     <div key={doc.id} className="w-full p-4 rounded-2xl border-2 border-gray-100 dark:border-gray-800 flex items-center justify-between gap-3 bg-gray-50 dark:bg-gray-800/50">
+                       <div 
+                         className="cursor-pointer group flex-1"
+                         onClick={() => setViewingDoctorId(doc.id)}
                        >
-                         {addingDoctor === doc.id ? '...' : '+ Add'}
-                       </button>
+                         <p className="font-bold group-hover:text-blue-600 transition-colors flex items-center gap-1.5">
+                           Dr. {doc.full_name}
+                           <span className="text-[10px] text-gray-400 font-normal">🔍 View</span>
+                         </p>
+                         <p className="text-xs text-blue-600 font-medium">{doc.specialization || 'General Practitioner'}</p>
+                       </div>
+                       <div className="flex items-center gap-2">
+                         <button
+                           type="button"
+                           onClick={() => setViewingDoctorId(doc.id)}
+                           className="px-3 py-2 text-xs font-bold text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-xl border border-blue-200 dark:border-blue-800 transition-colors"
+                         >
+                           Profile & Stats
+                         </button>
+                         <button 
+                           disabled={addingDoctor !== null}
+                           onClick={() => handleAddDoctor(doc.id)}
+                           className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] hover:opacity-90 text-white px-4 py-2 rounded-xl text-xs font-black transition-all shadow-md shadow-blue-500/20 disabled:opacity-50"
+                         >
+                           {addingDoctor === doc.id ? '...' : '+ Add'}
+                         </button>
+                       </div>
                      </div>
                    ))}
                    {!searching && allDoctors.filter(d => !doctors.find(myD => myD.id === d.id)).length === 0 && (
@@ -812,6 +871,20 @@ export default function PatientDashboard({
           prescription={viewingPrescription}
           patientName={patientName}
           onClose={() => setViewingPrescription(null)}
+        />
+      )}
+
+      {viewingDoctorId && (
+        <DoctorProfileModal
+          doctorId={viewingDoctorId}
+          onClose={() => setViewingDoctorId(null)}
+          isLinked={doctors.some(d => d.id === viewingDoctorId)}
+          onAddDoctor={handleAddDoctor}
+          onBook={(doc) => {
+            setSelectedDoctor(doc);
+            setEditAppointmentId(null);
+            setShowBooking(true);
+          }}
         />
       )}
     </div>

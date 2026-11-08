@@ -4,10 +4,13 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
+import DoctorProfileModal from './DoctorProfileModal'
 
 type Doctor = {
   id: string
   full_name: string
+  specialization?: string | null
+  clinic_location?: string | null
 }
 
 export default function OnboardingWizard({ locale }: { locale: string }) {
@@ -19,6 +22,7 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
   const [selectedDoctors, setSelectedDoctors] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [fetchingDoctors, setFetchingDoctors] = useState(false)
+  const [viewingDoctorId, setViewingDoctorId] = useState<string | null>(null)
 
   useEffect(() => {
     if (step === 2 && (role === 'patient' || role === 'nurse')) {
@@ -31,7 +35,7 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
     const supabase = createClient()
     const { data } = await supabase
       .from('profiles')
-      .select('id, full_name')
+      .select('id, full_name, specialization, clinic_location')
       .eq('role', 'doctor')
       .eq('is_authorized', true)
     
@@ -194,32 +198,69 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
               ) : (
                 <div className="grid grid-cols-1 gap-3">
                   {doctors.map((doc) => (
-                    <button
+                    <div
                       key={doc.id}
-                      onClick={() => {
-                        if (selectedDoctors.includes(doc.id)) {
-                          setSelectedDoctors(prev => prev.filter(id => id !== doc.id))
-                        } else {
-                          setSelectedDoctors(prev => [...prev, doc.id])
-                        }
-                      }}
-                      className={`p-5 rounded-2xl border-2 text-left transition-all ${
+                      className={`p-4 rounded-2xl border-2 transition-all flex items-center justify-between gap-3 ${
                         selectedDoctors.includes(doc.id) 
                           ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' 
                           : 'border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 hover:border-gray-200'
                       }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-lg">Dr. {doc.full_name}</span>
-                        {selectedDoctors.includes(doc.id) && (
-                          <div className="bg-blue-600 text-white rounded-full p-1">
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                            </svg>
-                          </div>
+                      <div 
+                        className="flex-1 cursor-pointer"
+                        onClick={() => {
+                          if (selectedDoctors.includes(doc.id)) {
+                            setSelectedDoctors(prev => prev.filter(id => id !== doc.id))
+                          } else {
+                            setSelectedDoctors(prev => [...prev, doc.id])
+                          }
+                        }}
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-base text-gray-900 dark:text-white">Dr. {doc.full_name}</span>
+                          <span className="text-xs text-blue-600 bg-blue-100 dark:bg-blue-900/40 px-2 py-0.5 rounded-md font-semibold">
+                            {doc.specialization || 'General Practitioner'}
+                          </span>
+                        </div>
+                        {doc.clinic_location && (
+                          <p className="text-xs text-gray-500 mt-1">📍 {doc.clinic_location}</p>
                         )}
                       </div>
-                    </button>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setViewingDoctorId(doc.id);
+                          }}
+                          className="px-3 py-1.5 text-xs font-bold text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-xl border border-blue-200 dark:border-blue-800 transition-colors"
+                          title="View doctor's public statistics, rush hours and bio"
+                        >
+                          ℹ️ Stats & Profile
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedDoctors.includes(doc.id)) {
+                              setSelectedDoctors(prev => prev.filter(id => id !== doc.id))
+                            } else {
+                              setSelectedDoctors(prev => [...prev, doc.id])
+                            }
+                          }}
+                          className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                            selectedDoctors.includes(doc.id)
+                              ? 'bg-blue-600 text-white'
+                              : 'border-2 border-gray-300 dark:border-gray-600 text-transparent hover:border-blue-400'
+                          }`}
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}
@@ -278,26 +319,56 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
               ) : (
                 <div className="grid grid-cols-1 gap-3">
                   {doctors.map((doc) => (
-                    <button
+                    <div
                       key={doc.id}
-                      onClick={() => setSelectedDoctors([doc.id])}
-                      className={`p-5 rounded-2xl border-2 text-left transition-all ${
+                      className={`p-4 rounded-2xl border-2 transition-all flex items-center justify-between gap-3 ${
                         selectedDoctors.includes(doc.id) 
                           ? 'border-teal-600 bg-teal-50 dark:bg-teal-900/20' 
                           : 'border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 hover:border-gray-200'
                       }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-lg">Dr. {doc.full_name}</span>
-                        {selectedDoctors.includes(doc.id) && (
-                          <div className="bg-teal-600 text-white rounded-full p-1">
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                            </svg>
-                          </div>
+                      <div 
+                        className="flex-1 cursor-pointer"
+                        onClick={() => setSelectedDoctors([doc.id])}
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-base text-gray-900 dark:text-white">Dr. {doc.full_name}</span>
+                          <span className="text-xs text-teal-600 bg-teal-100 dark:bg-teal-900/40 px-2 py-0.5 rounded-md font-semibold">
+                            {doc.specialization || 'General Practitioner'}
+                          </span>
+                        </div>
+                        {doc.clinic_location && (
+                          <p className="text-xs text-gray-500 mt-1">📍 {doc.clinic_location}</p>
                         )}
                       </div>
-                    </button>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setViewingDoctorId(doc.id);
+                          }}
+                          className="px-3 py-1.5 text-xs font-bold text-teal-600 hover:bg-teal-100 dark:hover:bg-teal-900/40 rounded-xl border border-teal-200 dark:border-teal-800 transition-colors"
+                        >
+                          ℹ️ Stats & Profile
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDoctors([doc.id])}
+                          className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                            selectedDoctors.includes(doc.id)
+                              ? 'bg-teal-600 text-white'
+                              : 'border-2 border-gray-300 dark:border-gray-600 text-transparent hover:border-teal-400'
+                          }`}
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}
@@ -316,6 +387,20 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
           )}
         </div>
       </div>
+
+      {viewingDoctorId && (
+        <DoctorProfileModal
+          doctorId={viewingDoctorId}
+          onClose={() => setViewingDoctorId(null)}
+          isLinked={selectedDoctors.includes(viewingDoctorId)}
+          onAddDoctor={(id) => {
+            if (!selectedDoctors.includes(id)) {
+              setSelectedDoctors(prev => [...prev, id]);
+            }
+            setViewingDoctorId(null);
+          }}
+        />
+      )}
     </div>
   )
 }

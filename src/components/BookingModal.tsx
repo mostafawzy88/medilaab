@@ -4,10 +4,12 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useTranslations } from 'next-intl'
 import { QRCodeSVG } from 'qrcode.react'
+import DoctorProfileModal from './DoctorProfileModal'
 
 type Doctor = {
   id: string
   full_name: string
+  specialization?: string | null
   instapay_address: string | null
   fees_normal: number | null
   fees_urgent: number | null
@@ -39,6 +41,7 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
   const [loading, setLoading] = useState(true)
   const [bookedSlots, setBookedSlots] = useState<string[]>([])
   const [loadingSlots, setLoadingSlots] = useState(false)
+  const [viewingDoctorId, setViewingDoctorId] = useState<string | null>(null)
 
   // Staff-specific state
   const [patientSearch, setPatientSearch] = useState('')
@@ -53,7 +56,7 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
       const supabase = createClient()
       const { data } = await supabase
         .from('profiles')
-        .select('id, full_name, instapay_address, fees_normal, fees_urgent, fees_home_visit, auto_confirm_appointments, working_hours')
+        .select('id, full_name, specialization, instapay_address, fees_normal, fees_urgent, fees_home_visit, auto_confirm_appointments, working_hours')
         .eq('role', 'doctor')
         .eq('is_authorized', true)
       
@@ -69,6 +72,34 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
     }
     fetchDoctors()
   }, [initialDoctor?.id, isStaff, editAppointmentId])
+
+  // Prefill existing appointment details when editing
+  useEffect(() => {
+    if (!editAppointmentId) return
+    const fetchExistingAppointment = async () => {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('appointments')
+        .select('*')
+        .eq('id', editAppointmentId)
+        .single()
+      
+      if (data) {
+        setSelectedDoctorId(data.doctor_id)
+        if (data.scheduled_time) {
+          const d = new Date(data.scheduled_time)
+          setSelectedDate(d.toISOString().split('T')[0])
+          const timeStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+          setSelectedTime(timeStr)
+        }
+        if (data.appointment_type) {
+          setAppointmentType(data.appointment_type)
+        }
+        setStep(2)
+      }
+    }
+    fetchExistingAppointment()
+  }, [editAppointmentId])
 
   // Search patients
   useEffect(() => {
@@ -271,6 +302,8 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
     if (editAppointmentId) {
       const { error: updateError } = await supabase.from('appointments').update({
         scheduled_time: finalDate.toISOString(),
+        appointment_type: appointmentType,
+        fees: currentFee,
         status: newStatus
       }).eq('id', editAppointmentId)
       error = updateError
@@ -315,7 +348,7 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
         {/* Header */}
         <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50 flex-shrink-0">
           <h2 className="text-xl font-bold">
-            {editAppointmentId ? 'Reschedule Appointment' : (step === 0 ? 'Select Patient' : (step === 3 ? 'Confirm & Secure Booking' : t('book_appointment')))}
+            {editAppointmentId ? (selectedDoctor ? `Edit Appointment with Dr. ${selectedDoctor.full_name}` : 'Edit / Reschedule Appointment') : (step === 0 ? 'Select Patient' : (step === 3 ? 'Confirm & Secure Booking' : t('book_appointment')))}
           </h2>
           <button onClick={onClose} className="p-2 bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors shadow-sm">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -436,10 +469,26 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
                     >
                       <option value="">-- Choose a Doctor --</option>
                       {doctors.map(doc => (
-                        <option key={doc.id} value={doc.id}>Dr. {doc.full_name}</option>
+                        <option key={doc.id} value={doc.id}>Dr. {doc.full_name} {doc.specialization ? `(${doc.specialization})` : ''}</option>
                       ))}
                     </select>
                   </div>
+
+                  {selectedDoctor && (
+                    <div className="flex items-center justify-between p-3.5 bg-blue-50/70 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-800">
+                      <div>
+                        <p className="font-bold text-sm text-gray-900 dark:text-white">Dr. {selectedDoctor.full_name}</p>
+                        <p className="text-xs text-blue-600 font-semibold">{selectedDoctor.specialization || 'General Practitioner'}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setViewingDoctorId(selectedDoctor.id)}
+                        className="text-xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 bg-white dark:bg-gray-800 px-3 py-1.5 rounded-xl border border-blue-200 dark:border-blue-700 shadow-sm transition-all"
+                      >
+                        ℹ️ View Rush Hours & Stats
+                      </button>
+                    </div>
+                  )}
 
                   {selectedDoctor && (
                     <div className="space-y-3">
@@ -566,7 +615,7 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
                       disabled={!selectedDate || !selectedTime || booking}
                       className="flex-[2] bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl shadow-lg shadow-blue-500/20 disabled:opacity-50 flex justify-center items-center"
                     >
-                      {editAppointmentId ? (booking ? 'Confirming...' : 'Confirm Reschedule') : (isStaff ? 'Confirm Booking' : 'Next: Payment')}
+                      {editAppointmentId ? (booking ? 'Updating...' : 'Update & Confirm Appointment') : (isStaff ? 'Confirm Booking' : 'Next: Payment')}
                     </button>
                   </div>
                 </div>
@@ -630,6 +679,14 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
           )}
         </div>
       </div>
+
+      {viewingDoctorId && (
+        <DoctorProfileModal
+          doctorId={viewingDoctorId}
+          onClose={() => setViewingDoctorId(null)}
+          isLinked={true}
+        />
+      )}
     </div>
   )
 }
