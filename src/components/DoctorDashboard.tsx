@@ -307,20 +307,6 @@ export default function DoctorDashboard({
 
   return (
     <div className="space-y-6">
-      {/* Auto-Confirm Toggle */}
-      <div className="flex items-center justify-between bg-white dark:bg-[#150F2A] rounded-2xl p-4 border border-gray-100 dark:border-[#2A214D] shadow-sm">
-        <div>
-          <p className="font-bold text-sm">Auto-Confirm Appointments</p>
-          <p className="text-xs text-gray-500">Automatically approve bookings that fall within your working hours</p>
-        </div>
-        <button 
-          onClick={toggleAutoConfirm}
-          className={`relative w-12 h-7 rounded-full transition-colors ${autoConfirm ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-700'}`}
-        >
-          <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-sm transition-transform ${autoConfirm ? 'translate-x-5' : ''}`} />
-        </button>
-      </div>
-
       {activeTab === 'overview' ? (
         <DoctorOverview
           doctorId={doctorId}
