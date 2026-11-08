@@ -150,6 +150,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
         appointment_type,
         status,
         scheduled_time,
+        notes,
         rejection_reason,
         reviewed_by,
         reviewed_at,
@@ -171,6 +172,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
       appointment_type: apt.appointment_type,
       status: apt.status,
       scheduled_time: apt.scheduled_time,
+      notes: apt.notes,
       rejection_reason: apt.rejection_reason,
       reviewer_name: apt.reviewer?.full_name || null,
     }));
@@ -206,14 +208,15 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
     const startOfWindow = new Date();
     startOfWindow.setHours(startOfWindow.getHours() - 12);
 
-    // Today's queue (scheduled/in_progress)
+    // Today's clinic queue (scheduled/in_progress) - Exclude home visits from clinic waiting room!
     const { data: queue } = await supabase
       .from('appointments')
       .select(`
-        id, patient_id, scheduled_time, status, queue_position, appointment_type, fees, payment_status,
-        patient:profiles!appointments_patient_id_fkey(full_name)
+        id, patient_id, scheduled_time, status, queue_position, appointment_type, fees, payment_status, notes,
+        patient:profiles!appointments_patient_id_fkey(full_name, phone_number)
       `)
       .eq('doctor_id', user.id)
+      .neq('appointment_type', 'home_visit')
       .in('status', ['scheduled', 'in_progress'])
       .gte('scheduled_time', startOfWindow.toISOString())
       .order('queue_position', { ascending: true });
@@ -222,8 +225,8 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
     const { data: pendingRequests } = await supabase
       .from('appointments')
       .select(`
-        id, patient_id, scheduled_time, status, queue_position, appointment_type, fees, payment_status,
-        patient:profiles!appointments_patient_id_fkey(full_name)
+        id, patient_id, scheduled_time, status, queue_position, appointment_type, fees, payment_status, notes,
+        patient:profiles!appointments_patient_id_fkey(full_name, phone_number)
       `)
       .eq('doctor_id', user.id)
       .eq('status', 'waiting')
@@ -238,9 +241,10 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
     const { data: queue } = await supabase
       .from('appointments')
       .select(`
-        id, patient_id, doctor_id, scheduled_time, status, queue_position,
-        patient:profiles!appointments_patient_id_fkey(full_name)
+        id, patient_id, doctor_id, scheduled_time, status, queue_position, appointment_type, notes,
+        patient:profiles!appointments_patient_id_fkey(full_name, phone_number)
       `)
+      .neq('appointment_type', 'home_visit')
       .in('status', ['scheduled', 'waiting', 'in_progress', 'completed'])
       .gte('scheduled_time', startOfWindow.toISOString())
       .order('queue_position', { ascending: true });

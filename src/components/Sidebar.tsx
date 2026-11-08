@@ -24,8 +24,9 @@ export default function Sidebar({ fullName, role }: { fullName: string, role?: s
         ]
       case 'doctor':
         return [
-          { id: 'schedule', name: 'Schedule', icon: '📅' },
+          { id: 'overview', name: 'Home / Overview', icon: '🏠' },
           { id: 'queue', name: 'Queue', icon: '📋' },
+          { id: 'schedule', name: 'Schedule', icon: '📅' },
           { id: 'requests', name: 'Requests', icon: '📥' },
           { id: 'patients', name: 'Patients', icon: '👥' },
           { id: 'stats', name: 'Reports & Stats', icon: '📈' },
@@ -67,7 +68,7 @@ export default function Sidebar({ fullName, role }: { fullName: string, role?: s
       {/* Navigation */}
       <nav className="flex-1 py-6 px-4 space-y-2 overflow-y-auto">
         {items.map((item) => {
-          const isActive = activeTab === item.id || (activeTab === 'overview' && item.id === 'queue' && role === 'doctor') // fallback
+          const isActive = activeTab === item.id || (!searchParams.get('tab') && item.id === 'overview')
           return (
             <Link
               key={item.id}

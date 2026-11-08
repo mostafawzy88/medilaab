@@ -20,6 +20,7 @@ type AppointmentProps = {
   appointment_type?: string
   status?: string
   scheduled_time?: string
+  notes?: string | null
   rejection_reason?: string | null
   reviewer_name?: string | null
 }
@@ -101,6 +102,23 @@ export default function PatientDashboard({
   const [expandedLogs, setExpandedLogs] = useState<string | null>(null)
   const [queueWaitTimes, setQueueWaitTimes] = useState<Record<string, number>>({})
 
+  // Live doctor status & queue turns
+  type LiveDoctorStatus = {
+    is_in_consultation: boolean
+    current_serving_position: number
+    total_clinic_today: number
+    waiting_outside_count: number
+    queue: Array<{
+      id: string
+      queue_position: number
+      status: string
+      scheduled_time: string
+      is_arrived: boolean
+    }>
+  }
+  const [liveDoctorData, setLiveDoctorData] = useState<Record<string, LiveDoctorStatus>>({})
+  const [arrivingId, setArrivingId] = useState<string | null>(null)
+
   // Fetch all authorized doctors for searching
   useEffect(() => {
     if (!showAddDoctor) return
@@ -114,37 +132,115 @@ export default function PatientDashboard({
     fetchAllDocs()
   }, [showAddDoctor])
 
-  // Fetch accurate queue wait times
+  // Fetch live doctor status & relative queue positions
   useEffect(() => {
-    const fetchWaitTimes = async () => {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const todayApts = appointments.filter(a => a.scheduled_time?.startsWith(todayStr) && a.status === 'scheduled');
-      if (todayApts.length === 0) {
-        setQueueWaitTimes({});
-        return;
-      }
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todayApts = appointments.filter(a => a.scheduled_time?.startsWith(todayStr) && (a.status === 'scheduled' || a.status === 'in_progress'));
+    if (todayApts.length === 0) return;
 
-      const supabase = createClient();
-      const newWaitTimes: Record<string, number> = {};
+    const supabase = createClient();
+    const distinctDoctorIds = Array.from(new Set(todayApts.map(a => a.doctor_id)));
 
-      for (const apt of todayApts) {
-        const { count } = await supabase
-          .from('appointments')
-          .select('*', { count: 'exact', head: true })
-          .eq('doctor_id', apt.doctor_id)
-          .in('status', ['scheduled', 'in_progress'])
-          .gte('scheduled_time', todayStr + 'T00:00:00')
-          .lt('scheduled_time', apt.scheduled_time) // Count those strictly before me
-        
-        newWaitTimes[apt.id] = (count || 0) * 30;
+    const fetchLiveStatus = async () => {
+      for (const docId of distinctDoctorIds) {
+        try {
+          // 1. Try secure RPC
+          const { data: rpcData, error: rpcError } = await supabase.rpc('get_doctor_live_queue', { p_doctor_id: docId });
+          if (!rpcError && rpcData) {
+            setLiveDoctorData(prev => ({ ...prev, [docId]: rpcData as LiveDoctorStatus }));
+          } else {
+            // 2. Fallback: query appointments where possible
+            const { data: qData } = await supabase
+              .from('appointments')
+              .select('id, queue_position, status, scheduled_time, notes')
+              .eq('doctor_id', docId)
+              .neq('appointment_type', 'home_visit')
+              .in('status', ['scheduled', 'in_progress'])
+              .gte('scheduled_time', todayStr + 'T00:00:00');
+
+            if (qData) {
+              const inProgress = qData.find((a: any) => a.status === 'in_progress');
+              setLiveDoctorData(prev => ({
+                ...prev,
+                [docId]: {
+                  is_in_consultation: !!inProgress,
+                  current_serving_position: inProgress?.queue_position || 0,
+                  total_clinic_today: qData.length,
+                  waiting_outside_count: qData.filter((a: any) => a.status === 'scheduled').length,
+                  queue: qData.map((a: any) => ({
+                    id: a.id,
+                    queue_position: a.queue_position || 1,
+                    status: a.status,
+                    scheduled_time: a.scheduled_time,
+                    is_arrived: (a.notes || '').includes('[ARRIVED:')
+                  }))
+                }
+              }));
+            }
+          }
+        } catch (err) {
+          console.error('Error fetching live queue for doctor:', docId, err);
+        }
       }
-      setQueueWaitTimes(newWaitTimes);
     };
 
-    fetchWaitTimes();
-    const interval = setInterval(fetchWaitTimes, 60000); // Refresh every minute
-    return () => clearInterval(interval);
+    fetchLiveStatus();
+
+    // Subscribe to realtime updates for these doctors
+    const channels = distinctDoctorIds.map(docId => {
+      return supabase
+        .channel(`patient-live-queue-${docId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments', filter: `doctor_id=eq.${docId}` }, () => {
+          fetchLiveStatus();
+        })
+        .subscribe();
+    });
+
+    const interval = setInterval(fetchLiveStatus, 30000); // 30s polling backup
+    return () => {
+      clearInterval(interval);
+      channels.forEach(ch => supabase.removeChannel(ch));
+    };
   }, [appointments]);
+
+  // Handle patient arrival alert
+  const handleMarkArrival = async (aptId: string) => {
+    setArrivingId(aptId);
+    try {
+      const supabase = createClient();
+      const currentApt = appointments.find(a => a.id === aptId);
+      const arrivedTag = `[ARRIVED: ${new Date().toISOString()}]`;
+      const updatedNotes = currentApt?.notes ? `${currentApt.notes} ${arrivedTag}` : arrivedTag;
+
+      const { error } = await supabase
+        .from('appointments')
+        .update({ notes: updatedNotes })
+        .eq('id', aptId);
+
+      if (error) {
+        alert('Could not update arrival status: ' + error.message);
+      } else {
+        setAppointments(prev => prev.map(a => a.id === aptId ? { ...a, notes: updatedNotes } : a));
+      }
+    } catch (err: any) {
+      alert('Error marking arrival: ' + (err.message || 'Unknown error'));
+    } finally {
+      setArrivingId(null);
+    }
+  };
+
+  const parseArrivalTime = (notes?: string | null) => {
+    if (!notes) return null;
+    const match = notes.match(/\[ARRIVED:\s*([^\]]+)\]/);
+    if (match && match[1]) {
+      try {
+        return new Date(match[1]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  };
 
   const handleAddDoctor = async (docId: string) => {
     setAddingDoctor(docId)
@@ -413,15 +509,104 @@ export default function PatientDashboard({
                         </div>
                       )}
                       
-                      {/* Wait Time Display */}
-                      {isApproved && apt.scheduled_time?.startsWith(new Date().toISOString().split('T')[0]) && (
-                        <div className="mt-2 flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800">
-                          <span className="text-blue-600">⌛</span>
-                          <p className="text-xs font-bold text-blue-700 dark:text-blue-300">
-                            {tp('estimated_wait') || 'Estimated Wait:'} {queueWaitTimes[apt.id] !== undefined ? `${queueWaitTimes[apt.id]} ${t('mins')}` : tp('calculating') || 'Calculating...'}
-                          </p>
-                        </div>
-                      )}
+                      {/* Live Queue, Arrival Alert & Doctor Free/Busy Status */}
+                      {isApproved && apt.scheduled_time?.startsWith(new Date().toISOString().split('T')[0]) && apt.appointment_type !== 'home_visit' && (() => {
+                        const arrivalTime = parseArrivalTime(apt.notes);
+                        const isArrived = !!arrivalTime;
+                        const docStatus = liveDoctorData[apt.doctor_id];
+                        const myPosition = apt.queue_position || 1;
+                        const currentServing = docStatus?.current_serving_position || 0;
+                        const isMyTurn = apt.status === 'in_progress' || (currentServing === myPosition && currentServing > 0);
+                        
+                        // Calculate patients ahead
+                        let patientsAhead = 0;
+                        if (docStatus?.queue && docStatus.queue.length > 0) {
+                          patientsAhead = docStatus.queue.filter(q => q.queue_position < myPosition && q.status !== 'completed').length;
+                        } else {
+                          patientsAhead = Math.max(0, myPosition - (currentServing || 1));
+                        }
+
+                        return (
+                          <div className="mt-3 space-y-3">
+                            {/* Arrival Notification Button / Confirmed Badge */}
+                            {!isArrived ? (
+                              <button
+                                type="button"
+                                disabled={arrivingId === apt.id}
+                                onClick={() => handleMarkArrival(apt.id)}
+                                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-500/20 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
+                              >
+                                <span>📍</span>
+                                <span>{arrivingId === apt.id ? 'Notifying Reception...' : (tp('i_have_arrived') || 'I Have Arrived at Clinic / وصلت إلى العيادة')}</span>
+                              </button>
+                            ) : (
+                              <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between text-xs">
+                                <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-200 font-black">
+                                  <span className="text-base">✅</span>
+                                  <span>{tp('checked_in') || 'Checked In at Clinic'} ({arrivalTime})</span>
+                                </div>
+                                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-200 dark:bg-emerald-800 text-emerald-900 dark:text-emerald-100">
+                                  {tp('doctor_notified') || 'Doctor Notified'}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Live Turn & Doctor Free Status Widget */}
+                            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-blue-50/70 to-indigo-50/70 dark:from-blue-950/30 dark:to-indigo-950/30 border border-blue-100 dark:border-blue-900/40 space-y-2.5">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-xs font-bold text-gray-700 dark:text-gray-300">
+                                  <span className="relative flex h-2.5 w-2.5">
+                                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${docStatus?.is_in_consultation ? 'bg-amber-400' : 'bg-emerald-400'}`}></span>
+                                    <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${docStatus?.is_in_consultation ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
+                                  </span>
+                                  <span>
+                                    {docStatus?.is_in_consultation 
+                                      ? (tp('doctor_busy') || 'Doctor is consulting with a patient') 
+                                      : (tp('doctor_free') || 'Doctor is ready for next patient')}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300">
+                                  Live Turn
+                                </span>
+                              </div>
+
+                              {/* Queue numbers */}
+                              <div className="grid grid-cols-2 gap-2 text-center pt-1">
+                                <div className="bg-white/80 dark:bg-gray-800/80 p-2 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                                  <p className="text-[10px] uppercase font-black text-gray-400">{tp('your_turn_number') || 'Your Turn'}</p>
+                                  <p className="text-base font-black text-blue-600">Q{myPosition}</p>
+                                </div>
+                                <div className="bg-white/80 dark:bg-gray-800/80 p-2 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                                  <p className="text-[10px] uppercase font-black text-gray-400">{tp('now_serving') || 'Now Serving'}</p>
+                                  <p className="text-base font-black text-gray-800 dark:text-gray-200">
+                                    {currentServing > 0 ? `Q${currentServing}` : (docStatus?.is_in_consultation ? 'In Room' : 'Ready')}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Turn status statement & Estimated time */}
+                              <div className="pt-1 flex items-center justify-between text-xs font-bold flex-wrap gap-2">
+                                {isMyTurn ? (
+                                  <span className="text-emerald-600 dark:text-emerald-400 font-black animate-pulse flex items-center gap-1">
+                                    <span>🎉</span> {tp('its_your_turn') || "It's your turn right now! Please enter."}
+                                  </span>
+                                ) : patientsAhead === 0 ? (
+                                  <span className="text-blue-600 dark:text-blue-400 font-black flex items-center gap-1">
+                                    <span>⚡</span> {tp('you_are_next') || 'You are NEXT in line! Please wait at clinic door.'}
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-600 dark:text-gray-300 flex items-center gap-1">
+                                    <span>👥</span> {patientsAhead} {patientsAhead === 1 ? (tp('patient_ahead') || 'patient ahead of you') : (tp('patients_ahead') || 'patients ahead of you')}
+                                  </span>
+                                )}
+                                <span className="text-gray-500 text-[11px]">
+                                  ⏱️ ~{Math.max(5, (patientsAhead || 1) * 15)} {t('mins') || 'mins wait'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       <div className="flex flex-col gap-1 mt-3 text-sm text-gray-500">
                         <div className="flex gap-2 items-center">

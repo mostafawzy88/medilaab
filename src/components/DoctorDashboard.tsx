@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useTranslations, useLocale } from 'next-intl'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
+import DoctorOverview from './DoctorOverview'
 import PrescriptionModal from './PrescriptionModal'
 import BookingModal from './BookingModal'
 import ClinicSchedule from './ClinicSchedule'
@@ -20,8 +21,9 @@ type Appointment = {
   appointment_type?: string
   fees?: number
   payment_status?: string
-  patient: { full_name: string } | null
-  manual_patient?: { full_name: string } | null
+  notes?: string | null
+  patient: { full_name: string; phone_number?: string | null } | null
+  manual_patient?: { full_name: string; phone_number?: string | null } | null
 }
 
 export default function DoctorDashboard({
@@ -36,7 +38,16 @@ export default function DoctorDashboard({
   const t = useTranslations('Dashboard')
   const locale = useLocale()
   
-  const [activeQueue, setActiveQueue] = useState<Appointment[]>(initialQueue.filter(a => a.status === 'scheduled' || a.status === 'in_progress'))
+  const router = useRouter()
+  // Active queue ONLY includes clinic appointments (excludes home visits from waiting room)
+  const [activeQueue, setActiveQueue] = useState<Appointment[]>(
+    initialQueue.filter(a => (a.status === 'scheduled' || a.status === 'in_progress') && a.appointment_type !== 'home_visit')
+  )
+  const [homeVisits, setHomeVisits] = useState<Appointment[]>(
+    initialQueue.filter(a => a.appointment_type === 'home_visit')
+  )
+  const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([])
+  const [doctorName, setDoctorName] = useState<string>('')
   const [requests, setRequests] = useState<Appointment[]>(initialRequests || initialQueue.filter(a => a.status === 'waiting'))
   const [activePrescription, setActivePrescription] = useState<Appointment | null>(null)
   const [processing, setProcessing] = useState<string | null>(null)
@@ -44,7 +55,7 @@ export default function DoctorDashboard({
   const [editingApt, setEditingApt] = useState<any>(null)
   
   const searchParams = useSearchParams()
-  const activeTab = searchParams.get('tab') || 'queue'
+  const activeTab = searchParams.get('tab') || 'overview'
 
   const [stats, setStats] = useState<any>(null)
   const [loadingStats, setLoadingStats] = useState(false)
@@ -56,8 +67,11 @@ export default function DoctorDashboard({
   useEffect(() => {
     const fetchPrefs = async () => {
       const supabase = createClient()
-      const { data } = await supabase.from('profiles').select('auto_confirm_appointments').eq('id', doctorId).single()
-      if (data) setAutoConfirm(data.auto_confirm_appointments || false)
+      const { data } = await supabase.from('profiles').select('auto_confirm_appointments, full_name').eq('id', doctorId).single()
+      if (data) {
+        setAutoConfirm(data.auto_confirm_appointments || false)
+        if (data.full_name) setDoctorName(data.full_name)
+      }
     }
     fetchPrefs()
   }, [doctorId])
@@ -93,9 +107,9 @@ export default function DoctorDashboard({
     const { data: queueData } = await supabase
       .from('appointments')
       .select(`
-        id, patient_id, manual_patient_id, scheduled_time, status, queue_position, appointment_type, fees, payment_status, 
-        patient:profiles!appointments_patient_id_fkey(full_name),
-        manual_patient:manual_patients(full_name)
+        id, patient_id, manual_patient_id, scheduled_time, status, queue_position, appointment_type, fees, payment_status, notes,
+        patient:profiles!appointments_patient_id_fkey(full_name, phone_number),
+        manual_patient:manual_patients(full_name, phone_number)
       `)
       .eq('doctor_id', doctorId)
       .neq('status', 'cancelled')
@@ -104,16 +118,24 @@ export default function DoctorDashboard({
       .order('scheduled_time', { ascending: true })
       
     if (queueData) {
-      setActiveQueue(queueData.filter((a: any) => a.status === 'scheduled' || a.status === 'in_progress'))
+      // 1. Clinic waiting room queue ONLY (excludes home visits!)
+      setActiveQueue(queueData.filter((a: any) => 
+        (a.status === 'scheduled' || a.status === 'in_progress') && a.appointment_type !== 'home_visit'
+      ))
+      // 2. Dedicated home visits list
+      setHomeVisits(queueData.filter((a: any) => a.appointment_type === 'home_visit'))
+      // 3. Today's appointments for overview
+      const todayStr = new Date().toISOString().split('T')[0]
+      setTodayAppointments(queueData.filter((a: any) => a.scheduled_time?.startsWith(todayStr)))
     }
 
     // All pending requests
     const { data: requestData } = await supabase
       .from('appointments')
       .select(`
-        id, patient_id, manual_patient_id, scheduled_time, status, queue_position, appointment_type, fees, payment_status, 
-        patient:profiles!appointments_patient_id_fkey(full_name),
-        manual_patient:manual_patients(full_name)
+        id, patient_id, manual_patient_id, scheduled_time, status, queue_position, appointment_type, fees, payment_status, notes,
+        patient:profiles!appointments_patient_id_fkey(full_name, phone_number),
+        manual_patient:manual_patients(full_name, phone_number)
       `)
       .eq('doctor_id', doctorId)
       .eq('status', 'waiting')
@@ -270,6 +292,19 @@ export default function DoctorDashboard({
     if (activeTab === 'meds') fetchMeds()
   }, [activeTab])
 
+  const parseArrivalTime = (notes?: string | null) => {
+    if (!notes) return null
+    const match = notes.match(/\[ARRIVED:\s*([^\]]+)\]/)
+    if (match && match[1]) {
+      try {
+        return new Date(match[1]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      } catch {
+        return null
+      }
+    }
+    return null
+  }
+
   return (
     <div className="space-y-6">
       {/* Auto-Confirm Toggle */}
@@ -286,10 +321,26 @@ export default function DoctorDashboard({
         </button>
       </div>
 
-      {activeTab === 'schedule' ? (
+      {activeTab === 'overview' ? (
+        <DoctorOverview
+          doctorId={doctorId}
+          doctorName={doctorName}
+          activeQueue={activeQueue}
+          homeVisits={homeVisits}
+          requests={requests}
+          todayAppointments={todayAppointments}
+          onCallNext={handleCallNext}
+          onApprove={handleApprove}
+          onReject={(id) => setRejectingId(id)}
+          onComplete={handleComplete}
+          onSwitchTab={(tab) => router.push(`/${locale}/dashboard?tab=${tab}`)}
+          autoConfirm={autoConfirm}
+          onToggleAutoConfirm={toggleAutoConfirm}
+        />
+      ) : activeTab === 'schedule' ? (
         <ClinicSchedule 
           doctorId={doctorId} 
-          appointments={[...activeQueue, ...requests]} 
+          appointments={[...activeQueue, ...homeVisits, ...requests]} 
           onNewAppointment={() => { setEditingApt(null); setShowBooking(true); }}
         />
       ) : (
@@ -304,15 +355,40 @@ export default function DoctorDashboard({
                   <tr>
                     <th className="p-4">#</th>
                     <th className="p-4">{t('patient_name')}</th>
+                    <th className="p-4">{locale === 'ar' ? 'نوع الكشف' : 'Visit Type'}</th>
+                    <th className="p-4">{locale === 'ar' ? 'الوصول للعيادة' : 'Waiting Room'}</th>
                     <th className="p-4">{t('status')}</th>
                     <th className="p-4 text-right">{t('actions')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {activeQueue.map((apt) => (
+                  {activeQueue.map((apt) => {
+                    const arrivalTime = parseArrivalTime(apt.notes)
+                    const isArrived = !!arrivalTime
+                    return (
                     <tr key={apt.id} className="hover:bg-gray-50/50">
                       <td className="p-4 font-black text-gray-400">Q{apt.queue_position}</td>
-                      <td className="p-4 font-bold">{apt.patient?.full_name || apt.manual_patient?.full_name}</td>
+                      <td className="p-4">
+                        <div className="font-bold">{apt.patient?.full_name || apt.manual_patient?.full_name}</div>
+                        {(apt.patient?.phone_number || apt.manual_patient?.phone_number) && (
+                          <div className="text-xs text-gray-400 font-medium">{apt.patient?.phone_number || apt.manual_patient?.phone_number}</div>
+                        )}
+                      </td>
+                      <td className="p-4 text-xs font-bold capitalize text-blue-600 dark:text-blue-400">
+                        {(apt.appointment_type || 'clinic_normal').replace(/_/g, ' ')}
+                      </td>
+                      <td className="p-4">
+                        {isArrived ? (
+                          <span className="px-2.5 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200 flex items-center gap-1.5 w-max">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span>{locale === 'ar' ? 'وصل للعيادة' : 'Arrived'} ({arrivalTime})</span>
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 rounded-full text-xs font-medium text-gray-400 bg-gray-100 dark:bg-gray-800 w-max">
+                            ⏳ {locale === 'ar' ? 'لم يصل بعد' : 'Not Checked In'}
+                          </span>
+                        )}
+                      </td>
                       <td className="p-4">
                         <span className={`px-2 py-1 rounded-full text-xs font-bold leading-none ${apt.status === 'in_progress' ? 'bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white' : 'bg-green-100 text-green-700'}`}>
                           {apt.status === 'in_progress' ? 'In Progress' : 'Scheduled'}
@@ -342,7 +418,7 @@ export default function DoctorDashboard({
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  )})}
                 </tbody>
               </table>
             )

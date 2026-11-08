@@ -9,7 +9,7 @@ import ClinicSchedule from './ClinicSchedule'
 import BookingModal from './BookingModal'
 import PatientsTab from './PatientsTab'
 
-type Appointment = {
+  type Appointment = {
   id: string
   patient_id: string | null
   manual_patient_id?: string | null
@@ -17,6 +17,8 @@ type Appointment = {
   scheduled_time: string
   status: 'scheduled' | 'waiting' | 'in_progress' | 'completed' | 'cancelled' | 'proposed'
   queue_position: number
+  appointment_type?: string
+  notes?: string | null
   patient: { full_name: string } | null
   manual_patient?: { full_name: string } | null
   prescriptionData?: any // Attached dynamically
@@ -72,10 +74,11 @@ export default function NurseDashboard({
     const { data } = await supabase
       .from('appointments')
       .select(`
-        id, patient_id, manual_patient_id, doctor_id, scheduled_time, status, queue_position,
+        id, patient_id, manual_patient_id, doctor_id, scheduled_time, status, queue_position, appointment_type, notes,
         patient:profiles!appointments_patient_id_fkey(full_name),
         manual_patient:manual_patients(full_name)
       `)
+      .neq('appointment_type', 'home_visit')
       .in('status', ['scheduled', 'waiting', 'in_progress', 'completed'])
       .gte('scheduled_time', startOfDay.toISOString())
       .order('queue_position', { ascending: true })
@@ -188,11 +191,21 @@ export default function NurseDashboard({
                   {queue.map((apt) => (
                     <tr key={apt.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors group">
                       <td className="p-4 font-bold text-gray-400">{apt.queue_position}</td>
-                      <td className="p-4 font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-teal-500 to-green-400 text-white flex items-center justify-center text-xs font-bold">
-                          {apt.patient?.full_name?.charAt(0) || 'P'}
+                      <td className="p-4 font-semibold text-gray-900 dark:text-gray-100">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-teal-500 to-green-400 text-white flex items-center justify-center text-xs font-bold">
+                            {apt.patient?.full_name?.charAt(0) || 'P'}
+                          </div>
+                          <div>
+                            <div>{apt.patient?.full_name || apt.manual_patient?.full_name || 'Unknown Patient'}</div>
+                            {apt.notes?.includes('[ARRIVED:') && (
+                              <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mt-0.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                In Waiting Room
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        {apt.patient?.full_name || apt.manual_patient?.full_name || 'Unknown Patient'}
                       </td>
                       <td className="p-4">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize

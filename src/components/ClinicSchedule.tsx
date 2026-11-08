@@ -65,7 +65,10 @@ export default function ClinicSchedule({ doctorId, appointments, onNewAppointmen
 
   const daysToRender = getDaysToRender()
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string, appointmentType?: string) => {
+    if (appointmentType === 'home_visit') {
+      return 'bg-gradient-to-r from-amber-600 to-amber-700 border-amber-400'
+    }
     switch (status) {
       case 'completed': return 'bg-emerald-600 border-emerald-400'
       case 'cancelled': return 'bg-gray-400 border-gray-300'
@@ -212,17 +215,23 @@ export default function ClinicSchedule({ doctorId, appointments, onNewAppointmen
                                   
                                   {/* Render 00 min slot block */}
                                   {topAppt && (
-                                     <div className={`absolute top-0 left-1 right-1 h-11 ${getStatusColor(topAppt.status)} bg-opacity-90 rounded-md p-2 shadow-sm text-white border-l-4 hover:-translate-y-0.5 transition-transform cursor-pointer overflow-hidden z-20`}>
-                                       <p className="text-xs font-black truncate leading-tight">{topAppt.patient?.full_name || topAppt.manual_patient?.full_name}</p>
-                                       <p className="text-[10px] opacity-80 mt-0.5">{h % 12 === 0 ? 12 : h % 12}:00 {h >= 12 ? 'PM' : 'AM'} • {topAppt.status}</p>
+                                     <div className={`absolute top-0 left-1 right-1 h-11 ${getStatusColor(topAppt.status, topAppt.appointment_type)} bg-opacity-95 rounded-md p-2 shadow-sm text-white border-l-4 hover:-translate-y-0.5 transition-transform cursor-pointer overflow-hidden z-20`}>
+                                       <p className="text-xs font-black truncate leading-tight flex items-center gap-1">
+                                         {topAppt.appointment_type === 'home_visit' && <span>🏠</span>}
+                                         <span>{topAppt.patient?.full_name || topAppt.manual_patient?.full_name}</span>
+                                       </p>
+                                       <p className="text-[10px] opacity-90 mt-0.5">{h % 12 === 0 ? 12 : h % 12}:00 {h >= 12 ? 'PM' : 'AM'} • {topAppt.appointment_type === 'home_visit' ? 'Home Visit' : topAppt.status}</p>
                                      </div>
                                   )}
 
                                   {/* Render 30 min slot block */}
                                   {bottomAppt && (
-                                     <div className={`absolute top-12 left-1 right-1 h-11 mb-1 ${getStatusColor(bottomAppt.status)} bg-opacity-90 rounded-md p-2 shadow-sm text-white border-l-4 hover:-translate-y-0.5 transition-transform cursor-pointer overflow-hidden z-20`}>
-                                       <p className="text-xs font-black truncate leading-tight">{bottomAppt.patient?.full_name || bottomAppt.manual_patient?.full_name}</p>
-                                       <p className="text-[10px] opacity-80 mt-0.5">{h % 12 === 0 ? 12 : h % 12}:30 {h >= 12 ? 'PM' : 'AM'} • {bottomAppt.status}</p>
+                                     <div className={`absolute top-12 left-1 right-1 h-11 mb-1 ${getStatusColor(bottomAppt.status, bottomAppt.appointment_type)} bg-opacity-95 rounded-md p-2 shadow-sm text-white border-l-4 hover:-translate-y-0.5 transition-transform cursor-pointer overflow-hidden z-20`}>
+                                       <p className="text-xs font-black truncate leading-tight flex items-center gap-1">
+                                         {bottomAppt.appointment_type === 'home_visit' && <span>🏠</span>}
+                                         <span>{bottomAppt.patient?.full_name || bottomAppt.manual_patient?.full_name}</span>
+                                       </p>
+                                       <p className="text-[10px] opacity-90 mt-0.5">{h % 12 === 0 ? 12 : h % 12}:30 {h >= 12 ? 'PM' : 'AM'} • {bottomAppt.appointment_type === 'home_visit' ? 'Home Visit' : bottomAppt.status}</p>
                                      </div>
                                   )}
                                </div>
