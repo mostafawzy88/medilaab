@@ -255,6 +255,22 @@ export default function AdminDashboard() {
     setProcessing(null)
   }
 
+  const handleQuickAssignSupervisor = async (nurseId: string, supervisorId: string) => {
+    setProcessing(nurseId)
+    const supabase = createClient()
+    const { error } = await supabase.from('profiles').update({
+      supervisor_id: supervisorId || null,
+      assigned_doctor_id: supervisorId || null
+    }).eq('id', nurseId)
+
+    if (!error) {
+      setStaff((prev: StaffMember[]) => prev.map(s => s.id === nurseId ? { ...s, supervisor_id: supervisorId || null } : s))
+    } else {
+      alert('Error updating supervisor: ' + error.message)
+    }
+    setProcessing(null)
+  }
+
   const handleDeleteUser = async () => {
     if (!deleteConfirm || deleteInput.toLowerCase() !== 'delete') return
     setDeleting(true)
@@ -295,7 +311,8 @@ export default function AdminDashboard() {
       clinic_location: editForm.clinic_location,
       instapay_address: editForm.instapay_address,
       subscription_expires_at: editForm.subscription_expires_at ? new Date(editForm.subscription_expires_at).toISOString() : null,
-      supervisor_id: editForm.supervisor_id || null
+      supervisor_id: editForm.supervisor_id || null,
+      assigned_doctor_id: editForm.supervisor_id || null
     }
 
     const supabase = createClient()
@@ -636,6 +653,24 @@ export default function AdminDashboard() {
 
                       {/* Actions */}
                       <div className="flex items-center gap-2 flex-wrap">
+                        {member.role === 'nurse' && (
+                          <div className="flex items-center gap-1.5 bg-teal-50 dark:bg-teal-950/40 px-2.5 py-1.5 rounded-xl border border-teal-200 dark:border-teal-800">
+                            <span className="text-[10px] font-black uppercase text-teal-600 dark:text-teal-400">Dr:</span>
+                            <select
+                              value={member.supervisor_id || ''}
+                              onChange={e => handleQuickAssignSupervisor(member.id, e.target.value)}
+                              disabled={processing === member.id}
+                              className="bg-transparent text-xs font-bold text-gray-700 dark:text-gray-300 focus:outline-none cursor-pointer"
+                              title="Assign Supervising Doctor"
+                            >
+                              <option value="">-- No Doctor --</option>
+                              {doctorList.map(d => (
+                                <option key={d.id} value={d.id}>Dr. {d.full_name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
                         <select
                           value={selectedDuration[member.id] || '1'}
                           onChange={e => setSelectedDuration((prev: Record<string, string>) => ({ ...prev, [member.id]: e.target.value }))}

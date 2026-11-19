@@ -70,9 +70,10 @@ export default function OnboardingWizard({ locale }: { locale: string }) {
       is_authorized: role === 'patient' ? true : false
     }
 
-    // If nurse, set supervisor_id
+    // If nurse, set supervisor_id and assigned_doctor_id
     if (role === 'nurse' && selectedDoctors.length > 0) {
       updateData.supervisor_id = selectedDoctors[0]
+      updateData.assigned_doctor_id = selectedDoctors[0]
     }
 
     const { error } = await supabase

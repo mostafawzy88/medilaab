@@ -26,10 +26,18 @@ import PatientsTab from './PatientsTab'
 
 export default function NurseDashboard({
   clinicAppointments,
-  supervisorId
+  supervisorId,
+  supervisorDoctor
 }: {
   clinicAppointments: Appointment[],
-  supervisorId?: string
+  supervisorId?: string,
+  supervisorDoctor?: {
+    id: string
+    full_name: string
+    specialization?: string | null
+    clinic_location?: string | null
+    avatar_url?: string | null
+  } | null
 }) {
   const t = useTranslations('Dashboard')
   const locale = useLocale()
@@ -43,45 +51,44 @@ export default function NurseDashboard({
   const [showBooking, setShowBooking] = useState(false)
   const [editingApt, setEditingApt] = useState<Appointment | null>(null)
 
-  // Realtime subscription for the whole clinic
+  // Realtime subscription strictly for the supervisor's appointments
   useEffect(() => {
     const supabase = createClient()
     
-    // Listen to all appointments (Nurses see everything today!)
+    const filterOpts = supervisorId
+      ? { event: '*', schema: 'public', table: 'appointments', filter: `doctor_id=eq.${supervisorId}` }
+      : { event: '*', schema: 'public', table: 'appointments' }
+
     const channel = supabase
-      .channel('nurse-queue')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'appointments' },
-        () => { refetchQueue(supabase) }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'prescriptions' },
-        () => { refetchQueue(supabase) }
-      )
+      .channel(`nurse-queue-${supervisorId || 'clinic'}`)
+      .on('postgres_changes', filterOpts as any, () => { refetchQueue(supabase) })
       .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [])
+  }, [supervisorId])
 
   const refetchQueue = async (supabase: any) => {
     const startOfDay = new Date()
     startOfDay.setHours(0,0,0,0)
     
-    const { data } = await supabase
+    let query = supabase
       .from('appointments')
       .select(`
         id, patient_id, manual_patient_id, doctor_id, scheduled_time, status, queue_position, appointment_type, notes,
-        patient:profiles!appointments_patient_id_fkey(full_name),
-        manual_patient:manual_patients(full_name)
+        patient:profiles!appointments_patient_id_fkey(full_name, phone_number),
+        manual_patient:manual_patients(full_name, phone_number)
       `)
       .neq('appointment_type', 'home_visit')
       .in('status', ['scheduled', 'waiting', 'in_progress', 'completed'])
       .gte('scheduled_time', startOfDay.toISOString())
-      .order('queue_position', { ascending: true })
+
+    if (supervisorId) {
+      query = query.eq('doctor_id', supervisorId)
+    }
+
+    const { data } = await query.order('queue_position', { ascending: true })
       
     if (data) {
       setQueue(data as any)
@@ -144,11 +151,24 @@ export default function NurseDashboard({
   return (
     <div className="space-y-6 animate-in fade-in duration-700">
       
-      {/* Top Banner indicating Nurse Role */}
-      <div className="bg-gradient-to-r from-teal-500 to-emerald-400 rounded-2xl p-6 text-white shadow-lg flex justify-between items-center">
+      {/* Top Banner indicating Nurse Role & Assigned Doctor */}
+      <div className="bg-gradient-to-r from-teal-600 via-teal-700 to-emerald-600 rounded-3xl p-6 text-white shadow-xl flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold">Nursing Operations Center</h2>
-          <p className="text-teal-100 opacity-90 mt-1">Manage global clinic queue and assist patients.</p>
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-white/15 border border-white/20 uppercase tracking-widest mb-2">
+            <span>✓</span>
+            <span>{locale === 'ar' ? 'طاقم تمريض معتمد' : 'Authorized Clinic Staff'}</span>
+          </div>
+          <h2 className="text-2xl sm:text-3xl font-black">
+            {supervisorDoctor?.full_name 
+              ? (locale === 'ar' ? `عيادة د. ${supervisorDoctor.full_name}` : `Dr. ${supervisorDoctor.full_name}'s Clinic Operations`) 
+              : 'Nursing Operations Center'}
+          </h2>
+          <p className="text-teal-100 opacity-90 text-sm mt-1">
+            {supervisorDoctor?.specialization ? `${supervisorDoctor.specialization} • ` : ''}
+            {locale === 'ar' 
+              ? 'إدارة طابور الانتظار واستدعاء المرضى والتنسيق مع الطبيب المشرف' 
+              : 'Managing waiting room queue, calling patients, and assisting your supervising doctor.'}
+          </p>
         </div>
         <div className="hidden sm:block">
            <svg className="w-16 h-16 opacity-30" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clipRule="evenodd" /></svg>
@@ -159,7 +179,9 @@ export default function NurseDashboard({
         <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-900/50">
           <h2 className="text-xl font-bold flex items-center gap-2">
             <span className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></span>
-            Global Clinic Queue
+            {supervisorDoctor?.full_name 
+              ? (locale === 'ar' ? `طابور انتظار د. ${supervisorDoctor.full_name}` : `Dr. ${supervisorDoctor.full_name}'s Queue`) 
+              : 'Clinic Queue'}
           </h2>
           <div className="text-sm font-medium text-gray-500 bg-white dark:bg-gray-800 px-4 py-1.5 rounded-full border border-gray-200 dark:border-gray-700">
             {queue.length} Active Today
@@ -167,7 +189,7 @@ export default function NurseDashboard({
         </div>
 
         {activeTab === 'schedule' ? (
-          <ClinicSchedule doctorId={''} appointments={queue} />
+          <ClinicSchedule doctorId={supervisorId || ''} appointments={queue} />
         ) : (
           <div className="overflow-x-auto">
             {activeTab === 'requests' ? (

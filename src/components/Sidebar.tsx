@@ -29,6 +29,7 @@ export default function Sidebar({ fullName, role, avatarUrl }: { fullName: strin
           { id: 'schedule', name: 'Schedule', icon: '📅' },
           { id: 'requests', name: 'Requests', icon: '📥' },
           { id: 'patients', name: 'Patients', icon: '👥' },
+          { id: 'staff', name: locale === 'ar' ? 'فريق التمريض' : 'Clinic Nurses', icon: '🩺' },
           { id: 'history', name: 'Visit History', icon: '📜' },
           { id: 'stats', name: 'Reports & Stats', icon: '📈' },
           { id: 'meds', name: 'Medications', icon: '💊' },

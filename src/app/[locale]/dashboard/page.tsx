@@ -8,6 +8,7 @@ import PatientDashboard from '@/components/PatientDashboard';
 import DoctorDashboard from '@/components/DoctorDashboard';
 import AdminDashboard from '@/components/AdminDashboard';
 import NurseDashboard from '@/components/NurseDashboard';
+import NurseAssignmentView from '@/components/NurseAssignmentView';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
 import SubscriptionRenewal from '@/components/SubscriptionRenewal';
@@ -52,12 +53,12 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
   const fullName = profile.full_name;
   const isAuthorized = profile.is_authorized;
 
-   // Handle unauthorized medical staff
-  if ((role === 'doctor' || role === 'nurse') && !isAuthorized) {
+  // Handle unauthorized doctors (pending admin approval)
+  if (role === 'doctor' && !isAuthorized) {
     const authT = await getTranslations('Authorization');
     return (
       <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 font-[family-name:var(--font-geist-sans)]">
-        <Navbar fullName={fullName} role={role} />
+        <Navbar fullName={fullName} role={role} avatarUrl={profile.avatar_url} />
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="bg-white dark:bg-gray-900 p-8 sm:p-12 rounded-3xl shadow-2xl max-w-lg w-full text-center border border-gray-100 dark:border-gray-800 animate-in fade-in zoom-in duration-500">
             <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mx-auto mb-8 rotate-3">
@@ -69,7 +70,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
               {authT('pending_title')}
             </h2>
             <p className="text-gray-500 dark:text-gray-400 mb-10 text-lg leading-relaxed">
-              {authT('pending_msg', { role: role === 'doctor' ? 'Doctor' : 'Nurse' })}
+              {authT('pending_msg', { role: 'Doctor' })}
             </p>
             <div className="flex justify-center">
               <LogoutButton />
@@ -78,6 +79,44 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
         </div>
       </div>
     );
+  }
+
+  // Handle nurse doctor assignment and authorization (Doctor or Admin approval required)
+  if (role === 'nurse') {
+    const supervisorId = profile.supervisor_id || profile.assigned_doctor_id;
+    if (!supervisorId || !isAuthorized) {
+      let supervisorDoctor = null;
+      if (supervisorId) {
+        const { data: doc } = await supabase
+          .from('profiles')
+          .select('id, full_name, specialization, phone_number, clinic_location, avatar_url')
+          .eq('id', supervisorId)
+          .single();
+        supervisorDoctor = doc;
+      }
+
+      const { data: availableDoctors } = await supabase
+        .from('profiles')
+        .select('id, full_name, specialization, clinic_location, avatar_url, phone_number')
+        .eq('role', 'doctor')
+        .order('full_name', { ascending: true });
+
+      return (
+        <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 font-[family-name:var(--font-geist-sans)]">
+          <Navbar fullName={fullName} role={role} avatarUrl={profile.avatar_url} />
+          <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
+            <NurseAssignmentView
+              nurseId={user.id}
+              nurseName={fullName}
+              initialSupervisorId={supervisorId || null}
+              supervisorDoctor={supervisorDoctor}
+              availableDoctors={availableDoctors || []}
+              isAuthorized={!!isAuthorized}
+            />
+          </div>
+        </div>
+      );
+    }
   }
 
   // Handle expired subscriptions for medical staff
@@ -242,13 +281,24 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
     portalTitle = t('role_nurse');
     const startOfWindow = new Date();
     startOfWindow.setHours(startOfWindow.getHours() - 12);
+    const supervisorId = profile.supervisor_id || profile.assigned_doctor_id;
 
+    // Fetch supervising doctor details for header banner
+    const { data: supervisorDoctor } = await supabase
+      .from('profiles')
+      .select('id, full_name, specialization, phone_number, clinic_location, avatar_url')
+      .eq('id', supervisorId)
+      .single();
+
+    // STRICT DOCTOR ISOLATION: Nurse ONLY queries their supervising doctor's appointments
     const { data: queue } = await supabase
       .from('appointments')
       .select(`
-        id, patient_id, doctor_id, scheduled_time, status, queue_position, appointment_type, notes,
-        patient:profiles!appointments_patient_id_fkey(full_name, phone_number)
+        id, patient_id, manual_patient_id, doctor_id, scheduled_time, status, queue_position, appointment_type, notes,
+        patient:profiles!appointments_patient_id_fkey(full_name, phone_number),
+        manual_patient:manual_patients(full_name, phone_number)
       `)
+      .eq('doctor_id', supervisorId)
       .neq('appointment_type', 'home_visit')
       .in('status', ['scheduled', 'waiting', 'in_progress', 'completed'])
       .gte('scheduled_time', startOfWindow.toISOString())
@@ -257,7 +307,8 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
     portalContent = (
       <NurseDashboard 
         clinicAppointments={(queue as any) || []} 
-        supervisorId={profile.supervisor_id} 
+        supervisorId={supervisorId}
+        supervisorDoctor={supervisorDoctor}
       />
     );
   } else {

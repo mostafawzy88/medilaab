@@ -11,6 +11,7 @@ import ClinicSchedule from './ClinicSchedule'
 import PatientsTab from './PatientsTab'
 import DoctorAnalytics from './DoctorAnalytics'
 import DoctorHistoryTab from './DoctorHistoryTab'
+import DoctorStaffTab from './DoctorStaffTab'
 import { getWhatsAppLink } from '@/utils/whatsapp'
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
 
@@ -437,49 +438,74 @@ export default function DoctorDashboard({
             </div>
           </div>
 
-          {/* Quick Doctor Status Control */}
-          <div className="flex items-center gap-1 bg-gray-50 dark:bg-gray-800/80 p-1 rounded-2xl border border-gray-200/50 dark:border-gray-700/50">
-            <button
-              type="button"
-              onClick={() => handleUpdateDoctorStatus('available')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
-                doctorStatus === 'available'
-                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                  : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
-              }`}
-              title="Mark Free / Available"
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span>{locale === 'ar' ? 'متاح' : 'Free'}</span>
-            </button>
+          {/* Quick Doctor Status Control & Persistent Auto-Confirm Toggle */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1 bg-gray-50 dark:bg-gray-800/80 p-1 rounded-2xl border border-gray-200/50 dark:border-gray-700/50">
+              <button
+                type="button"
+                onClick={() => handleUpdateDoctorStatus('available')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                  doctorStatus === 'available'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                    : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                }`}
+                title="Mark Free / Available"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                <span>{locale === 'ar' ? 'متاح' : 'Free'}</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => handleUpdateDoctorStatus('busy')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
-                doctorStatus === 'busy'
-                  ? 'bg-amber-500 text-white shadow-md shadow-amber-500/30'
-                  : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
-              }`}
-              title="Mark With Patient"
-            >
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
-              <span>{locale === 'ar' ? 'مع مريض' : 'With Patient'}</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => handleUpdateDoctorStatus('busy')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                  doctorStatus === 'busy'
+                    ? 'bg-amber-500 text-white shadow-md shadow-amber-500/30'
+                    : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                }`}
+                title="Mark With Patient"
+              >
+                <span className="w-2 h-2 rounded-full bg-amber-400" />
+                <span>{locale === 'ar' ? 'مع مريض' : 'With Patient'}</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => handleUpdateDoctorStatus('unavailable')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
-                doctorStatus === 'unavailable'
-                  ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
-                  : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
-              }`}
-              title="Mark Unavailable / On Break"
-            >
-              <span className="w-2 h-2 rounded-full bg-rose-400" />
-              <span>{locale === 'ar' ? 'استراحة' : 'On Break'}</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => handleUpdateDoctorStatus('unavailable')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                  doctorStatus === 'unavailable'
+                    ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
+                    : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                }`}
+                title="Mark Unavailable / On Break"
+              >
+                <span className="w-2 h-2 rounded-full bg-rose-400" />
+                <span>{locale === 'ar' ? 'استراحة' : 'On Break'}</span>
+              </button>
+            </div>
+
+            {/* Quick Auto-Confirm Toggle */}
+            <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-2xl bg-gray-50 dark:bg-gray-800/80 border border-gray-200/50 dark:border-gray-700/50">
+              <div className="text-right sm:text-left">
+                <p className="text-[11px] font-black text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                  <span className="text-amber-500">⚡</span>
+                  <span>{locale === 'ar' ? 'الموافقة التلقائية' : 'Auto-Confirm'}</span>
+                </p>
+                <p className="text-[9px] font-medium text-gray-400">
+                  {autoConfirm 
+                    ? (locale === 'ar' ? 'تأكيد الحجز فوراً' : 'Instant Booking') 
+                    : (locale === 'ar' ? 'مراجعة بالطلبات' : 'Manual Approval')}
+                </p>
+              </div>
+              <button 
+                type="button"
+                onClick={toggleAutoConfirm}
+                className={`relative w-11 h-6 rounded-full transition-colors focus:outline-none ${autoConfirm ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                title={autoConfirm ? 'Auto-Confirm is ON. Click to require manual approval.' : 'Auto-Confirm is OFF. Click to auto-confirm new appointments.'}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform ${autoConfirm ? 'translate-x-5' : ''}`} />
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -845,6 +871,10 @@ export default function DoctorDashboard({
           ) : activeTab === 'patients' ? (
             <div className="p-8">
               <PatientsTab doctorId={doctorId} />
+            </div>
+          ) : activeTab === 'staff' ? (
+            <div className="p-6 md:p-8">
+              <DoctorStaffTab doctorId={doctorId} />
             </div>
           ) : activeTab === 'history' ? (
             <div className="p-6 md:p-8">

@@ -26,6 +26,7 @@ type Profile = {
   avatar_url?: string | null
   plan_id?: string | null
   availability_status?: 'available' | 'busy' | 'unavailable' | null
+  auto_confirm_appointments?: boolean | null
 }
 
 type Certificate = {
@@ -132,6 +133,7 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
 
     if (profile.role === 'doctor') {
       updatePayload.availability_status = doctorStatus
+      updatePayload.auto_confirm_appointments = profile.auto_confirm_appointments ?? false
     }
 
     let { error } = await supabase
@@ -597,6 +599,32 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
                   </div>
                 </div>
                 <p className="text-xs text-gray-400 mt-2">Leave 0 or empty if you do not offer a certain type.</p>
+              </div>
+            )}
+
+            {/* Auto-Confirm Appointments Settings */}
+            {profile.role === 'doctor' && (
+              <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">⚡</span>
+                    <h2 className="text-base font-black text-gray-900 dark:text-white">Auto-Confirm Appointments</h2>
+                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${profile.auto_confirm_appointments ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}`}>
+                      {profile.auto_confirm_appointments ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 max-w-xl leading-relaxed">
+                    When enabled, new patient bookings are automatically confirmed and scheduled immediately on your calendar and queue. When disabled, bookings remain in your Requests tab awaiting your manual approval.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setProfile(prev => ({ ...prev, auto_confirm_appointments: !prev.auto_confirm_appointments }))}
+                  className={`relative w-14 h-8 rounded-full transition-colors shrink-0 focus:outline-none ${profile.auto_confirm_appointments ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-700'}`}
+                >
+                  <span className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full shadow-md transition-transform ${profile.auto_confirm_appointments ? 'translate-x-6' : ''}`} />
+                </button>
               </div>
             )}
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { createClient } from '@/utils/supabase/client'
 import { useTranslations, useLocale } from 'next-intl'
 import { getWhatsAppLink } from '@/utils/whatsapp'
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
@@ -64,10 +65,26 @@ export default function DoctorOverview({
   const locale = useLocale()
 
   const [currentTime, setCurrentTime] = useState(new Date())
+  const [pendingNurses, setPendingNurses] = useState<any[]>([])
+
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    const fetchPendingStaff = async () => {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name, phone_number')
+        .eq('role', 'nurse')
+        .eq('is_authorized', false)
+        .or(`supervisor_id.eq.${doctorId},assigned_doctor_id.eq.${doctorId}`)
+      if (data) setPendingNurses(data)
+    }
+    fetchPendingStaff()
+  }, [doctorId])
 
   const isSameLocalDate = (d1?: string | null) => {
     if (!d1) return false
@@ -294,6 +311,33 @@ export default function DoctorOverview({
           })()}
         </div>
       </div>
+
+      {/* Pending Nurse Authorization Alert */}
+      {pendingNurses.length > 0 && (
+        <div className="bg-amber-500/10 dark:bg-amber-500/15 border-2 border-amber-400 dark:border-amber-700/80 rounded-3xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg shadow-amber-500/5 animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <span className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center text-xl shrink-0 shadow-md">
+              🩺
+            </span>
+            <div>
+              <h4 className="font-black text-gray-900 dark:text-white text-sm sm:text-base">
+                {locale === 'ar' ? 'طلب اعتماد ممرض(ة) جديد للعيادة' : 'Nurse Access Request Pending'}
+              </h4>
+              <p className="text-xs text-amber-800 dark:text-amber-200 mt-0.5">
+                {locale === 'ar'
+                  ? `يوجد ${pendingNurses.length} ممرض مسجل بانتظار موافقتك لبدء إدارة طابور العيادة (${pendingNurses.map(n => n.full_name).join(', ')}).`
+                  : `${pendingNurses.length} nurse (${pendingNurses.map(n => n.full_name).join(', ')}) requested to join your clinic staff and awaits authorization.`}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => onSwitchTab('staff')}
+            className="px-5 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs shadow-md transition-all hover:scale-105 active:scale-95 shrink-0"
+          >
+            {locale === 'ar' ? 'مراجعة واعتماد الطاقم ←' : 'Review & Authorize Staff →'}
+          </button>
+        </div>
+      )}
 
       {/* 2. Top Interactive Metric Cards (All Clickable to Direct Tabs) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
