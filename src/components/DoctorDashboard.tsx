@@ -12,6 +12,7 @@ import PatientsTab from './PatientsTab'
 import DoctorAnalytics from './DoctorAnalytics'
 import DoctorHistoryTab from './DoctorHistoryTab'
 import { getWhatsAppLink } from '@/utils/whatsapp'
+import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
 
 type Appointment = {
   id: string
@@ -230,7 +231,7 @@ export default function DoctorDashboard({
     setProcessing(null)
   }
 
-  const handleCallNext = async (appointmentId: string, patientName: string) => {
+  const handleCallNext = async (appointmentId: string, patientName: string, ticketNum?: number | string) => {
     const supabase = createClient()
     await supabase.from('appointments').update({ status: 'in_progress' }).eq('id', appointmentId)
     await refetchQueue(supabase)
@@ -239,13 +240,24 @@ export default function DoctorDashboard({
     if ('speechSynthesis' in window) {
       // Cancel any ongoing speech first
       window.speechSynthesis.cancel()
+      const ticketStr = ticketNum ? (locale === 'ar' ? `، تذكرة رقم ${ticketNum}` : `, ticket number ${ticketNum}`) : ''
       const msgText = locale === 'ar' 
-        ? `المريض التالي، ${patientName}، يرجى التوجه إلى غرفة الفحص` 
-        : `Next patient, ${patientName}, please proceed to the examination room.`
+        ? `المريض التالي، ${patientName}${ticketStr}، يرجى التوجه إلى غرفة الكشف` 
+        : `Next patient, ${patientName}${ticketStr}, please proceed to the examination room.`
       const utterance = new SpeechSynthesisUtterance(msgText)
       utterance.lang = locale === 'ar' ? 'ar-EG' : 'en-US'
       utterance.volume = 1
       utterance.rate = 0.9
+
+      try {
+        const voices = window.speechSynthesis.getVoices()
+        const langPrefix = locale === 'ar' ? 'ar' : 'en'
+        const matchedVoice = voices.find(v => v.lang.startsWith(langPrefix))
+        if (matchedVoice) utterance.voice = matchedVoice
+      } catch (e) {
+        // Fallback
+      }
+
       window.speechSynthesis.speak(utterance)
     }
   }
@@ -515,12 +527,13 @@ export default function DoctorDashboard({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {activeQueue.map((apt) => {
+                  {activeQueue.map((apt, idx) => {
                     const arrivalTime = parseArrivalTime(apt.notes)
                     const isArrived = !!arrivalTime
+                    const ticketNum = (apt.queue_position && apt.queue_position <= activeQueue.length) ? apt.queue_position : (idx + 1)
                     return (
                     <tr key={apt.id} className="hover:bg-gray-50/50">
-                      <td className="p-4 font-black text-gray-400">Q{apt.queue_position}</td>
+                      <td className="p-4 font-black text-gray-400">Q{ticketNum}</td>
                       <td className="p-4">
                         <div className="font-bold text-gray-900 dark:text-white">
                           {apt.patient?.full_name || apt.manual_patient?.full_name}
@@ -551,10 +564,10 @@ export default function DoctorDashboard({
                               )}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-[10px] font-black text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800 transition-colors flex items-center gap-1"
+                              className="text-[10px] font-black text-emerald-800 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-300 dark:border-emerald-800 transition-colors flex items-center gap-1 shadow-sm"
                               title="Chat on WhatsApp"
                             >
-                              <span>💬</span>
+                              <WhatsAppIcon className="w-3.5 h-3.5 text-[#25D366]" />
                               <span>WhatsApp</span>
                             </a>
                           </div>
@@ -622,7 +635,7 @@ export default function DoctorDashboard({
                                 <button onClick={() => fetchPatientHistory(apt.patient_id!)} className="text-blue-600 hover:text-blue-700 font-bold px-3 py-1.5 rounded-lg text-xs transition-colors">History</button>
                               )}
                               <button onClick={() => { setEditingApt(apt); setShowBooking(true); }} className="bg-amber-100 text-amber-700 font-bold px-3 py-1.5 rounded-lg text-xs hover:bg-amber-200 transition-colors">Reschedule</button>
-                              <button onClick={() => handleCallNext(apt.id, apt.patient?.full_name || apt.manual_patient?.full_name || 'Patient')} className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-blue-500/20">{t('call_next')}</button>
+                              <button onClick={() => handleCallNext(apt.id, apt.patient?.full_name || apt.manual_patient?.full_name || 'Patient', ticketNum)} className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-blue-500/20">{t('call_next')}</button>
                             </>
                           ) : (
                             <>
@@ -630,7 +643,7 @@ export default function DoctorDashboard({
                                 <button onClick={() => fetchPatientHistory(apt.patient_id!)} className="text-blue-600 hover:text-blue-700 font-bold px-3 py-1.5 rounded-lg text-xs transition-colors">History</button>
                               )}
                               <button onClick={() => { setEditingApt(apt); setShowBooking(true); }} className="bg-amber-100 text-amber-700 font-bold px-3 py-1.5 rounded-lg text-xs hover:bg-amber-200 transition-colors">Reschedule</button>
-                              <button onClick={() => handleCallNext(apt.id, apt.patient?.full_name || apt.manual_patient?.full_name || 'Patient')} className="bg-amber-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs hover:bg-amber-600 transition-colors">Recall</button>
+                              <button onClick={() => handleCallNext(apt.id, apt.patient?.full_name || apt.manual_patient?.full_name || 'Patient', ticketNum)} className="bg-amber-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs hover:bg-amber-600 transition-colors">Recall</button>
                               <button onClick={() => setActivePrescription(apt)} className="bg-purple-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-purple-500/20">{t('write_prescription')}</button>
                               <button onClick={() => handleComplete(apt.id)} className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-emerald-500/20">{t('mark_completed')}</button>
                             </>
@@ -683,10 +696,11 @@ export default function DoctorDashboard({
                               )}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-[10px] font-black text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800 transition-colors flex items-center gap-1"
+                              className="text-[10px] font-black text-emerald-800 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-300 dark:border-emerald-800 transition-colors flex items-center gap-1 shadow-sm"
                               title="Chat on WhatsApp"
                             >
-                              <span>💬 WhatsApp</span>
+                              <WhatsAppIcon className="w-3.5 h-3.5 text-[#25D366]" />
+                              <span>WhatsApp</span>
                             </a>
                           )}
                         </div>

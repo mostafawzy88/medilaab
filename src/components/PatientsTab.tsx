@@ -5,6 +5,7 @@ import { createClient } from '@/utils/supabase/client'
 import PrescriptionViewerModal from './PrescriptionViewerModal'
 import PrescriptionModal from './PrescriptionModal'
 import { getWhatsAppLink } from '@/utils/whatsapp'
+import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type Patient = {
@@ -187,9 +188,9 @@ function PatientDetailModal({
                         href={getWhatsAppLink(patient.phone_number, `Hello ${patient.full_name}, this is your clinic following up with you.`)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-[#25D366] hover:bg-[#20bd5a] text-white rounded-xl text-xs font-bold transition-all shadow-sm"
                       >
-                        <span>💬</span>
+                        <WhatsAppIcon className="w-4 h-4 text-white" />
                         <span>WhatsApp Chat</span>
                       </a>
                     )}
@@ -723,10 +724,10 @@ export default function PatientsTab({ doctorId }: { doctorId: string }) {
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center text-xs px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 font-bold transition-colors"
+                            className="inline-flex items-center text-xs p-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 font-bold transition-colors"
                             title="Chat on WhatsApp"
                           >
-                            💬
+                            <WhatsAppIcon className="w-3.5 h-3.5 text-[#25D366]" />
                           </a>
                         )}
                       </div>

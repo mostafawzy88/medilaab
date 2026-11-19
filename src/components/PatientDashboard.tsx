@@ -11,6 +11,7 @@ import DoctorProfileModal from './DoctorProfileModal'
 import FamilyMembersTab from './FamilyMembersTab'
 import PatientHistoryTab from './PatientHistoryTab'
 import { getWhatsAppLink } from '@/utils/whatsapp'
+import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
 
 type AppointmentProps = {
   id: string
@@ -616,10 +617,10 @@ export default function PatientDashboard({
                               <button
                                 type="button"
                                 onClick={() => alert(locale === 'ar' ? `الطبيب د. ${apt.doctor_name} لم يقم بإضافة رقم هاتف متاح للواتساب بعد` : `Dr. ${apt.doctor_name} has not registered a valid WhatsApp phone number yet.`)}
-                                className="text-xs font-bold text-gray-400 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-xl border border-gray-200 dark:border-gray-700 transition-colors flex items-center gap-1 opacity-70"
+                                className="text-xs font-bold text-gray-400 bg-gray-100 dark:bg-gray-800 px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-700 transition-colors flex items-center gap-1.5 opacity-70"
                                 title="No valid phone registered"
                               >
-                                <span>💬</span>
+                                <WhatsAppIcon className="w-4 h-4 text-gray-400" />
                                 <span>WhatsApp</span>
                               </button>
                             );
@@ -629,11 +630,11 @@ export default function PatientDashboard({
                               href={waUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 px-3 py-1 rounded-xl border border-emerald-200 dark:border-emerald-800 transition-colors flex items-center gap-1 shadow-sm"
+                              className="text-xs font-bold text-emerald-800 dark:text-emerald-200 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 px-3 py-1.5 rounded-xl border border-emerald-300 dark:border-emerald-800 transition-all flex items-center gap-1.5 shadow-sm group"
                               title="Chat with doctor on WhatsApp"
                             >
-                              <span>💬</span>
-                              <span>WhatsApp</span>
+                              <WhatsAppIcon className="w-4 h-4 text-[#25D366] group-hover:scale-110 transition-transform" />
+                              <span className="font-black">WhatsApp</span>
                             </a>
                           );
                         })()}
@@ -687,24 +688,61 @@ export default function PatientDashboard({
                       )}
                       
                       {/* Live Queue, Arrival Alert & Doctor Free/Busy Status */}
-                      {isApproved && apt.scheduled_time?.startsWith(new Date().toISOString().split('T')[0]) && apt.appointment_type !== 'home_visit' && (() => {
+                      {isApproved && apt.appointment_type !== 'home_visit' && (() => {
+                        const isSameLocalDate = (d1?: string | null) => {
+                          if (!d1) return false
+                          const date1 = new Date(d1)
+                          const now = new Date()
+                          return date1.getFullYear() === now.getFullYear() &&
+                                 date1.getMonth() === now.getMonth() &&
+                                 date1.getDate() === now.getDate()
+                        }
+                        if (!isSameLocalDate(apt.scheduled_time)) return null;
+
                         const arrivalTime = parseArrivalTime(apt.notes);
                         const isArrived = !!arrivalTime;
                         const docStatus = liveDoctorData[apt.doctor_id];
-                        const myPosition = apt.queue_position || 1;
-                        const currentServing = docStatus?.current_serving_position || 0;
-                        const isMyTurn = apt.status === 'in_progress' || (currentServing === myPosition && currentServing > 0);
+
+                        // Ground-truth active waiting queue (excludes cancelled & completed)
+                        const activeQueueToday = (docStatus?.queue || []).filter(q => q.status !== 'completed' && q.status !== 'cancelled');
+                        const myIdx = activeQueueToday.findIndex(q => q.id === apt.id);
                         
-                        // Calculate patients ahead
+                        // Clean, reliable active queue position & patients ahead
                         let patientsAhead = 0;
-                        if (docStatus?.queue && docStatus.queue.length > 0) {
-                          patientsAhead = docStatus.queue.filter(q => q.queue_position < myPosition && q.status !== 'completed').length;
-                        } else {
-                          patientsAhead = Math.max(0, myPosition - (currentServing || 1));
+                        if (myIdx >= 0) {
+                          patientsAhead = myIdx;
+                        } else if (apt.scheduled_time) {
+                          const aptDate = new Date(apt.scheduled_time).getTime();
+                          patientsAhead = activeQueueToday.filter(q => q.scheduled_time && new Date(q.scheduled_time).getTime() < aptDate).length;
                         }
+
+                        const myTurnNumber = myIdx >= 0 ? (myIdx + 1) : ((apt.queue_position && apt.queue_position <= (activeQueueToday.length || 1)) ? apt.queue_position : 1);
+                        const isCallingMeNow = apt.status === 'in_progress';
+                        const inProgressIdx = activeQueueToday.findIndex(q => q.status === 'in_progress');
+                        const currentServing = inProgressIdx >= 0 ? (inProgressIdx + 1) : (docStatus?.current_serving_position || (docStatus?.is_in_consultation ? 1 : 0));
 
                         return (
                           <div className="mt-3 space-y-3">
+                            {/* Urgent Live Calling Banner when Doctor Calls Patient */}
+                            {isCallingMeNow && (
+                              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/20 border-2 border-emerald-400 animate-pulse flex items-center justify-between">
+                                <div className="flex items-center gap-2.5">
+                                  <span className="text-2xl">🔔</span>
+                                  <div>
+                                    <p className="font-black text-sm uppercase tracking-wide">
+                                      {locale === 'ar' ? 'الطبيب ينادي عليك الآن!' : 'Doctor is Calling You Now!'}
+                                    </p>
+                                    <p className="text-xs text-emerald-100">
+                                      {locale === 'ar' ? 'تذكرتك حان دورها، يرجى الدخول لغرفة الكشف فوراً.' : 'Your turn is ready! Please proceed directly into the examination room.'}
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className="text-xs font-black bg-white text-emerald-700 px-3 py-1 rounded-xl shadow-sm">
+                                  Q{myTurnNumber}
+                                </span>
+                              </div>
+                            )}
+
                             {/* Arrival Notification Button / Confirmed Badge */}
                             {!isArrived ? (
                               <button
@@ -753,25 +791,25 @@ export default function PatientDashboard({
                               <div className="grid grid-cols-2 gap-2 text-center pt-1">
                                 <div className="bg-white/80 dark:bg-gray-800/80 p-2 rounded-xl border border-blue-100 dark:border-blue-900/30">
                                   <p className="text-[10px] uppercase font-black text-gray-400">{tp('your_turn_number') || 'Your Turn'}</p>
-                                  <p className="text-base font-black text-blue-600">Q{myPosition}</p>
+                                  <p className="text-lg font-black text-blue-600">Q{myTurnNumber}</p>
                                 </div>
                                 <div className="bg-white/80 dark:bg-gray-800/80 p-2 rounded-xl border border-blue-100 dark:border-blue-900/30">
                                   <p className="text-[10px] uppercase font-black text-gray-400">{tp('now_serving') || 'Now Serving'}</p>
-                                  <p className="text-base font-black text-gray-800 dark:text-gray-200">
-                                    {currentServing > 0 ? `Q${currentServing}` : (docStatus?.is_in_consultation ? 'In Room' : 'Ready')}
+                                  <p className="text-lg font-black text-gray-800 dark:text-gray-200">
+                                    {isCallingMeNow ? `Q${myTurnNumber}` : (currentServing > 0 ? `Q${currentServing}` : (docStatus?.is_in_consultation ? 'In Room' : 'Ready'))}
                                   </p>
                                 </div>
                               </div>
 
                               {/* Turn status statement & Estimated time */}
                               <div className="pt-1 flex items-center justify-between text-xs font-bold flex-wrap gap-2">
-                                {isMyTurn ? (
+                                {isCallingMeNow ? (
                                   <span className="text-emerald-600 dark:text-emerald-400 font-black animate-pulse flex items-center gap-1">
-                                    <span>🎉</span> {tp('its_your_turn') || "It's your turn right now! Please enter."}
+                                    <span>🔔</span> {locale === 'ar' ? 'حان دورك الآن! يرجى الدخول' : "It's your turn right now! Please enter."}
                                   </span>
                                 ) : patientsAhead === 0 ? (
                                   <span className="text-blue-600 dark:text-blue-400 font-black flex items-center gap-1">
-                                    <span>⚡</span> {tp('you_are_next') || 'You are NEXT in line! Please wait at clinic door.'}
+                                    <span>⚡</span> {locale === 'ar' ? 'أنت التالي في الطابور! (0 مرضى قبلك)' : 'You are NEXT in line! (0 patients ahead)'}
                                   </span>
                                 ) : (
                                   <span className="text-gray-600 dark:text-gray-300 flex items-center gap-1">
@@ -779,7 +817,7 @@ export default function PatientDashboard({
                                   </span>
                                 )}
                                 <span className="text-gray-500 text-[11px]">
-                                  ⏱️ ~{Math.max(5, (patientsAhead || 1) * 15)} {t('mins') || 'mins wait'}
+                                  ⏱️ ~{Math.max(5, (patientsAhead || 0) * 15)} {t('mins') || 'mins wait'}
                                 </span>
                               </div>
                             </div>

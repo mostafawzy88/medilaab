@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { getWhatsAppLink } from '@/utils/whatsapp'
+import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
 
 type Appointment = {
   id: string
@@ -51,7 +52,7 @@ export default function DoctorOverview({
   homeVisits: Appointment[]
   requests: Appointment[]
   todayAppointments: Appointment[]
-  onCallNext: (appointmentId: string, patientName: string) => void
+  onCallNext: (appointmentId: string, patientName: string, ticketNum?: number | string) => void
   onApprove: (appointmentId: string) => void
   onReject: (appointmentId: string) => void
   onComplete: (appointmentId: string) => void
@@ -276,18 +277,21 @@ export default function DoctorOverview({
             </span>
           </div>
 
-          {todayClinicVisits.length > 0 && !activeConsultation && effectiveStatus !== 'unavailable' && (
-            <button
-              onClick={() => {
-                const next = todayClinicVisits[0]
-                if (next) onCallNext(next.id, next.patient?.full_name || next.manual_patient?.full_name || 'Patient')
-              }}
-              className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] hover:opacity-95 text-white font-black text-xs px-4 py-2 rounded-xl shadow-lg shadow-blue-500/20 transition-all flex items-center gap-1.5"
-            >
-              <span>🔔</span>
-              <span>{locale === 'ar' ? 'مناداة المريض التالي' : 'Call Next Patient'} (Q{todayClinicVisits[0]?.queue_position || 1})</span>
-            </button>
-          )}
+          {todayClinicVisits.length > 0 && !activeConsultation && effectiveStatus !== 'unavailable' && (() => {
+            const next = todayClinicVisits[0]
+            const nextTicket = (next?.queue_position && next.queue_position <= todayClinicVisits.length) ? next.queue_position : 1
+            return (
+              <button
+                onClick={() => {
+                  if (next) onCallNext(next.id, next.patient?.full_name || next.manual_patient?.full_name || 'Patient', nextTicket)
+                }}
+                className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] hover:opacity-95 text-white font-black text-xs px-4 py-2 rounded-xl shadow-lg shadow-blue-500/20 transition-all flex items-center gap-1.5"
+              >
+                <span>🔔</span>
+                <span>{locale === 'ar' ? 'مناداة المريض التالي' : 'Call Next Patient'} (Q{nextTicket})</span>
+              </button>
+            )
+          })()}
         </div>
       </div>
 
@@ -321,7 +325,7 @@ export default function DoctorOverview({
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800 text-[11px] font-bold text-blue-600 flex items-center justify-between">
-            <span>{activeConsultation ? 'Active visit in progress' : 'Next: Q' + (todayClinicVisits[0]?.queue_position || '1')}</span>
+            <span>{activeConsultation ? 'Active visit in progress' : 'Next: Q' + ((todayClinicVisits[0]?.queue_position && todayClinicVisits[0]?.queue_position <= todayClinicVisits.length) ? todayClinicVisits[0].queue_position : (todayClinicVisits.length > 0 ? '1' : '—'))}</span>
             <span>Manage Queue ↗</span>
           </div>
         </div>
@@ -546,9 +550,10 @@ export default function DoctorOverview({
                             href={getWhatsAppLink(phone, `Hello ${visit.patient?.full_name || visit.manual_patient?.full_name}, this is Dr. ${doctorName} regarding your home visit today.`)}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 hover:text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800 transition-colors"
+                            className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-800 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-800 transition-colors shadow-sm"
                           >
-                            <span>💬 WhatsApp</span>
+                            <WhatsAppIcon className="w-3.5 h-3.5 text-[#25D366]" />
+                            <span>WhatsApp</span>
                           </a>
                         </div>
                       ) : (
@@ -622,6 +627,8 @@ export default function DoctorOverview({
                 const isArrived = !!arrivalTime
                 const isInProgress = apt.status === 'in_progress'
 
+                const ticketNum = (apt.queue_position && apt.queue_position <= todayClinicVisits.length) ? apt.queue_position : (idx + 1)
+
                 return (
                   <div 
                     key={apt.id}
@@ -641,7 +648,7 @@ export default function DoctorOverview({
                             ? 'bg-blue-600 text-white' 
                             : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
                       }`}>
-                        Q{apt.queue_position || (idx + 1)}
+                        Q{ticketNum}
                       </span>
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
@@ -667,9 +674,10 @@ export default function DoctorOverview({
                               )}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-[10px] font-black text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800 transition-colors"
+                              className="inline-flex items-center gap-1.5 text-[10px] font-black text-emerald-800 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-300 dark:border-emerald-800 transition-colors shadow-sm"
                             >
-                              💬 WhatsApp
+                              <WhatsAppIcon className="w-3.5 h-3.5 text-[#25D366]" />
+                              <span>WhatsApp</span>
                             </a>
                           )}
                         </div>
@@ -683,7 +691,7 @@ export default function DoctorOverview({
                         </span>
                       ) : (
                         <button
-                          onClick={() => onCallNext(apt.id, apt.patient?.full_name || apt.manual_patient?.full_name || 'Patient')}
+                          onClick={() => onCallNext(apt.id, apt.patient?.full_name || apt.manual_patient?.full_name || 'Patient', ticketNum)}
                           className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] hover:opacity-90 text-white text-xs font-black px-3.5 py-2 rounded-xl shadow-sm transition-all"
                         >
                           Call Next

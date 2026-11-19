@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useTranslations } from 'next-intl'
 import { formatWhatsAppNumber, isValidWhatsAppNumber, getWhatsAppLink } from '@/utils/whatsapp'
+import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
 
 type Profile = {
   id: string
@@ -384,8 +385,9 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-black uppercase tracking-widest text-gray-400">Personal & Contact Info</h2>
             {profile.phone_number && isValidWhatsAppNumber(profile.phone_number) ? (
-              <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-full border border-emerald-200 dark:border-emerald-800">
-                💬 WhatsApp Ready (+{formatWhatsAppNumber(profile.phone_number)})
+              <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-full border border-emerald-200 dark:border-emerald-800 flex items-center gap-1.5">
+                <WhatsAppIcon className="w-3.5 h-3.5 text-[#25D366]" />
+                <span>WhatsApp Ready (+{formatWhatsAppNumber(profile.phone_number)})</span>
               </span>
             ) : (
               <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800">
@@ -412,9 +414,10 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
                     href={getWhatsAppLink(profile.phone_number, 'Hello! Testing WhatsApp integration from MediLab.')}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[11px] font-bold text-emerald-600 hover:underline flex items-center gap-1"
+                    className="text-[11px] font-bold text-emerald-600 hover:underline flex items-center gap-1.5"
                   >
-                    💬 Test Chat
+                    <WhatsAppIcon className="w-3.5 h-3.5 text-[#25D366]" />
+                    <span>Test Chat</span>
                   </a>
                 )}
               </div>

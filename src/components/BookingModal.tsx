@@ -385,14 +385,28 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
       }
       error = updateError
     } else {
-      const { count } = await supabase
-        .from('appointments')
-        .select('*', { count: 'exact', head: true })
-        .eq('doctor_id', selectedDoctor.id)
-        .gte('scheduled_time', new Date(selectedDate).toISOString())
-        .lte('scheduled_time', new Date(new Date(selectedDate).setHours(23,59,59)).toISOString())
+      // Calculate accurate next queue turn based on active appointments for this day (excludes cancelled & home visits)
+      const isHomeVisit = appointmentType === 'home_visit'
+      let nextPosition = 0
 
-      const nextPosition = (count || 0) + 1
+      if (!isHomeVisit) {
+        const dayStart = new Date(selectedDate)
+        dayStart.setHours(0, 0, 0, 0)
+        const dayEnd = new Date(selectedDate)
+        dayEnd.setHours(23, 59, 59, 999)
+
+        const { data: existingAppts } = await supabase
+          .from('appointments')
+          .select('id, scheduled_time, queue_position')
+          .eq('doctor_id', selectedDoctor.id)
+          .neq('status', 'cancelled')
+          .neq('appointment_type', 'home_visit')
+          .gte('scheduled_time', dayStart.toISOString())
+          .lte('scheduled_time', dayEnd.toISOString())
+          .order('scheduled_time', { ascending: true })
+
+        nextPosition = (existingAppts?.length || 0) + 1
+      }
 
       const insertPayload: any = {
         patient_id: targetPatientId,

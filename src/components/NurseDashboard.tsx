@@ -90,13 +90,17 @@ export default function NurseDashboard({
 
   // --- Nurse Actions ---
 
-  const handleCallNext = async (appointmentId: string, patientName: string) => {
+  const handleCallNext = async (appointmentId: string, patientName: string, ticketNum?: number | string) => {
     const supabase = createClient()
     
     await supabase.from('appointments').update({ status: 'in_progress' }).eq('id', appointmentId)
 
     if ('speechSynthesis' in window) {
-      const msgText = t('tts_next', { name: patientName })
+      window.speechSynthesis.cancel()
+      const ticketStr = ticketNum ? (locale === 'ar' ? `، تذكرة رقم ${ticketNum}` : `, ticket number ${ticketNum}`) : ''
+      const msgText = locale === 'ar'
+        ? `المريض التالي، ${patientName}${ticketStr}، يرجى التوجه إلى غرفة الكشف.`
+        : `Next patient, ${patientName}${ticketStr}, please proceed to the examination room.`
       const utterance = new SpeechSynthesisUtterance(msgText)
       
       const voices = window.speechSynthesis.getVoices()
@@ -105,6 +109,7 @@ export default function NurseDashboard({
       if (matchedVoice) utterance.voice = matchedVoice
       
       utterance.lang = locale === 'ar' ? 'ar-EG' : 'en-US'
+      utterance.volume = 1
       utterance.rate = 0.9 
       window.speechSynthesis.speak(utterance)
     }
@@ -252,7 +257,7 @@ export default function NurseDashboard({
                         ) : apt.status !== 'in_progress' ? (
                           <>
                             <button 
-                              onClick={() => handleCallNext(apt.id, apt.patient?.full_name || apt.manual_patient?.full_name || 'Patient')}
+                              onClick={() => handleCallNext(apt.id, apt.patient?.full_name || apt.manual_patient?.full_name || 'Patient', apt.queue_position)}
                               className="inline-flex items-center gap-1.5 bg-teal-50 text-teal-600 hover:bg-teal-100 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors"
                             >
                               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" /></svg>

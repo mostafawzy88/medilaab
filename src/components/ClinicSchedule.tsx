@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { getWhatsAppLink } from '@/utils/whatsapp'
+import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
 
 type Appointment = {
   id: string
@@ -529,9 +530,10 @@ export default function ClinicSchedule({
                       href={waUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-center font-bold text-xs transition-colors flex items-center justify-center gap-1 shadow-sm"
+                      className="flex-1 py-2 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-white text-center font-bold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-sm"
                     >
-                      <span>💬 WhatsApp</span>
+                      <WhatsAppIcon className="w-3.5 h-3.5 text-white" />
+                      <span>WhatsApp</span>
                     </a>
                   ) : (
                     <button
