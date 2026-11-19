@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import LogoutButton from './LogoutButton'
 
-export default function Navbar({ fullName, role }: { fullName: string, role?: string }) {
+export default function Navbar({ fullName, role, avatarUrl }: { fullName: string, role?: string, avatarUrl?: string | null }) {
   const t = useTranslations('Navigation')
   const dt = useTranslations('Dashboard')
   const locale = useLocale()
@@ -22,8 +22,12 @@ export default function Navbar({ fullName, role }: { fullName: string, role?: st
             href={`/${locale}/profile`}
             className="flex items-center gap-3 px-4 py-2 rounded-full transition-all border border-gray-100 dark:border-[var(--color-ml-navy-light)] hover:bg-gray-50 dark:hover:bg-white/5"
           >
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white flex items-center justify-center text-xs font-black shadow-sm">
-              {fullName?.charAt(0)}
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white flex items-center justify-center text-xs font-black shadow-sm overflow-hidden shrink-0">
+              {avatarUrl ? (
+                <img src={avatarUrl} alt={fullName} className="w-full h-full object-cover" />
+              ) : (
+                fullName?.charAt(0)
+              )}
             </div>
             <span className="text-sm font-bold text-gray-700 dark:text-gray-300 hidden sm:inline">{fullName}</span>
           </Link>

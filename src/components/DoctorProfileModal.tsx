@@ -7,6 +7,7 @@ import DoctorReviewModal from './DoctorReviewModal'
 type DoctorProfileData = {
   doctor_id: string
   full_name: string
+  avatar_url?: string | null
   specialization: string
   bio?: string | null
   clinic_location?: string | null
@@ -94,7 +95,7 @@ export default function DoctorProfileModal({
         // Fallback: Query profile directly
         const { data: docData } = await supabase
           .from('profiles')
-          .select('id, full_name, specialization, bio, clinic_location, phone_number, working_hours, fees_normal, fees_urgent, fees_home_visit')
+          .select('id, full_name, avatar_url, specialization, bio, clinic_location, phone_number, working_hours, fees_normal, fees_urgent, fees_home_visit')
           .eq('id', doctorId)
           .single()
 
@@ -114,6 +115,7 @@ export default function DoctorProfileModal({
           setProfile({
             doctor_id: docData.id,
             full_name: docData.full_name,
+            avatar_url: docData.avatar_url,
             specialization: docData.specialization || 'General Practitioner',
             bio: docData.bio,
             clinic_location: docData.clinic_location,
@@ -203,8 +205,12 @@ export default function DoctorProfileModal({
           </button>
 
           <div className="flex items-center gap-5">
-            <div className="w-20 h-20 rounded-2xl bg-white text-blue-900 flex items-center justify-center text-3xl font-black shadow-xl shrink-0">
-              {profile?.full_name?.charAt(0) || 'D'}
+            <div className="w-20 h-20 rounded-2xl bg-white text-blue-900 flex items-center justify-center text-3xl font-black shadow-xl shrink-0 overflow-hidden border border-white/40">
+              {profile?.avatar_url ? (
+                <img src={profile.avatar_url} alt={profile.full_name} className="w-full h-full object-cover" />
+              ) : (
+                profile?.full_name?.charAt(0) || 'D'
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 mb-2 flex-wrap">

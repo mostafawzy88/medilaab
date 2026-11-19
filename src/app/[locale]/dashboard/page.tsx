@@ -188,7 +188,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
       .from('patient_doctors')
       .select(`
         doctor_id,
-        doctor:profiles!patient_doctors_doctor_id_fkey(id, full_name, specialization, clinic_location, working_hours, phone_number)
+        doctor:profiles!patient_doctors_doctor_id_fkey(id, full_name, avatar_url, specialization, bio, clinic_location, working_hours, phone_number, fees_normal, fees_urgent, fees_home_visit, availability_status)
       `)
       .eq('patient_id', user.id);
 
@@ -197,13 +197,13 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
       if (profile.assigned_doctor_id) {
         const { data: fallbackDoc } = await supabase
           .from('profiles')
-          .select('id, full_name, specialization, clinic_location, working_hours, phone_number')
+          .select('id, full_name, avatar_url, specialization, bio, clinic_location, working_hours, phone_number, fees_normal, fees_urgent, fees_home_visit, availability_status')
           .eq('id', profile.assigned_doctor_id)
           .single();
         if (fallbackDoc) initialDoctors = [fallbackDoc];
       }
     } else {
-      initialDoctors = (patientDoctors || []).map((d: any) => d.doctor);
+      initialDoctors = (patientDoctors || []).map((d: any) => d.doctor).filter(Boolean);
     }
 
     portalContent = <PatientDashboard initialAppointments={appointmentsList} initialDoctors={initialDoctors} />;
@@ -268,18 +268,22 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
   return (
     <div className="min-h-screen flex bg-[var(--color-cp-grey-bg)] dark:bg-[#0A0614] font-[family-name:var(--font-geist-sans)]">
       <div className="hidden lg:block">
-        <Sidebar fullName={fullName} role={role} />
+        <Sidebar fullName={fullName} role={role} avatarUrl={profile.avatar_url} />
       </div>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <Navbar fullName={fullName} role={role} />
+        <Navbar fullName={fullName} role={role} avatarUrl={profile.avatar_url} />
 
         <main className="flex-1 p-6 md:p-10 overflow-y-auto w-full">
           {/* Mobile Navigation Header */}
           <div className="lg:hidden w-full p-4 bg-[var(--color-cp-navy)] text-white rounded-[24px] shadow-lg mb-8 flex justify-between items-center">
              <Link href={`/${locale}/profile`} className="flex items-center gap-3 hover:opacity-80 transition-opacity" title="My Profile">
-               <div className="w-10 h-10 rounded-full bg-[var(--color-cp-purple)] flex items-center justify-center font-black">
-                 {fullName?.charAt(0)}
+               <div className="w-10 h-10 rounded-full bg-[var(--color-cp-purple)] flex items-center justify-center font-black overflow-hidden shrink-0">
+                 {profile.avatar_url ? (
+                   <img src={profile.avatar_url} alt={fullName} className="w-full h-full object-cover" />
+                 ) : (
+                   fullName?.charAt(0)
+                 )}
                </div>
                <div>
                  <span className="text-sm font-bold block">{fullName}</span>

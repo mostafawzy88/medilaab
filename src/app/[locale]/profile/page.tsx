@@ -16,7 +16,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ locale
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id, full_name, phone_number, instapay_address, clinic_location, role, working_hours, latitude, longitude, specialization, bio, fees_normal, fees_urgent, fees_home_visit, email, subscription_expires_at')
+    .select('id, full_name, avatar_url, phone_number, instapay_address, clinic_location, role, working_hours, latitude, longitude, specialization, bio, fees_normal, fees_urgent, fees_home_visit, email, subscription_expires_at')
     .eq('id', user.id)
     .single();
 
@@ -26,22 +26,27 @@ export default async function ProfilePage({ params }: { params: Promise<{ locale
 
   const fullName = profile.full_name || 'User';
   const role = profile.role || 'patient';
+  const avatarUrl = profile.avatar_url || null;
 
   return (
     <div className="min-h-screen flex bg-[var(--color-cp-grey-bg)] dark:bg-[#0A0614] font-[family-name:var(--font-geist-sans)]">
       <div className="hidden lg:block">
-        <Sidebar fullName={fullName} role={role} />
+        <Sidebar fullName={fullName} role={role} avatarUrl={avatarUrl} />
       </div>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <Navbar fullName={fullName} role={role} />
+        <Navbar fullName={fullName} role={role} avatarUrl={avatarUrl} />
 
         <main className="flex-1 p-6 md:p-10 overflow-y-auto w-full">
           {/* Mobile Navigation Header */}
           <div className="lg:hidden w-full p-4 bg-[var(--color-cp-navy)] text-white rounded-[24px] shadow-lg mb-8 flex justify-between items-center">
              <div className="flex items-center gap-3">
-               <div className="w-10 h-10 rounded-full bg-[var(--color-cp-purple)] flex items-center justify-center font-black">
-                 {fullName?.charAt(0)}
+               <div className="w-10 h-10 rounded-full bg-[var(--color-cp-purple)] flex items-center justify-center font-black overflow-hidden shrink-0">
+                 {avatarUrl ? (
+                   <img src={avatarUrl} alt={fullName} className="w-full h-full object-cover" />
+                 ) : (
+                   fullName?.charAt(0)
+                 )}
                </div>
                <div>
                  <span className="text-sm font-bold block">{fullName}</span>

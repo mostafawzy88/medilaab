@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import LogoutButton from './LogoutButton'
 
-export default function Sidebar({ fullName, role }: { fullName: string, role?: string }) {
+export default function Sidebar({ fullName, role, avatarUrl }: { fullName: string, role?: string, avatarUrl?: string | null }) {
   const t = useTranslations('Navigation')
   const locale = useLocale()
   const pathname = usePathname()
@@ -96,8 +96,12 @@ export default function Sidebar({ fullName, role }: { fullName: string, role?: s
             className="flex items-center gap-3 px-4 py-3 bg-white/5 hover:bg-white/10 rounded-xl border border-[var(--color-ml-navy-light)] hover:border-blue-500/40 hover:scale-[1.02] transition-all group cursor-pointer"
             title="View & Edit Profile"
          >
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white flex items-center justify-center text-xs font-black shadow-sm group-hover:scale-105 transition-transform">
-              {fullName?.charAt(0)}
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white flex items-center justify-center text-xs font-black shadow-sm group-hover:scale-105 transition-transform overflow-hidden shrink-0">
+              {avatarUrl ? (
+                <img src={avatarUrl} alt={fullName} className="w-full h-full object-cover" />
+              ) : (
+                fullName?.charAt(0)
+              )}
             </div>
             <div className="flex-1 min-w-0">
                <p className="text-sm font-bold text-white truncate group-hover:text-blue-300 transition-colors">{fullName}</p>

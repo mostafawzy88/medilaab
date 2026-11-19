@@ -35,11 +35,16 @@ type AppointmentProps = {
 type DoctorInfo = {
   id: string
   full_name: string
+  avatar_url?: string | null
   specialization: string | null
   clinic_location: string | null
   working_hours: any
   phone_number: string | null
   bio?: string | null
+  fees_normal?: number | null
+  fees_urgent?: number | null
+  fees_home_visit?: number | null
+  availability_status?: string | null
 }
 
 type Certification = {
@@ -135,30 +140,37 @@ export default function PatientDashboard({
     const fetchAllDocs = async () => {
       setSearching(true)
       const supabase = createClient()
-      const { data } = await supabase.from('profiles').select('id, full_name, specialization, clinic_location, working_hours, phone_number').eq('role', 'doctor').eq('is_authorized', true)
-      if (data) setAllDoctors(data)
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url, specialization, bio, clinic_location, working_hours, phone_number, fees_normal, fees_urgent, fees_home_visit, availability_status')
+        .eq('role', 'doctor')
+        .eq('is_authorized', true)
+      if (data) setAllDoctors(data as any)
       setSearching(false)
     }
     fetchAllDocs()
   }, [showAddDoctor])
 
+  const isSameLocalDate = (d1?: string | null) => {
+    if (!d1) return false
+    const date1 = new Date(d1)
+    const now = new Date()
+    return date1.getFullYear() === now.getFullYear() &&
+           date1.getMonth() === now.getMonth() &&
+           date1.getDate() === now.getDate()
+  }
+
   // Fetch live doctor status & relative queue positions
   useEffect(() => {
-    const isSameLocalDate = (d1?: string | null) => {
-      if (!d1) return false
-      const date1 = new Date(d1)
-      const now = new Date()
-      return date1.getFullYear() === now.getFullYear() &&
-             date1.getMonth() === now.getMonth() &&
-             date1.getDate() === now.getDate()
-    }
-
     const todayApts = appointments.filter(a => isSameLocalDate(a.scheduled_time) && (a.status === 'scheduled' || a.status === 'in_progress'));
-    if (todayApts.length === 0) return;
+    const distinctDoctorIds = Array.from(new Set([
+      ...todayApts.map(a => a.doctor_id),
+      ...doctors.map(d => d.id)
+    ])).filter(Boolean);
+
+    if (distinctDoctorIds.length === 0) return;
 
     const supabase = createClient();
-    const distinctDoctorIds = Array.from(new Set(todayApts.map(a => a.doctor_id)));
-
     const startOfToday = new Date()
     startOfToday.setHours(0, 0, 0, 0)
 
@@ -232,7 +244,7 @@ export default function PatientDashboard({
       clearInterval(interval);
       channels.forEach(ch => supabase.removeChannel(ch));
     };
-  }, [appointments]);
+  }, [appointments, doctors]);
 
   // Handle patient arrival alert
   const handleMarkArrival = async (aptId: string) => {
@@ -1020,114 +1032,260 @@ export default function PatientDashboard({
           {doctors.length === 0 ? (
              <div className="text-center py-20 bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm">
               <div className="text-5xl mb-4">👨‍⚕️</div>
-              <h3 className="text-xl font-bold">No Doctors Yet</h3>
-              <p className="text-gray-500 mt-2 mb-6">Connect with a doctor to view their profile and book appointments instantly.</p>
-              <button onClick={() => setShowAddDoctor(true)} className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20 text-white px-6 py-3 rounded-xl font-bold">Find a Doctor</button>
+              <h3 className="text-xl font-bold">{locale === 'ar' ? 'لا يوجد أطباء مضافون' : 'No Doctors Yet'}</h3>
+              <p className="text-gray-500 mt-2 mb-6">{locale === 'ar' ? 'تواصل مع طبيبك المفضل لمتابعة حالته وحجز المواعيد ومعرفة دورك مباشرة.' : 'Connect with your doctor to track their live status, view your turn, and book appointments instantly.'}</p>
+              <button onClick={() => setShowAddDoctor(true)} className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] hover:opacity-95 transition-all shadow-lg shadow-blue-500/20 text-white px-6 py-3 rounded-xl font-bold">{locale === 'ar' ? 'البحث عن طبيب' : 'Find a Doctor'}</button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4">
-              {doctors.map(doc => (
-                <div key={doc.id} className="bg-white dark:bg-gray-900 rounded-3xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-800 transition-all hover:shadow-md group">
-                  <div className="p-6">
-                    <div className="flex justify-between items-start gap-4">
-                      
-                      {/* Doctor Basic Info */}
-                      <div className="flex items-start gap-5 flex-1 cursor-pointer" onClick={() => {
-                        setExpandedDoctorId(expandedDoctorId === doc.id ? null : doc.id);
-                        if (expandedDoctorId !== doc.id) fetchDoctorCertificates(doc.id);
-                      }}>
-                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-teal-500 text-white flex items-center justify-center text-2xl font-black shrink-0 shadow-lg shadow-blue-500/20">
-                          {doc.full_name?.charAt(0)}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {doctors.map(doc => {
+                const liveStatus = liveDoctorData[doc.id];
+                const isUnavailable = liveStatus?.is_unavailable || doc.availability_status === 'unavailable';
+                const isInConsultation = liveStatus?.is_in_consultation || doc.availability_status === 'busy';
+
+                // 1. Doctor status config
+                const statusInfo = isUnavailable ? {
+                  label: locale === 'ar' ? 'غير متاح / استراحة' : 'On Break / Unavailable',
+                  badge: 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-200 dark:border-rose-900',
+                  dot: 'bg-rose-500',
+                } : isInConsultation ? {
+                  label: locale === 'ar' ? 'مع مريض حالياً' : 'With a Patient',
+                  badge: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200 dark:border-amber-900',
+                  dot: 'bg-amber-500 animate-pulse',
+                } : {
+                  label: locale === 'ar' ? 'متاح وجاهز' : 'Free & Ready',
+                  badge: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900',
+                  dot: 'bg-emerald-500',
+                };
+
+                // 2. Active clinic appointment with this doctor today
+                const activeApptToday = appointments.find(a => 
+                  a.doctor_id === doc.id && 
+                  isSameLocalDate(a.scheduled_time) && 
+                  a.appointment_type !== 'home_visit' &&
+                  (a.status === 'scheduled' || a.status === 'in_progress')
+                );
+
+                // 3. Upcoming appointment on future date
+                const upcomingAppt = !activeApptToday ? appointments.find(a => 
+                  a.doctor_id === doc.id && 
+                  a.status !== 'cancelled' && 
+                  a.status !== 'completed' &&
+                  a.scheduled_time && new Date(a.scheduled_time).getTime() > Date.now()
+                ) : null;
+
+                // 4. Calculate Turn and Estimated Arrival for today
+                let turnData = null;
+                if (activeApptToday) {
+                  const queue = liveStatus?.queue || [];
+                  const myQueueIdx = queue.findIndex(q => q.id === activeApptToday.id);
+                  let patientsAhead = 0;
+                  if (myQueueIdx >= 0) {
+                    patientsAhead = myQueueIdx;
+                  } else if (activeApptToday.scheduled_time) {
+                    const myTime = new Date(activeApptToday.scheduled_time).getTime();
+                    patientsAhead = queue.filter(q => q.scheduled_time && new Date(q.scheduled_time).getTime() < myTime).length;
+                  }
+
+                  const myTurnNumber = myQueueIdx >= 0 ? (myQueueIdx + 1) : ((activeApptToday.queue_position && activeApptToday.queue_position <= (queue.length || 1)) ? activeApptToday.queue_position : 1);
+                  const isCallingNow = activeApptToday.status === 'in_progress';
+                  const estWaitMins = Math.max(5, patientsAhead * 15);
+                  const expectedTime = new Date(Date.now() + estWaitMins * 60000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+                  
+                  // Arrival recommendation: buffer 10-15 mins early
+                  const bufferMins = Math.max(0, estWaitMins - 15);
+                  const recommendedArrival = bufferMins > 0 
+                    ? new Date(Date.now() + bufferMins * 60000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })
+                    : (locale === 'ar' ? 'الآن فوراً' : 'Immediately');
+
+                  turnData = {
+                    myTurnNumber,
+                    isCallingNow,
+                    patientsAhead,
+                    estWaitMins,
+                    expectedTime,
+                    recommendedArrival
+                  };
+                }
+
+                return (
+                  <div key={doc.id} className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-xl hover:border-blue-500/30 transition-all duration-300 flex flex-col justify-between group relative">
+                    <div>
+                      {/* Card Header: Avatar, Name, Specialization & Remove Button */}
+                      <div className="flex items-start justify-between gap-3 mb-4">
+                        <div className="flex items-center gap-3.5 min-w-0">
+                          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-teal-500 text-white flex items-center justify-center text-2xl font-black shrink-0 shadow-lg shadow-blue-500/20 overflow-hidden border border-gray-100 dark:border-gray-800">
+                            {doc.avatar_url ? (
+                              <img src={doc.avatar_url} alt={doc.full_name} className="w-full h-full object-cover" />
+                            ) : (
+                              doc.full_name?.charAt(0) || 'D'
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="font-black text-lg text-gray-900 dark:text-white truncate">
+                              Dr. {doc.full_name}
+                            </h4>
+                            <p className="text-xs font-bold text-blue-600 dark:text-blue-400 truncate">
+                              {doc.specialization || 'General Practitioner'}
+                            </p>
+                            {doc.clinic_location && (
+                              <p className="text-[11px] text-gray-400 truncate mt-0.5">
+                                📍 {doc.clinic_location}
+                              </p>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <h2 className="text-xl font-black">Dr. {doc.full_name}</h2>
-                          {doc.specialization && (
-                            <span className="text-sm font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-lg inline-block mt-1">{doc.specialization}</span>
-                          )}
-                          <p className="text-sm text-gray-500 mt-2 line-clamp-2 max-w-lg">{doc.bio || 'Experienced medical professional dedicated to providing the best care for patients.'}</p>
+                        <button 
+                          type="button"
+                          onClick={() => handleRemoveDoctor(doc.id)}
+                          className="text-gray-300 hover:text-red-500 transition-colors p-1.5 text-sm rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 shrink-0"
+                          title="Remove from My Doctors"
+                        >
+                          ✕
+                        </button>
+                      </div>
+
+                      {/* Live Doctor Status Bar */}
+                      <div className="mb-4">
+                        <div className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center justify-between ${statusInfo.badge}`}>
+                          <span className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${statusInfo.dot}`}></span>
+                            <span>{statusInfo.label}</span>
+                          </span>
+                          <span className="text-[10px] font-black uppercase tracking-wider opacity-80">
+                            {liveStatus?.is_in_consultation ? (locale === 'ar' ? 'جلسة كشف' : 'Active') : 'Live'}
+                          </span>
                         </div>
                       </div>
 
-                      {/* Top Right Actions */}
-                      <div className="flex flex-col items-end gap-3 shrink-0">
-                        <button 
-                          onClick={() => handleRemoveDoctor(doc.id)}
-                          className="text-gray-300 hover:text-red-500 transition-colors p-1"
-                          title="Remove Doctor"
-                        >✕</button>
-                        <div className="flex items-center gap-2">
-                          <button 
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setViewingDoctorId(doc.id);
-                            }}
-                            className="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs font-bold px-3.5 py-2.5 rounded-xl hover:bg-blue-100 transition-all border border-blue-200 dark:border-blue-800 flex items-center gap-1.5 shadow-sm"
-                            title="View doctor's public statistics, rush hours and bio"
-                          >
-                            <span>ℹ️ Profile & Stats</span>
-                          </button>
-                          <button 
-                             onClick={(e) => {
-                               e.stopPropagation();
-                               setSelectedDoctor(doc);
-                               setEditAppointmentId(null);
-                               setShowBooking(true);
-                             }}
-                             className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white text-xs font-black px-4 py-2.5 rounded-xl hover:opacity-95 transition-all shadow-md shadow-blue-500/20"
-                           >
-                             Book Visit
-                          </button>
+                      {/* My Turn & Estimated Wait Tracker (The User's Core Need!) */}
+                      {turnData ? (
+                        <div className={`mb-5 p-4 rounded-2xl border transition-all ${
+                          turnData.isCallingNow
+                            ? 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/20 border-emerald-400 animate-pulse'
+                            : 'bg-blue-50/70 dark:bg-blue-950/40 border-blue-100 dark:border-blue-900/50'
+                        }`}>
+                          {turnData.isCallingNow ? (
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <span className="font-black text-xs uppercase tracking-wider flex items-center gap-1.5">
+                                  <span>🔔</span> {locale === 'ar' ? 'حان دورك الآن!' : "It's Your Turn Now!"}
+                                </span>
+                                <span className="bg-white text-emerald-800 font-black text-xs px-2.5 py-0.5 rounded-lg shadow-sm">
+                                  Q{turnData.myTurnNumber}
+                                </span>
+                              </div>
+                              <p className="text-xs text-emerald-100 font-medium">
+                                {locale === 'ar' ? 'يرجى التوجه لغرفة الكشف فوراً.' : 'Doctor is waiting for you in the examination room.'}
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="space-y-2.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                                  {locale === 'ar' ? 'طابور كشفك اليوم' : "Today's Visit Turn"}
+                                </span>
+                                <span className="bg-blue-600 text-white font-black text-xs px-2.5 py-0.5 rounded-lg shadow-sm">
+                                  Q{turnData.myTurnNumber}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                                <div className="bg-white/80 dark:bg-gray-800/80 p-2 rounded-xl border border-blue-100 dark:border-blue-900/40">
+                                  <p className="text-[10px] uppercase font-bold text-gray-400">
+                                    {locale === 'ar' ? 'مرضى قبلك' : 'Ahead'}
+                                  </p>
+                                  <p className="text-base font-black text-gray-800 dark:text-white">
+                                    {turnData.patientsAhead} {locale === 'ar' ? 'مرضى' : 'in line'}
+                                  </p>
+                                </div>
+                                <div className="bg-white/80 dark:bg-gray-800/80 p-2 rounded-xl border border-blue-100 dark:border-blue-900/40">
+                                  <p className="text-[10px] uppercase font-bold text-gray-400">
+                                    {locale === 'ar' ? 'الوقت المتوقع' : 'Expected Time'}
+                                  </p>
+                                  <p className="text-base font-black text-blue-600 dark:text-blue-400">
+                                    {turnData.expectedTime}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="pt-1 border-t border-blue-200/60 dark:border-blue-900/40 flex items-center justify-between text-[11px] font-bold text-gray-600 dark:text-gray-300">
+                                <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                                  <span>🚗</span> {locale === 'ar' ? `الموعد المثالي لوصولك: ${turnData.recommendedArrival}` : `Arrive by: ${turnData.recommendedArrival}`}
+                                </span>
+                                <span>⏱️ ~{turnData.estWaitMins}m</span>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      </div>
+                      ) : upcomingAppt ? (
+                        <div className="mb-5 p-3.5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/40 text-xs space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-black text-indigo-700 dark:text-indigo-300">
+                              📅 {locale === 'ar' ? 'موعدك القادم' : 'Upcoming Visit'}
+                            </span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-200/60 dark:bg-indigo-900/60 text-indigo-900 dark:text-indigo-200 uppercase">
+                              {(upcomingAppt.appointment_type || 'clinic').replace(/_/g, ' ')}
+                            </span>
+                          </div>
+                          <p className="font-bold text-gray-800 dark:text-gray-200">
+                            {new Date(upcomingAppt.scheduled_time!).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                          </p>
+                          <p className="text-[11px] text-gray-500">
+                            {locale === 'ar' ? 'سيتم تفعيل متابعة الطابور المباشر صباح يوم الكشف.' : 'Live queue tracking activates on the morning of your visit.'}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="mb-5 p-3 rounded-2xl bg-gray-50 dark:bg-gray-800/40 border border-gray-100 dark:border-gray-800 text-xs flex items-center justify-between text-gray-500">
+                          <span>💰 {locale === 'ar' ? `الكشف: ${doc.fees_normal || 200} ج.م` : `Visit: ${doc.fees_normal || 200} EGP`}</span>
+                          <span>⏱️ {locale === 'ar' ? 'متوسط الكشف: 15 د' : '~15m per visit'}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Card Action Buttons: Book Visit, Profile & Reviews, WhatsApp */}
+                    <div className="flex items-center gap-2 pt-3 border-t border-gray-100 dark:border-gray-800">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedDoctor(doc);
+                          setEditAppointmentId(null);
+                          setShowBooking(true);
+                        }}
+                        className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] hover:opacity-95 text-white font-black text-xs shadow-md shadow-blue-500/20 transition-all text-center"
+                      >
+                        {locale === 'ar' ? 'حجز موعد' : 'Book Visit'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setViewingDoctorId(doc.id)}
+                        className="py-2.5 px-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold text-xs transition-colors flex items-center justify-center gap-1"
+                        title="View profile, stats, rush hours and patient reviews"
+                      >
+                        <span>ℹ️</span>
+                        <span>{locale === 'ar' ? 'البروفايل' : 'Profile'}</span>
+                      </button>
+
+                      {(() => {
+                        const waUrl = getWhatsAppLink(doc.phone_number, `Hello Dr. ${doc.full_name}, I am your patient from MediLab.`);
+                        if (!waUrl) return null;
+                        return (
+                          <a
+                            href={waUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="py-2.5 px-3 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-white transition-all flex items-center justify-center shadow-sm"
+                            title="Chat with doctor on WhatsApp"
+                          >
+                            <WhatsAppIcon className="w-4 h-4 text-white" />
+                          </a>
+                        );
+                      })()}
                     </div>
                   </div>
-
-                  {/* Expanded Details */}
-                  {expandedDoctorId === doc.id && (
-                    <div className="bg-gray-50 dark:bg-gray-800/50 p-6 border-t border-gray-100 dark:border-gray-800 animate-in slide-in-from-top-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div>
-                           <h4 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-3">Clinic & Hours</h4>
-                           <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-200 dark:border-gray-700">
-                             <div className="mb-4 pb-4 border-b border-gray-100 dark:border-gray-800">
-                               <p className="text-sm text-gray-500 mb-1">📍 Address</p>
-                               <p className="font-bold text-sm leading-relaxed">{doc.clinic_location || 'Address not provided'}</p>
-                             </div>
-                             <div>
-                               <p className="text-sm text-gray-500 mb-1">🕒 Working Hours</p>
-                               {renderDoctorWorkingHours(doc.working_hours)}
-                             </div>
-                           </div>
-                        </div>
-                        <div>
-                           <h4 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-3">Certificates & Qualifications</h4>
-                           {!doctorCerts[doc.id] ? (
-                             <p className="text-sm text-gray-400 py-4">Loading certificates...</p>
-                           ) : doctorCerts[doc.id].length === 0 ? (
-                             <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-700 text-center">
-                                <p className="text-xl mb-2">🎓</p>
-                                <p className="text-gray-500 text-sm">No certificates listed publicly.</p>
-                             </div>
-                           ) : (
-                             <div className="space-y-3">
-                               {doctorCerts[doc.id].map(cert => (
-                                 <div key={cert.id} className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-200 dark:border-gray-700 flex gap-3 shadow-sm">
-                                    <div className="text-2xl shrink-0">🏅</div>
-                                    <div>
-                                      <p className="font-bold text-sm">{cert.title}</p>
-                                      {cert.description && <p className="text-xs text-gray-500 mt-1 leading-relaxed">{cert.description}</p>}
-                                    </div>
-                                 </div>
-                               ))}
-                             </div>
-                           )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
           
@@ -1145,13 +1303,22 @@ export default function PatientDashboard({
                    ) : allDoctors.filter(d => !doctors.find(myD => myD.id === d.id)).map(doc => (
                      <div key={doc.id} className="w-full p-4 rounded-2xl border-2 border-gray-100 dark:border-gray-800 flex items-center justify-between gap-3 bg-gray-50 dark:bg-gray-800/50">
                        <div 
-                         className="cursor-pointer group flex-1"
+                         className="cursor-pointer group flex-1 flex items-center gap-3 min-w-0"
                          onClick={() => setViewingDoctorId(doc.id)}
                        >
-                         <p className="font-bold group-hover:text-blue-600 transition-colors">
-                            Dr. {doc.full_name}
-                          </p>
-                         <p className="text-xs text-blue-600 font-medium">{doc.specialization || 'General Practitioner'}</p>
+                         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-teal-500 text-white flex items-center justify-center font-black shrink-0 overflow-hidden shadow-sm">
+                           {doc.avatar_url ? (
+                             <img src={doc.avatar_url} alt={doc.full_name} className="w-full h-full object-cover" />
+                           ) : (
+                             doc.full_name?.charAt(0) || 'D'
+                           )}
+                         </div>
+                         <div className="min-w-0">
+                           <p className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors truncate">
+                             Dr. {doc.full_name}
+                           </p>
+                           <p className="text-xs text-blue-600 dark:text-blue-400 font-medium truncate">{doc.specialization || 'General Practitioner'}</p>
+                         </div>
                        </div>
                        <div className="flex items-center gap-2">
                          <button
