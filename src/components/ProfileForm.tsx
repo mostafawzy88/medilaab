@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useTranslations } from 'next-intl'
+import { formatWhatsAppNumber, isValidWhatsAppNumber, getWhatsAppLink } from '@/utils/whatsapp'
 
 type Profile = {
   id: string
@@ -57,6 +58,30 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
   const [newCertDesc, setNewCertDesc] = useState('')
   const [addingCert, setAddingCert] = useState(false)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [detectingGps, setDetectingGps] = useState(false)
+
+  const handleDetectGps = () => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser')
+      return
+    }
+    setDetectingGps(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setProfile(prev => ({
+          ...prev,
+          latitude: Number(pos.coords.latitude.toFixed(6)),
+          longitude: Number(pos.coords.longitude.toFixed(6))
+        }))
+        setDetectingGps(false)
+      },
+      (err) => {
+        alert('Could not retrieve your GPS location: ' + err.message)
+        setDetectingGps(false)
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
+  }
 
   const getHours = (): Record<string, any> => {
     if (!profile.working_hours) return DEFAULT_HOURS
@@ -354,9 +379,20 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
           </div>
         )}
 
-        {/* Basic Info */}
+        {/* Personal & Contact Information */}
         <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 space-y-5">
-          <h2 className="text-sm font-black uppercase tracking-widest text-gray-400">Basic Info</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-black uppercase tracking-widest text-gray-400">Personal & Contact Info</h2>
+            {profile.phone_number && isValidWhatsAppNumber(profile.phone_number) ? (
+              <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-full border border-emerald-200 dark:border-emerald-800">
+                💬 WhatsApp Ready (+{formatWhatsAppNumber(profile.phone_number)})
+              </span>
+            ) : (
+              <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800">
+                ⚠️ Enter valid phone for WhatsApp
+              </span>
+            )}
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="space-y-2">
               <label className="text-xs font-black uppercase tracking-widest text-gray-500">{t('full_name')}</label>
@@ -365,29 +401,121 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
                 value={profile.full_name || ''}
                 onChange={e => setProfile({ ...profile, full_name: e.target.value })}
                 className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none ring-2 ring-transparent focus:ring-blue-500 transition-all font-medium"
+                placeholder="Full name"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-black uppercase tracking-widest text-gray-500">Phone Number</label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-black uppercase tracking-widest text-gray-500">Phone Number (WhatsApp)</label>
+                {isValidWhatsAppNumber(profile.phone_number) && (
+                  <a
+                    href={getWhatsAppLink(profile.phone_number, 'Hello! Testing WhatsApp integration from MediLab.')}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] font-bold text-emerald-600 hover:underline flex items-center gap-1"
+                  >
+                    💬 Test Chat
+                  </a>
+                )}
+              </div>
               <input
                 type="tel"
                 value={profile.phone_number || ''}
                 onChange={e => setProfile({ ...profile, phone_number: e.target.value })}
                 className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none ring-2 ring-transparent focus:ring-blue-500 transition-all font-medium"
+                placeholder="010xxxxxxxx or +2010..."
               />
+              <p className="text-[11px] text-gray-400">Used for clinic alerts, confirmations, and direct WhatsApp communication.</p>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 md:col-span-2">
               <label className="text-xs font-black uppercase tracking-widest text-gray-500">Email Address</label>
               <input
                 type="email"
                 value={profile.email || ''}
                 onChange={e => setProfile({ ...profile, email: e.target.value })}
                 className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none ring-2 ring-transparent focus:ring-blue-500 transition-all font-medium"
-                placeholder="patient@example.com"
+                placeholder="user@example.com"
               />
             </div>
           </div>
         </div>
+
+        {/* Patient Home Address & Google Maps (Crucial for Home Visits) */}
+        {!isStaff && (
+          <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 space-y-5">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h2 className="text-sm font-black uppercase tracking-widest text-gray-400">Home Address & Location</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Used by visiting doctors for home visits and emergency house calls</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleDetectGps}
+                  disabled={detectingGps}
+                  className="px-3.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-300 font-bold text-xs transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                  title="Detect GPS location"
+                >
+                  <span>📍</span>
+                  <span>{detectingGps ? 'Detecting...' : 'Get GPS Location'}</span>
+                </button>
+                {(profile.latitude && profile.longitude) || profile.clinic_location ? (
+                  <a
+                    href={
+                      profile.latitude && profile.longitude
+                        ? `https://maps.google.com/?q=${profile.latitude},${profile.longitude}`
+                        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(profile.clinic_location || '')}`
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-bold text-xs border border-emerald-200 dark:border-emerald-800 transition-colors flex items-center gap-1.5 shadow-sm"
+                  >
+                    <span>🗺️</span>
+                    <span>View on Maps</span>
+                  </a>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-xs font-black uppercase tracking-widest text-gray-500">Detailed Home Address</label>
+                <textarea
+                  rows={3}
+                  value={profile.clinic_location || ''}
+                  onChange={e => setProfile({ ...profile, clinic_location: e.target.value })}
+                  placeholder="Building No, Street Name, Floor, Apartment No, Landmark, City..."
+                  className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none ring-2 ring-transparent focus:ring-blue-500 transition-all font-medium resize-none text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-black uppercase tracking-widest text-gray-500">GPS Latitude</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={profile.latitude ?? ''}
+                    onChange={e => setProfile({ ...profile, latitude: e.target.value ? parseFloat(e.target.value) : null })}
+                    className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-2.5 outline-none ring-2 ring-transparent focus:ring-blue-500 font-mono text-sm"
+                    placeholder="30.0444"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-black uppercase tracking-widest text-gray-500">GPS Longitude</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={profile.longitude ?? ''}
+                    onChange={e => setProfile({ ...profile, longitude: e.target.value ? parseFloat(e.target.value) : null })}
+                    className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-2.5 outline-none ring-2 ring-transparent focus:ring-blue-500 font-mono text-sm"
+                    placeholder="31.2357"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Doctor/Nurse Professional Info */}
         {isStaff && (
@@ -471,15 +599,43 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
 
             {/* Clinic Info */}
             <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 space-y-5">
-              <h2 className="text-sm font-black uppercase tracking-widest text-gray-400">Clinic Details</h2>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h2 className="text-sm font-black uppercase tracking-widest text-gray-400">Clinic Details & Location</h2>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleDetectGps}
+                    disabled={detectingGps}
+                    className="px-3.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 font-bold text-xs transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                  >
+                    <span>📍</span>
+                    <span>{detectingGps ? 'Detecting...' : 'Get Clinic GPS'}</span>
+                  </button>
+                  {((profile.latitude && profile.longitude) || profile.clinic_location) && (
+                    <a
+                      href={
+                        profile.latitude && profile.longitude
+                          ? `https://maps.google.com/?q=${profile.latitude},${profile.longitude}`
+                          : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(profile.clinic_location || '')}`
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-bold text-xs border border-emerald-200 dark:border-emerald-800 transition-colors flex items-center gap-1.5 shadow-sm"
+                    >
+                      <span>🗺️</span>
+                      <span>Google Maps</span>
+                    </a>
+                  )}
+                </div>
+              </div>
               <div className="space-y-2">
                 <label className="text-xs font-black uppercase tracking-widest text-gray-500">{t('clinic_location')}</label>
                 <textarea
                   rows={2}
-                  placeholder="Full clinic address..."
+                  placeholder="Full clinic address (Building, Street, Landmark)..."
                   value={profile.clinic_location || ''}
                   onChange={e => setProfile({ ...profile, clinic_location: e.target.value })}
-                  className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-4 outline-none ring-2 ring-transparent focus:ring-blue-500 transition-all font-medium resize-none"
+                  className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-4 outline-none ring-2 ring-transparent focus:ring-blue-500 transition-all font-medium resize-none text-sm"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -487,18 +643,20 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
                   <label className="text-xs font-black uppercase tracking-widest text-gray-500">Latitude</label>
                   <input
                     type="number" step="any"
-                    value={profile.latitude || ''}
-                    onChange={e => setProfile({ ...profile, latitude: parseFloat(e.target.value) })}
-                    className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none ring-2 ring-transparent focus:ring-blue-500 font-medium"
+                    value={profile.latitude ?? ''}
+                    onChange={e => setProfile({ ...profile, latitude: e.target.value ? parseFloat(e.target.value) : null })}
+                    className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none ring-2 ring-transparent focus:ring-blue-500 font-mono text-sm"
+                    placeholder="30.0444"
                   />
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-black uppercase tracking-widest text-gray-500">Longitude</label>
                   <input
                     type="number" step="any"
-                    value={profile.longitude || ''}
-                    onChange={e => setProfile({ ...profile, longitude: parseFloat(e.target.value) })}
-                    className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none ring-2 ring-transparent focus:ring-blue-500 font-medium"
+                    value={profile.longitude ?? ''}
+                    onChange={e => setProfile({ ...profile, longitude: e.target.value ? parseFloat(e.target.value) : null })}
+                    className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none ring-2 ring-transparent focus:ring-blue-500 font-mono text-sm"
+                    placeholder="31.2357"
                   />
                 </div>
               </div>

@@ -158,13 +158,31 @@ export default function PatientHistoryTab({
   const handleMarkAsPaid = async (appointmentId: string) => {
     setSubmittingPayment(true)
     const supabase = createClient()
-    const { error } = await supabase
+    const refVal = paymentRefInput.trim() || 'InstaPay Transfer'
+    let { error } = await supabase
       .from('appointments')
       .update({
         payment_status: 'paid_by_patient',
-        payment_reference: paymentRefInput.trim() || 'InstaPay Transfer'
+        payment_reference: refVal
       })
       .eq('id', appointmentId)
+
+    // Fallback if Postgres payment_status enum has not yet been altered to include 'paid_by_patient'
+    if (error && (error.message?.includes('payment_status') || error.message?.includes('enum') || error.message?.includes('paid_by_patient'))) {
+      const retry1 = await supabase.from('appointments').update({
+        payment_reference: refVal
+      }).eq('id', appointmentId)
+
+      if (!retry1.error) {
+        error = null
+      } else {
+        const { data: aptData } = await supabase.from('appointments').select('notes').eq('id', appointmentId).single()
+        const paidTag = `[PAID_BY_PATIENT: ${refVal}]`
+        const newNotes = `${aptData?.notes || ''} ${paidTag}`.trim()
+        const retry2 = await supabase.from('appointments').update({ notes: newNotes }).eq('id', appointmentId)
+        error = retry2.error
+      }
+    }
 
     if (error) {
       alert('Error updating payment: ' + error.message)
@@ -340,7 +358,7 @@ export default function PatientHistoryTab({
             const isCompleted = visit.status === 'completed'
             const isCancelled = visit.status === 'cancelled'
             const isPaid = visit.payment_status === 'paid'
-            const isPaidByPatient = visit.payment_status === 'paid_by_patient'
+            const isPaidByPatient = visit.payment_status === 'paid_by_patient' || !!visit.payment_reference || (visit.notes || '').includes('[PAID_BY_PATIENT')
 
             return (
               <div

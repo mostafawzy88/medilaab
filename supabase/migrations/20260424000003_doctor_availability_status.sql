@@ -2,6 +2,15 @@
 ALTER TABLE public.profiles 
 ADD COLUMN IF NOT EXISTS availability_status text DEFAULT 'available';
 
+-- Ensure 'paid_by_patient' is an accepted value in payment_status enum
+DO $$
+BEGIN
+  ALTER TYPE payment_status ADD VALUE IF NOT EXISTS 'paid_by_patient';
+EXCEPTION
+  WHEN duplicate_object THEN null;
+  WHEN undefined_object THEN null;
+END $$;
+
 -- Drop existing function first because changing return type from json to jsonb requires DROP FUNCTION in Postgres
 DROP FUNCTION IF EXISTS public.get_doctor_live_queue(uuid);
 
@@ -37,7 +46,7 @@ BEGIN
   WHERE doctor_id = p_doctor_id
     AND scheduled_time::date = v_today
     AND status = 'in_progress'
-    AND coalesce(appointment_type, '') != 'home_visit'
+    AND coalesce(appointment_type::text, '') != 'home_visit'
   LIMIT 1;
 
   -- Count total clinic visits today
@@ -46,7 +55,7 @@ BEGIN
   FROM public.appointments
   WHERE doctor_id = p_doctor_id
     AND scheduled_time::date = v_today
-    AND coalesce(appointment_type, '') != 'home_visit'
+    AND coalesce(appointment_type::text, '') != 'home_visit'
     AND status IN ('scheduled', 'in_progress');
 
   -- Count patients waiting outside
@@ -55,7 +64,7 @@ BEGIN
   FROM public.appointments
   WHERE doctor_id = p_doctor_id
     AND scheduled_time::date = v_today
-    AND coalesce(appointment_type, '') != 'home_visit'
+    AND coalesce(appointment_type::text, '') != 'home_visit'
     AND status = 'scheduled';
 
   -- Build queue array (excludes home visits)
@@ -72,7 +81,7 @@ BEGIN
   FROM public.appointments a
   WHERE a.doctor_id = p_doctor_id
     AND a.scheduled_time::date = v_today
-    AND coalesce(a.appointment_type, '') != 'home_visit'
+    AND coalesce(a.appointment_type::text, '') != 'home_visit'
     AND a.status IN ('scheduled', 'in_progress');
 
   RETURN jsonb_build_object(

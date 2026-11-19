@@ -14,8 +14,15 @@ type Appointment = {
   appointment_type?: string
   fees?: number
   payment_status?: string
+  payment_reference?: string | null
   notes?: string | null
-  patient: { full_name: string; phone_number?: string | null } | null
+  patient: {
+    full_name: string
+    phone_number?: string | null
+    clinic_location?: string | null
+    latitude?: number | null
+    longitude?: number | null
+  } | null
   manual_patient?: { full_name: string; phone_number?: string | null } | null
 }
 
@@ -61,11 +68,18 @@ export default function DoctorOverview({
     return () => clearInterval(timer)
   }, [])
 
-  const todayStr = new Date().toISOString().split('T')[0]
+  const isSameLocalDate = (d1?: string | null) => {
+    if (!d1) return false
+    const date1 = new Date(d1)
+    const now = new Date()
+    return date1.getFullYear() === now.getFullYear() &&
+           date1.getMonth() === now.getMonth() &&
+           date1.getDate() === now.getDate()
+  }
 
   // Filter today's specific subsets
-  const todayClinicVisits = activeQueue.filter(a => a.scheduled_time?.startsWith(todayStr))
-  const todayHomeVisits = homeVisits.filter(a => a.scheduled_time?.startsWith(todayStr))
+  const todayClinicVisits = activeQueue.filter(a => isSameLocalDate(a.scheduled_time))
+  const todayHomeVisits = homeVisits.filter(a => isSameLocalDate(a.scheduled_time))
   
   // Find currently active consultation
   const activeConsultation = activeQueue.find(a => a.status === 'in_progress')
@@ -487,6 +501,25 @@ export default function DoctorOverview({
                             ({visit.payment_status === 'paid' ? 'Paid' : 'Unpaid'})
                           </span>
                         </p>
+                        {visit.patient?.clinic_location && (
+                          <div className="flex items-center gap-1.5 text-xs text-amber-800 dark:text-amber-200 mt-1.5 bg-amber-100/60 dark:bg-amber-900/30 px-2.5 py-1 rounded-lg">
+                            <span>📍</span>
+                            <span className="font-semibold truncate max-w-[220px]">{visit.patient.clinic_location}</span>
+                            <a
+                              href={
+                                visit.patient.latitude && visit.patient.longitude
+                                  ? `https://maps.google.com/?q=${visit.patient.latitude},${visit.patient.longitude}`
+                                  : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(visit.patient.clinic_location)}`
+                              }
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ml-auto text-[11px] font-black text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                              title="Navigate via Google Maps"
+                            >
+                              🗺️ Maps ↗
+                            </a>
+                          </div>
+                        )}
                       </div>
 
                       <span className={`px-2.5 py-1 rounded-full text-xs font-black ${

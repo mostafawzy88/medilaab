@@ -143,12 +143,23 @@ export default function PatientDashboard({
 
   // Fetch live doctor status & relative queue positions
   useEffect(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    const todayApts = appointments.filter(a => a.scheduled_time?.startsWith(todayStr) && (a.status === 'scheduled' || a.status === 'in_progress'));
+    const isSameLocalDate = (d1?: string | null) => {
+      if (!d1) return false
+      const date1 = new Date(d1)
+      const now = new Date()
+      return date1.getFullYear() === now.getFullYear() &&
+             date1.getMonth() === now.getMonth() &&
+             date1.getDate() === now.getDate()
+    }
+
+    const todayApts = appointments.filter(a => isSameLocalDate(a.scheduled_time) && (a.status === 'scheduled' || a.status === 'in_progress'));
     if (todayApts.length === 0) return;
 
     const supabase = createClient();
     const distinctDoctorIds = Array.from(new Set(todayApts.map(a => a.doctor_id)));
+
+    const startOfToday = new Date()
+    startOfToday.setHours(0, 0, 0, 0)
 
     const fetchLiveStatus = async () => {
       for (const docId of distinctDoctorIds) {
@@ -158,14 +169,14 @@ export default function PatientDashboard({
           if (!rpcError && rpcData) {
             setLiveDoctorData(prev => ({ ...prev, [docId]: rpcData as LiveDoctorStatus }));
           } else {
-            // 2. Fallback: query appointments where possible
+            // 2. Fallback: query appointments directly
             const { data: qData } = await supabase
               .from('appointments')
               .select('id, queue_position, status, scheduled_time, notes')
               .eq('doctor_id', docId)
               .neq('appointment_type', 'home_visit')
               .in('status', ['scheduled', 'in_progress'])
-              .gte('scheduled_time', todayStr + 'T00:00:00');
+              .gte('scheduled_time', startOfToday.toISOString());
 
             if (qData) {
               const inProgress = qData.find((a: any) => a.status === 'in_progress');
@@ -357,14 +368,33 @@ export default function PatientDashboard({
     )
     if (ref === null) return;
     const supabase = createClient()
-    const { error } = await supabase.from('appointments').update({
+    const refVal = ref.trim() || 'InstaPay Transfer'
+    let { error } = await supabase.from('appointments').update({
       payment_status: 'paid_by_patient',
-      payment_reference: ref.trim() || 'InstaPay Transfer'
+      payment_reference: refVal
     }).eq('id', apptId)
+
+    // Fallback if Postgres payment_status enum has not yet been altered to include 'paid_by_patient'
+    if (error && (error.message?.includes('payment_status') || error.message?.includes('enum') || error.message?.includes('paid_by_patient'))) {
+      const retry1 = await supabase.from('appointments').update({
+        payment_reference: refVal
+      }).eq('id', apptId)
+      
+      if (!retry1.error) {
+        error = null
+      } else {
+        const { data: aptData } = await supabase.from('appointments').select('notes').eq('id', apptId).single()
+        const paidTag = `[PAID_BY_PATIENT: ${refVal}]`
+        const newNotes = `${aptData?.notes || ''} ${paidTag}`.trim()
+        const retry2 = await supabase.from('appointments').update({ notes: newNotes }).eq('id', apptId)
+        error = retry2.error
+      }
+    }
+
     if (error) {
       alert("Error updating payment: " + error.message)
     } else {
-      setAppointments(prev => prev.map(a => a.id === apptId ? { ...a, payment_status: 'paid_by_patient', payment_reference: ref.trim() || 'InstaPay Transfer' } : a))
+      setAppointments(prev => prev.map(a => a.id === apptId ? { ...a, payment_status: 'paid_by_patient', payment_reference: refVal } : a))
     }
   }
 
@@ -491,7 +521,7 @@ export default function PatientDashboard({
                 const isPending = apt.status === 'waiting'
                 const isApproved = apt.status === 'scheduled'
                 const isPaid = apt.payment_status === 'paid'
-                const isPaidByPatient = apt.payment_status === 'paid_by_patient'
+                const isPaidByPatient = apt.payment_status === 'paid_by_patient' || !!apt.payment_reference || (apt.notes || '').includes('[PAID_BY_PATIENT')
                 const needsPayment = !isPaid && !isPaidByPatient && isApproved
 
                 let badgeText = cfg.label
@@ -580,10 +610,23 @@ export default function PatientDashboard({
                         {(() => {
                           const docObj = doctors.find(d => d.id === apt.doctor_id) || allDoctors.find(d => d.id === apt.doctor_id);
                           const docPhone = apt.doctor_phone || docObj?.phone_number;
-                          if (!docPhone) return null;
+                          const waUrl = getWhatsAppLink(docPhone, `Hello Dr. ${apt.doctor_name}, this is regarding my appointment at MediLab.`);
+                          if (!waUrl) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => alert(locale === 'ar' ? `الطبيب د. ${apt.doctor_name} لم يقم بإضافة رقم هاتف متاح للواتساب بعد` : `Dr. ${apt.doctor_name} has not registered a valid WhatsApp phone number yet.`)}
+                                className="text-xs font-bold text-gray-400 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-xl border border-gray-200 dark:border-gray-700 transition-colors flex items-center gap-1 opacity-70"
+                                title="No valid phone registered"
+                              >
+                                <span>💬</span>
+                                <span>WhatsApp</span>
+                              </button>
+                            );
+                          }
                           return (
                             <a
-                              href={getWhatsAppLink(docPhone, `Hello Dr. ${apt.doctor_name}, this is regarding my appointment at MediLab.`)}
+                              href={waUrl}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 px-3 py-1 rounded-xl border border-emerald-200 dark:border-emerald-800 transition-colors flex items-center gap-1 shadow-sm"

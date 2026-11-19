@@ -24,8 +24,15 @@ type Appointment = {
   appointment_type?: string
   fees?: number
   payment_status?: string
+  payment_reference?: string | null
   notes?: string | null
-  patient: { full_name: string; phone_number?: string | null } | null
+  patient: {
+    full_name: string
+    phone_number?: string | null
+    clinic_location?: string | null
+    latitude?: number | null
+    longitude?: number | null
+  } | null
   manual_patient?: { full_name: string; phone_number?: string | null } | null
 }
 
@@ -148,8 +155,8 @@ export default function DoctorDashboard({
     const { data: queueData } = await supabase
       .from('appointments')
       .select(`
-        id, patient_id, manual_patient_id, scheduled_time, status, queue_position, appointment_type, fees, payment_status, notes,
-        patient:profiles!appointments_patient_id_fkey(full_name, phone_number),
+        id, patient_id, manual_patient_id, scheduled_time, status, queue_position, appointment_type, fees, payment_status, payment_reference, notes, family_member_name,
+        patient:profiles!appointments_patient_id_fkey(full_name, phone_number, clinic_location, latitude, longitude),
         manual_patient:manual_patients(full_name, phone_number)
       `)
       .eq('doctor_id', doctorId)
@@ -159,6 +166,14 @@ export default function DoctorDashboard({
       .order('scheduled_time', { ascending: true })
       
     if (queueData) {
+      const isSameLocalDate = (d1?: string | null) => {
+        if (!d1) return false
+        const date1 = new Date(d1)
+        const now = new Date()
+        return date1.getFullYear() === now.getFullYear() &&
+               date1.getMonth() === now.getMonth() &&
+               date1.getDate() === now.getDate()
+      }
       // 1. Clinic waiting room queue ONLY (excludes home visits!)
       setActiveQueue(queueData.filter((a: any) => 
         (a.status === 'scheduled' || a.status === 'in_progress') && a.appointment_type !== 'home_visit'
@@ -166,16 +181,15 @@ export default function DoctorDashboard({
       // 2. Dedicated home visits list
       setHomeVisits(queueData.filter((a: any) => a.appointment_type === 'home_visit'))
       // 3. Today's appointments for overview
-      const todayStr = new Date().toISOString().split('T')[0]
-      setTodayAppointments(queueData.filter((a: any) => a.scheduled_time?.startsWith(todayStr)))
+      setTodayAppointments(queueData.filter((a: any) => isSameLocalDate(a.scheduled_time)))
     }
 
     // All pending requests
     const { data: requestData } = await supabase
       .from('appointments')
       .select(`
-        id, patient_id, manual_patient_id, scheduled_time, status, queue_position, appointment_type, fees, payment_status, notes,
-        patient:profiles!appointments_patient_id_fkey(full_name, phone_number),
+        id, patient_id, manual_patient_id, scheduled_time, status, queue_position, appointment_type, fees, payment_status, payment_reference, notes, family_member_name,
+        patient:profiles!appointments_patient_id_fkey(full_name, phone_number, clinic_location, latitude, longitude),
         manual_patient:manual_patients(full_name, phone_number)
       `)
       .eq('doctor_id', doctorId)
@@ -581,9 +595,14 @@ export default function DoctorDashboard({
                           <span className={`px-2 py-1 rounded-full text-xs font-bold leading-none w-max ${apt.status === 'in_progress' ? 'bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white' : 'bg-green-100 text-green-700'}`}>
                             {apt.status === 'in_progress' ? 'In Progress' : 'Scheduled'}
                           </span>
-                          <span className={`text-[10px] font-black uppercase ${apt.payment_status === 'paid' ? 'text-emerald-600' : apt.payment_status === 'paid_by_patient' ? 'text-blue-600' : 'text-amber-600'}`}>
-                            {apt.payment_status === 'paid' ? '✅ Paid' : apt.payment_status === 'paid_by_patient' ? '⏳ Patient Paid' : '💰 Unpaid'}
-                          </span>
+                          {(() => {
+                            const isClaimed = apt.payment_status === 'paid_by_patient' || !!apt.payment_reference || (apt.notes || '').includes('[PAID_BY_PATIENT');
+                            return (
+                              <span className={`text-[10px] font-black uppercase ${apt.payment_status === 'paid' ? 'text-emerald-600' : isClaimed ? 'text-blue-600' : 'text-amber-600'}`}>
+                                {apt.payment_status === 'paid' ? '✅ Paid' : isClaimed ? `⏳ Patient Paid${apt.payment_reference ? ` (${apt.payment_reference})` : ''}` : '💰 Unpaid'}
+                              </span>
+                            );
+                          })()}
                         </div>
                       </td>
                       <td className="p-4 text-right">
@@ -594,7 +613,7 @@ export default function DoctorDashboard({
                               className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 font-bold px-3 py-1.5 rounded-lg text-xs transition-colors border border-emerald-200 dark:border-emerald-800"
                               title="Confirm Received Payment"
                             >
-                              💰 {apt.payment_status === 'paid_by_patient' ? 'Verify Paid' : 'Confirm Paid'}
+                              💰 {apt.payment_status === 'paid_by_patient' || !!apt.payment_reference ? 'Verify Paid' : 'Confirm Paid'}
                             </button>
                           )}
                           {apt.status === 'scheduled' ? (
@@ -691,9 +710,14 @@ export default function DoctorDashboard({
                           <span>📅 {new Date(apt.scheduled_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
                           <span className="capitalize">🏥 {(apt.appointment_type || 'clinic_normal').replace(/_/g, ' ')}</span>
                           <span>💰 {apt.fees || 350} EGP</span>
-                          <span className={`font-bold ${apt.payment_status === 'paid' ? 'text-green-600' : apt.payment_status === 'paid_by_patient' ? 'text-blue-600' : 'text-amber-600'}`}>
-                            {apt.payment_status === 'paid' ? '✅ Paid' : apt.payment_status === 'paid_by_patient' ? '⏳ Paid by Patient' : '⏳ Unpaid'}
-                          </span>
+                          {(() => {
+                            const isClaimed = apt.payment_status === 'paid_by_patient' || !!apt.payment_reference || (apt.notes || '').includes('[PAID_BY_PATIENT');
+                            return (
+                              <span className={`font-bold ${apt.payment_status === 'paid' ? 'text-green-600' : isClaimed ? 'text-blue-600' : 'text-amber-600'}`}>
+                                {apt.payment_status === 'paid' ? '✅ Paid' : isClaimed ? `⏳ Paid by Patient${apt.payment_reference ? ` (${apt.payment_reference})` : ''}` : '⏳ Unpaid'}
+                              </span>
+                            );
+                          })()}
                           {apt.payment_status !== 'paid' && (
                             <button
                               type="button"
