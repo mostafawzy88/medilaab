@@ -29,6 +29,7 @@ export default function Sidebar({ fullName, role }: { fullName: string, role?: s
           { id: 'schedule', name: 'Schedule', icon: '📅' },
           { id: 'requests', name: 'Requests', icon: '📥' },
           { id: 'patients', name: 'Patients', icon: '👥' },
+          { id: 'history', name: 'Visit History', icon: '📜' },
           { id: 'stats', name: 'Reports & Stats', icon: '📈' },
           { id: 'meds', name: 'Medications', icon: '💊' },
         ]
@@ -44,6 +45,8 @@ export default function Sidebar({ fullName, role }: { fullName: string, role?: s
           { id: 'overview', name: t('dashboard') || 'Dashboard', icon: '🏠' },
           { id: 'doctors', name: t('my_doctors') || 'My Doctors', icon: '⚕️' },
           { id: 'bookings', name: t('my_bookings') || 'My Bookings', icon: '📅' },
+          { id: 'family', name: 'Family Members', icon: '👨‍👩‍👧' },
+          { id: 'history', name: 'Visit History', icon: '📜' },
           { id: 'prescriptions', name: 'Prescriptions', icon: '💊' },
         ]
       default:

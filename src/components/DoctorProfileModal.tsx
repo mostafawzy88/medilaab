@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
+import DoctorReviewModal from './DoctorReviewModal'
 
 type DoctorProfileData = {
   doctor_id: string
@@ -31,6 +32,16 @@ type Certificate = {
   issued_at?: string
 }
 
+type DoctorReview = {
+  id: string
+  rating: number
+  review_text?: string | null
+  tags?: string[]
+  likes_count: number
+  created_at: string
+  patient?: { full_name: string } | null
+}
+
 const DAYS_ORDER = ['sat', 'sun', 'mon', 'tue', 'wed', 'thu', 'fri']
 const DAYS_NAMES: Record<string, string> = {
   sat: 'Saturday',
@@ -58,6 +69,9 @@ export default function DoctorProfileModal({
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<DoctorProfileData | null>(null)
   const [certs, setCerts] = useState<Certificate[]>([])
+  const [reviews, setReviews] = useState<DoctorReview[]>([])
+  const [showReviewModal, setShowReviewModal] = useState(false)
+  const [likingId, setLikingId] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
 
   useEffect(() => {
@@ -128,11 +142,41 @@ export default function DoctorProfileModal({
         .order('issued_at', { ascending: false })
 
       if (certData) setCerts(certData)
+
+      // 3. Fetch doctor reviews (Social media / Medical Expert style)
+      const { data: revData } = await supabase
+        .from('doctor_reviews')
+        .select(`
+          id, rating, review_text, tags, likes_count, created_at,
+          patient:profiles!doctor_reviews_patient_id_fkey(full_name)
+        `)
+        .eq('doctor_id', doctorId)
+        .order('created_at', { ascending: false })
+
+      if (revData) setReviews(revData as any)
     } catch (err) {
       console.error('Error fetching doctor stats:', err)
     }
 
     setLoading(false)
+  }
+
+  const handleLikeReview = async (reviewId: string) => {
+    setLikingId(reviewId)
+    const supabase = createClient()
+    try {
+      const { data: newLikes, error } = await supabase.rpc('like_doctor_review', { p_review_id: reviewId })
+      if (!error && typeof newLikes === 'number') {
+        setReviews(prev => prev.map(r => r.id === reviewId ? { ...r, likes_count: newLikes } : r))
+      } else {
+        // optimistic fallback
+        setReviews(prev => prev.map(r => r.id === reviewId ? { ...r, likes_count: (r.likes_count || 0) + 1 } : r))
+      }
+    } catch {
+      setReviews(prev => prev.map(r => r.id === reviewId ? { ...r, likes_count: (r.likes_count || 0) + 1 } : r))
+    } finally {
+      setLikingId(null)
+    }
   }
 
   const handleAdd = async () => {
@@ -163,8 +207,14 @@ export default function DoctorProfileModal({
               {profile?.full_name?.charAt(0) || 'D'}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="inline-block px-3 py-1 rounded-full bg-white/20 backdrop-blur-sm text-xs font-black uppercase tracking-wider mb-2">
-                Verified Medical Specialist
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <div className="inline-block px-3 py-1 rounded-full bg-white/20 backdrop-blur-sm text-xs font-black uppercase tracking-wider">
+                  Verified Medical Specialist
+                </div>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400 text-amber-950 font-black text-xs shadow-sm">
+                  <span>★ {reviews.length > 0 ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1) : '5.0'}</span>
+                  <span className="opacity-80">({reviews.length} {reviews.length === 1 ? 'Review' : 'Reviews'})</span>
+                </div>
               </div>
               <h2 className="text-2xl sm:text-3xl font-black truncate">
                 Dr. {profile?.full_name || 'Medical Specialist'}
@@ -344,6 +394,115 @@ export default function DoctorProfileModal({
               </div>
             )}
 
+            {/* PATIENT REVIEWS & RATINGS (SOCIAL MEDIA / MEDICAL EXPERT STYLE) */}
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-widest text-gray-400">
+                    Patient Reviews & Expert Ratings
+                  </h4>
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="flex text-amber-500 text-sm">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <span key={i}>
+                          {i < Math.round(Number(reviews.length > 0 ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1) : 5)) ? '★' : '☆'}
+                        </span>
+                      ))}
+                    </div>
+                    <span className="font-black text-sm text-gray-900 dark:text-white">
+                      {reviews.length > 0 ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1) : '5.0'} / 5
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      ({reviews.length} {reviews.length === 1 ? 'verified review' : 'verified reviews'})
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowReviewModal(true)}
+                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-black text-xs shadow-md shadow-amber-500/20 hover:opacity-95 transition-all flex items-center gap-1.5"
+                >
+                  <span>⭐</span>
+                  <span>+ Rate & Review</span>
+                </button>
+              </div>
+
+              {reviews.length === 0 ? (
+                <div className="p-6 text-center rounded-2xl bg-gray-50 dark:bg-gray-800/40 border border-gray-100 dark:border-gray-800">
+                  <p className="text-2xl mb-1">🌟</p>
+                  <p className="text-xs font-bold text-gray-600 dark:text-gray-300">
+                    Be the first to review Dr. {profile.full_name}!
+                  </p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    Share your consultation experience to help fellow patients.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[280px] overflow-y-auto pr-1 custom-scrollbar">
+                  {reviews.map(rev => (
+                    <div
+                      key={rev.id}
+                      className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/40 border border-gray-100 dark:border-gray-800 space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-xs font-black">
+                            {rev.patient?.full_name?.charAt(0) || 'P'}
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-gray-900 dark:text-white">
+                              {rev.patient?.full_name || 'Verified Patient'}
+                            </p>
+                            <p className="text-[10px] text-gray-400">
+                              {rev.created_at ? new Date(rev.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <div className="flex text-amber-500 text-xs">
+                            {Array.from({ length: 5 }).map((_, i) => (
+                              <span key={i}>{i < rev.rating ? '★' : '☆'}</span>
+                            ))}
+                          </div>
+                          <button
+                            type="button"
+                            disabled={likingId === rev.id}
+                            onClick={() => handleLikeReview(rev.id)}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-white dark:bg-gray-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-gray-600 dark:text-gray-300 hover:text-rose-600 dark:hover:text-rose-400 border border-gray-200 dark:border-gray-600 transition-colors shadow-sm"
+                            title="Helpful Review"
+                          >
+                            <span>❤️</span>
+                            <span>{rev.likes_count || 0}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {rev.review_text && (
+                        <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed italic">
+                          "{rev.review_text}"
+                        </p>
+                      )}
+
+                      {rev.tags && rev.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {rev.tags.map((tag, idx) => (
+                            <span
+                              key={idx}
+                              className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* MODAL BOTTOM ACTION BUTTONS */}
             <div className="flex items-center gap-3 pt-4 border-t border-gray-100 dark:border-gray-800">
               <button
@@ -385,6 +544,18 @@ export default function DoctorProfileModal({
           </div>
         ) : (
           <div className="p-12 text-center text-gray-400">Failed to load doctor profile.</div>
+        )}
+
+        {showReviewModal && profile && (
+          <DoctorReviewModal
+            doctorId={profile.doctor_id}
+            doctorName={profile.full_name}
+            onClose={() => setShowReviewModal(false)}
+            onSuccess={() => {
+              setShowReviewModal(false)
+              fetchDoctorStats()
+            }}
+          />
         )}
       </div>
     </div>

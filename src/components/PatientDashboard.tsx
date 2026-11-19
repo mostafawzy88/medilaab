@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { useTranslations } from 'next-intl'
+import { useTranslations, useLocale } from 'next-intl'
 import { useSearchParams } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import BookingModal from './BookingModal'
 import PrescriptionViewerModal from './PrescriptionViewerModal'
 import DoctorProfileModal from './DoctorProfileModal'
+import FamilyMembersTab from './FamilyMembersTab'
+import PatientHistoryTab from './PatientHistoryTab'
 
 type AppointmentProps = {
   id: string
@@ -17,6 +19,8 @@ type AppointmentProps = {
   doctor_name: string
   instapay_address: string | null
   payment_status?: string
+  payment_reference?: string | null
+  family_member_name?: string | null
   appointment_type?: string
   status?: string
   scheduled_time?: string
@@ -71,6 +75,7 @@ export default function PatientDashboard({
 }) {
   const t = useTranslations('Dashboard')
   const tp = useTranslations('Patient')
+  const locale = useLocale()
   const [appointments, setAppointments] = useState(initialAppointments)
   const [showBooking, setShowBooking] = useState(false)
   const [editAppointmentId, setEditAppointmentId] = useState<string | null>(null)
@@ -317,13 +322,47 @@ export default function PatientDashboard({
   }
 
   const handleDeleteAppointment = async (apptId: string) => {
-    if (!confirm('Are you sure you want to cancel this pending request?')) return;
+    if (!confirm(locale === 'ar' ? 'هل أنت متأكد من إلغاء هذا الطلب؟' : 'Are you sure you want to cancel this pending request?')) return;
     const supabase = createClient()
     const { error } = await supabase.from('appointments').delete().eq('id', apptId)
     if (error) {
       alert("Error deleting request: " + error.message)
     } else {
       setAppointments(prev => prev.filter(a => a.id !== apptId))
+    }
+  }
+
+  const handleCancelMeeting = async (apptId: string) => {
+    if (!confirm(locale === 'ar' ? 'هل أنت متأكد من رغبتك في إلغاء هذا الموعد؟' : 'Are you sure you want to cancel this appointment?')) return;
+    const supabase = createClient()
+    const { error } = await supabase.from('appointments').update({
+      status: 'cancelled',
+      notes: '[Cancelled by Patient]'
+    }).eq('id', apptId)
+    if (error) {
+      alert("Error cancelling appointment: " + error.message)
+    } else {
+      setAppointments(prev => prev.filter(a => a.id !== apptId))
+    }
+  }
+
+  const handleMarkPaymentPaid = async (apptId: string) => {
+    const ref = prompt(
+      locale === 'ar'
+        ? 'أدخل رقم الحوالة أو اسم الحساب المحول منه (اختياري):'
+        : 'Enter InstaPay payment reference or sender name (optional):',
+      'InstaPay Transfer'
+    )
+    if (ref === null) return;
+    const supabase = createClient()
+    const { error } = await supabase.from('appointments').update({
+      payment_status: 'paid_by_patient',
+      payment_reference: ref.trim() || 'InstaPay Transfer'
+    }).eq('id', apptId)
+    if (error) {
+      alert("Error updating payment: " + error.message)
+    } else {
+      setAppointments(prev => prev.map(a => a.id === apptId ? { ...a, payment_status: 'paid_by_patient', payment_reference: ref.trim() || 'InstaPay Transfer' } : a))
     }
   }
 
@@ -449,17 +488,52 @@ export default function PatientDashboard({
                 const cfg = STATUS_CONFIG[apt.status || 'waiting']
                 const isPending = apt.status === 'waiting'
                 const isApproved = apt.status === 'scheduled'
-                const needsPayment = apt.payment_status === 'pending' && isApproved
+                const isPaid = apt.payment_status === 'paid'
+                const isPaidByPatient = apt.payment_status === 'paid_by_patient'
+                const needsPayment = !isPaid && !isPaidByPatient && isApproved
+
+                let badgeText = cfg.label
+                let badgeColor = cfg.color
+                let badgeIcon = cfg.icon
+
+                if (isApproved) {
+                  if (isPaid) {
+                    badgeText = locale === 'ar' ? 'تم تأكيد الدفع' : 'PAID & CONFIRMED'
+                    badgeColor = 'text-emerald-700'
+                    badgeIcon = '✅'
+                  } else if (isPaidByPatient) {
+                    badgeText = locale === 'ar' ? 'تم إرسال الدفع (بانتظار التأكيد)' : 'PAYMENT SUBMITTED (VERIFYING)'
+                    badgeColor = 'text-blue-700'
+                    badgeIcon = '⏳'
+                  } else {
+                    badgeText = tp('awaiting_payment') || 'Awaiting Payment'
+                    badgeColor = 'text-blue-700'
+                    badgeIcon = '💳'
+                  }
+                }
                 
                 return (
-                  <div key={apt.id} className={`bg-white dark:bg-gray-900 rounded-2xl p-5 border ${isPending ? 'border-amber-200 dark:border-amber-800' : needsPayment ? 'border-blue-200 dark:border-blue-800' : 'border-gray-100 dark:border-gray-800'} shadow-sm flex flex-col justify-between`}>
+                  <div key={apt.id} className={`bg-white dark:bg-gray-900 rounded-2xl p-5 border ${isPending ? 'border-amber-200 dark:border-amber-800' : needsPayment ? 'border-blue-200 dark:border-blue-800' : isPaid ? 'border-emerald-200 dark:border-emerald-800/60' : 'border-gray-100 dark:border-gray-800'} shadow-sm flex flex-col justify-between`}>
                     <div>
                       <div className="flex items-start justify-between gap-4 mb-4">
                         <div className="flex items-center gap-2">
-                          <span className="text-lg">{cfg.icon}</span>
-                          <span className={`text-xs font-black uppercase tracking-wider ${cfg.color}`}>{needsPayment ? `💳 ${tp('awaiting_payment') || 'Awaiting Payment'}` : cfg.label}</span>
+                          <span className="text-lg">{badgeIcon}</span>
+                          <span className={`text-xs font-black uppercase tracking-wider ${badgeColor}`}>{badgeText}</span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap justify-end">
+                           {/* Mark Payment as Paid action */}
+                           {!isPaid && !isPaidByPatient && isApproved && (
+                             <button
+                               onClick={() => handleMarkPaymentPaid(apt.id)}
+                               className="text-xs font-black text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60 px-3 py-1.5 rounded-xl border border-emerald-200 dark:border-emerald-800 transition-colors flex items-center gap-1.5 shadow-sm"
+                               title="Confirm payment made via InstaPay"
+                             >
+                               <span>💳</span>
+                               <span>{locale === 'ar' ? 'دفعت (انستاباي)' : 'I Have Paid'}</span>
+                             </button>
+                           )}
+
+                           {/* Reschedule / Edit */}
                            {(isPending || isApproved) && (
                              <button 
                                onClick={() => { 
@@ -475,14 +549,16 @@ export default function PatientDashboard({
                                <span>{isPending ? 'Edit' : (tp('reschedule') || 'Reschedule')}</span>
                              </button>
                            )}
-                           {isPending && (
+
+                           {/* Cancel Meeting */}
+                           {(isPending || isApproved) && (
                              <button 
-                               onClick={() => handleDeleteAppointment(apt.id)} 
+                               onClick={() => handleCancelMeeting(apt.id)} 
                                className="text-xs font-bold text-red-600 bg-red-50 dark:bg-red-900/30 px-3 py-1.5 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors flex items-center gap-1.5 shadow-sm"
-                               title="Cancel and remove this request"
+                               title="Cancel this appointment"
                              >
-                               <span>🗑️</span>
-                               <span>{tp('delete') || 'Delete'}</span>
+                               <span>🚫</span>
+                               <span>{locale === 'ar' ? 'إلغاء' : 'Cancel'}</span>
                              </button>
                            )}
                         </div>
@@ -498,6 +574,14 @@ export default function PatientDashboard({
                           <span className="text-xs text-blue-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity">ℹ️ View Profile →</span>
                         </button>
                       </div>
+
+                      {apt.family_member_name && (
+                        <div className="mt-1">
+                          <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-black bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                            👨‍👩‍👧 {locale === 'ar' ? `لصالح: ${apt.family_member_name}` : `For: ${apt.family_member_name}`}
+                          </span>
+                        </div>
+                      )}
                       
                       {apt.status === 'proposed' && (
                         <div className="mt-4 p-4 bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-2xl flex flex-col gap-3 animate-in fade-in slide-in-from-top-2">
@@ -648,6 +732,28 @@ export default function PatientDashboard({
                             <QRCodeSVG value={`instapay://payment?address=${apt.instapay_address}&amount=${apt.fees}`} size={80} bgColor="#ffffff" fgColor="#000000" />
                           </div>
                           <p className="text-xs font-bold text-gray-500 mt-2 break-all">{tp('payment_link') || 'payment link'}</p>
+
+                          <button
+                            type="button"
+                            onClick={() => handleMarkPaymentPaid(apt.id)}
+                            className="mt-3 w-full py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs rounded-xl shadow-md shadow-emerald-500/20 transition-all flex items-center justify-center gap-2"
+                          >
+                            <span>✓</span>
+                            <span>{locale === 'ar' ? 'تم تحويل الرسوم عبر انستاباي' : 'I Have Paid via InstaPay'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {isPaidByPatient && (
+                      <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+                        <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/50 rounded-xl p-3 text-center text-xs text-blue-700 dark:text-blue-300 font-bold flex items-center justify-center gap-2">
+                          <span>⏳</span>
+                          <span>
+                            {locale === 'ar'
+                              ? `تم إرسال الدفع (${apt.payment_reference || 'انستاباي'}). بانتظار تأكيد الاستلام من العيادة.`
+                              : `Payment submitted (${apt.payment_reference || 'InstaPay'}). Waiting for clinic staff confirmation.`}
+                          </span>
                         </div>
                       </div>
                     )}
@@ -1055,6 +1161,22 @@ export default function PatientDashboard({
             </div>
           )}
         </div>
+      )}
+
+      {/* Family Members Tab */}
+      {activeTab === 'family' && (
+        <FamilyMembersTab
+          onBookForMember={() => {
+            setSelectedDoctor(null)
+            setEditAppointmentId(null)
+            setShowBooking(true)
+          }}
+        />
+      )}
+
+      {/* Visit History Tab */}
+      {activeTab === 'history' && (
+        <PatientHistoryTab patientName={patientName} />
       )}
 
       {/* Booking Modal */}

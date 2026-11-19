@@ -10,6 +10,7 @@ import BookingModal from './BookingModal'
 import ClinicSchedule from './ClinicSchedule'
 import PatientsTab from './PatientsTab'
 import DoctorAnalytics from './DoctorAnalytics'
+import DoctorHistoryTab from './DoctorHistoryTab'
 
 type Appointment = {
   id: string
@@ -236,6 +237,18 @@ export default function DoctorDashboard({
   const handleComplete = async (appointmentId: string) => {
     const supabase = createClient()
     await supabase.from('appointments').update({ status: 'completed' }).eq('id', appointmentId)
+    await refetchQueue(supabase)
+  }
+
+  const handleConfirmPayment = async (appointmentId: string) => {
+    const supabase = createClient()
+    const now = new Date().toISOString()
+    const { error } = await supabase.from('appointments').update({
+      payment_status: 'paid',
+      payment_verified_by: doctorId,
+      payment_verified_at: now
+    }).eq('id', appointmentId)
+    if (error) alert("Error confirming payment: " + error.message)
     await refetchQueue(supabase)
   }
 
@@ -514,12 +527,26 @@ export default function DoctorDashboard({
                         )}
                       </td>
                       <td className="p-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-bold leading-none ${apt.status === 'in_progress' ? 'bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white' : 'bg-green-100 text-green-700'}`}>
-                          {apt.status === 'in_progress' ? 'In Progress' : 'Scheduled'}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className={`px-2 py-1 rounded-full text-xs font-bold leading-none w-max ${apt.status === 'in_progress' ? 'bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white' : 'bg-green-100 text-green-700'}`}>
+                            {apt.status === 'in_progress' ? 'In Progress' : 'Scheduled'}
+                          </span>
+                          <span className={`text-[10px] font-black uppercase ${apt.payment_status === 'paid' ? 'text-emerald-600' : apt.payment_status === 'paid_by_patient' ? 'text-blue-600' : 'text-amber-600'}`}>
+                            {apt.payment_status === 'paid' ? '✅ Paid' : apt.payment_status === 'paid_by_patient' ? '⏳ Patient Paid' : '💰 Unpaid'}
+                          </span>
+                        </div>
                       </td>
                       <td className="p-4 text-right">
-                        <div className="flex gap-2 justify-end">
+                        <div className="flex gap-2 justify-end items-center flex-wrap">
+                          {apt.payment_status !== 'paid' && (
+                            <button
+                              onClick={() => handleConfirmPayment(apt.id)}
+                              className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 font-bold px-3 py-1.5 rounded-lg text-xs transition-colors border border-emerald-200 dark:border-emerald-800"
+                              title="Confirm Received Payment"
+                            >
+                              💰 {apt.payment_status === 'paid_by_patient' ? 'Verify Paid' : 'Confirm Paid'}
+                            </button>
+                          )}
                           {apt.status === 'scheduled' ? (
                             <>
                               {apt.patient_id && (
@@ -567,9 +594,19 @@ export default function DoctorDashboard({
                           <span>📅 {new Date(apt.scheduled_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
                           <span className="capitalize">🏥 {(apt.appointment_type || 'clinic_normal').replace(/_/g, ' ')}</span>
                           <span>💰 {apt.fees || 350} EGP</span>
-                          <span className={`font-bold ${apt.payment_status === 'paid' ? 'text-green-600' : 'text-amber-600'}`}>
-                            {apt.payment_status === 'paid' ? '✅ Paid' : '⏳ Unpaid'}
+                          <span className={`font-bold ${apt.payment_status === 'paid' ? 'text-green-600' : apt.payment_status === 'paid_by_patient' ? 'text-blue-600' : 'text-amber-600'}`}>
+                            {apt.payment_status === 'paid' ? '✅ Paid' : apt.payment_status === 'paid_by_patient' ? '⏳ Paid by Patient' : '⏳ Unpaid'}
                           </span>
+                          {apt.payment_status !== 'paid' && (
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmPayment(apt.id)}
+                              className="text-xs bg-emerald-100 hover:bg-emerald-200 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 px-2 py-0.5 rounded-lg font-black transition-colors"
+                              title="Confirm payment received"
+                            >
+                              💰 Confirm Paid
+                            </button>
+                          )}
                         </div>
                       </div>
                       <div className="flex gap-2">
@@ -673,6 +710,24 @@ export default function DoctorDashboard({
           ) : activeTab === 'patients' ? (
             <div className="p-8">
               <PatientsTab doctorId={doctorId} />
+            </div>
+          ) : activeTab === 'history' ? (
+            <div className="p-6 md:p-8">
+              <DoctorHistoryTab
+                doctorId={doctorId}
+                onOpenPrescription={(p) => {
+                  setActivePrescription({
+                    id: p.appointment_id || '',
+                    patient_id: p.is_manual ? null : p.id,
+                    manual_patient_id: p.is_manual ? p.id : null,
+                    scheduled_time: new Date().toISOString(),
+                    status: 'completed',
+                    queue_position: 0,
+                    patient: p.is_manual ? null : { full_name: p.name },
+                    manual_patient: p.is_manual ? { full_name: p.name } : null
+                  })
+                }}
+              />
             </div>
           ) : (
             <div className="p-12 text-center text-gray-400">Settings & Other features coming soon...</div>

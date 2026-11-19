@@ -52,6 +52,8 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
   const [bookedSlots, setBookedSlots] = useState<string[]>([])
   const [loadingSlots, setLoadingSlots] = useState(false)
   const [viewingDoctorId, setViewingDoctorId] = useState<string | null>(null)
+  const [familyMembers, setFamilyMembers] = useState<any[]>([])
+  const [selectedFamilyMemberId, setSelectedFamilyMemberId] = useState<string>('')
 
   // Staff-specific state
   const [patientSearch, setPatientSearch] = useState('')
@@ -83,6 +85,22 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
     fetchDoctors()
   }, [initialDoctor?.id, isStaff, editAppointmentId])
 
+  // Fetch family members for the patient
+  useEffect(() => {
+    const fetchFamily = async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data } = await supabase
+          .from('patient_family_members')
+          .select('id, full_name, relationship')
+          .eq('patient_id', user.id)
+        if (data) setFamilyMembers(data)
+      }
+    }
+    fetchFamily()
+  }, [])
+
   // Prefill existing appointment details when editing
   useEffect(() => {
     if (!editAppointmentId) return
@@ -96,6 +114,9 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
       
       if (data) {
         setSelectedDoctorId(data.doctor_id)
+        if (data.family_member_id) {
+          setSelectedFamilyMemberId(data.family_member_id)
+        }
         if (data.scheduled_time) {
           const d = new Date(data.scheduled_time)
           setSelectedDate(d.toISOString().split('T')[0])
@@ -307,6 +328,12 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
       newStatus = 'proposed'
     }
 
+    let famMemberName: string | null = null
+    if (selectedFamilyMemberId) {
+      const fam = familyMembers.find(f => f.id === selectedFamilyMemberId)
+      famMemberName = fam ? `${fam.full_name} (${fam.relationship})` : null
+    }
+
     let error;
 
     if (editAppointmentId) {
@@ -314,7 +341,9 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
         scheduled_time: finalDate.toISOString(),
         appointment_type: appointmentType,
         fees: currentFee,
-        status: newStatus
+        status: newStatus,
+        family_member_id: selectedFamilyMemberId || null,
+        family_member_name: famMemberName
       }).eq('id', editAppointmentId)
       error = updateError
     } else {
@@ -336,7 +365,9 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
         fees: currentFee,
         appointment_type: appointmentType,
         status: newStatus,
-        payment_status: paymentChoice === 'prepay' ? 'pending' : 'pending'
+        payment_status: paymentChoice === 'prepay' ? 'pending' : 'pending',
+        family_member_id: selectedFamilyMemberId || null,
+        family_member_name: famMemberName
       })
       error = insertError
     }
@@ -534,6 +565,48 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
                             <span className="font-black text-teal-600 mt-2">{selectedDoctor.fees_home_visit} EGP</span>
                           </button>
                         )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Family Member Selection (Who is this visit for?) */}
+                  {familyMembers.length > 0 && !isStaff && (
+                    <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                      <label className="text-xs font-black uppercase tracking-widest text-gray-500">
+                        👨‍👩‍👧 Who is this appointment for?
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedFamilyMemberId('')}
+                          className={`p-3 rounded-xl border-2 text-xs font-bold transition-all text-left ${
+                            selectedFamilyMemberId === ''
+                              ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-200 shadow-sm'
+                              : 'border-gray-100 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:border-gray-300'
+                          }`}
+                        >
+                          <span className="block text-base mb-0.5">👤</span>
+                          <span className="font-black block">Myself</span>
+                          <span className="text-[10px] text-gray-400 block">Personal Account</span>
+                        </button>
+                        {familyMembers.map((m) => (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => setSelectedFamilyMemberId(m.id)}
+                            className={`p-3 rounded-xl border-2 text-xs font-bold transition-all text-left ${
+                              selectedFamilyMemberId === m.id
+                                ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-200 shadow-sm'
+                                : 'border-gray-100 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:border-gray-300'
+                            }`}
+                          >
+                            <span className="block text-base mb-0.5">
+                              {m.relationship === 'Son' || m.relationship === 'Daughter' ? '👶' : m.relationship === 'Spouse' ? '💍' : '👵'}
+                            </span>
+                            <span className="font-black block truncate">{m.full_name}</span>
+                            <span className="text-[10px] text-gray-400 block">{m.relationship}</span>
+                          </button>
+                        ))}
                       </div>
                     </div>
                   )}
