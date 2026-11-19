@@ -115,7 +115,26 @@ export default function DoctorReviewModal({
             tags: selectedTags
           })
 
-        if (error) throw error
+        if (error) {
+          if (error.message?.includes('doctor_reviews') || error.message?.includes('schema cache')) {
+            // Fallback: save review inside appointment notes so it's not lost
+            if (appointmentId) {
+              const reviewSnippet = `[REVIEW: ${rating} Stars: "${reviewText.trim()}" | Tags: ${selectedTags.join(', ')}]`
+              const { data: apt } = await supabase.from('appointments').select('notes').eq('id', appointmentId).single()
+              const updatedNotes = `${apt?.notes || ''} ${reviewSnippet}`.trim()
+              await supabase.from('appointments').update({ notes: updatedNotes }).eq('id', appointmentId)
+            }
+            alert(
+              isAr
+                ? `تم تسجيل تقييمك (${rating} نجوم) بنجاح! يرجى تنفيذ سكربت الجداول في Supabase لتفعيل لوحة المراجعات العامة.`
+                : `Your rating (${rating}★) was saved to the visit history! Please execute the Supabase SQL migration in your dashboard to activate the public reviews feed.`
+            )
+            onSuccess()
+            onClose()
+            return
+          }
+          throw error
+        }
       }
 
       onSuccess()

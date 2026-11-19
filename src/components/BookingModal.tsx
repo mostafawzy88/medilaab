@@ -54,6 +54,10 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
   const [viewingDoctorId, setViewingDoctorId] = useState<string | null>(null)
   const [familyMembers, setFamilyMembers] = useState<any[]>([])
   const [selectedFamilyMemberId, setSelectedFamilyMemberId] = useState<string>('')
+  const [bookingFor, setBookingFor] = useState<'myself' | 'family'>('myself')
+  const [customMemberName, setCustomMemberName] = useState<string>('')
+  const [customMemberRel, setCustomMemberRel] = useState<string>('Son')
+  const [patientNotes, setPatientNotes] = useState<string>('')
 
   // Staff-specific state
   const [patientSearch, setPatientSearch] = useState('')
@@ -114,9 +118,21 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
       
       if (data) {
         setSelectedDoctorId(data.doctor_id)
-        if (data.family_member_id) {
-          setSelectedFamilyMemberId(data.family_member_id)
+        if (data.family_member_id || data.family_member_name) {
+          setBookingFor('family')
+          if (data.family_member_id) setSelectedFamilyMemberId(data.family_member_id)
+          if (data.family_member_name) setCustomMemberName(data.family_member_name)
+        } else if (data.notes && data.notes.includes('[FOR:')) {
+          setBookingFor('family')
+          const m = data.notes.match(/\[FOR:\s*([^\]]+)\]/)
+          if (m && m[1]) setCustomMemberName(m[1])
         }
+
+        if (data.notes) {
+          const m = data.notes.match(/\[PATIENT_NOTE:\s*([^\]]+)\]/)
+          if (m && m[1]) setPatientNotes(m[1])
+        }
+
         if (data.scheduled_time) {
           const d = new Date(data.scheduled_time)
           setSelectedDate(d.toISOString().split('T')[0])
@@ -329,22 +345,44 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
     }
 
     let famMemberName: string | null = null
-    if (selectedFamilyMemberId) {
-      const fam = familyMembers.find(f => f.id === selectedFamilyMemberId)
-      famMemberName = fam ? `${fam.full_name} (${fam.relationship})` : null
+    if (bookingFor === 'family') {
+      if (selectedFamilyMemberId) {
+        const fam = familyMembers.find(f => f.id === selectedFamilyMemberId)
+        famMemberName = fam ? `${fam.full_name} (${fam.relationship})` : null
+      } else if (customMemberName.trim()) {
+        famMemberName = `${customMemberName.trim()} (${customMemberRel})`
+      }
     }
+
+    // Build combined notes
+    const noteParts: string[] = []
+    if (famMemberName) {
+      noteParts.push(`[FOR: ${famMemberName}]`)
+    }
+    if (patientNotes.trim()) {
+      noteParts.push(`[PATIENT_NOTE: ${patientNotes.trim()}]`)
+    }
+    const combinedNotes = noteParts.join(' ')
 
     let error;
 
     if (editAppointmentId) {
-      const { error: updateError } = await supabase.from('appointments').update({
+      const updatePayload: any = {
         scheduled_time: finalDate.toISOString(),
         appointment_type: appointmentType,
         fees: currentFee,
         status: newStatus,
+        notes: combinedNotes || null,
         family_member_id: selectedFamilyMemberId || null,
         family_member_name: famMemberName
-      }).eq('id', editAppointmentId)
+      }
+      let { error: updateError } = await supabase.from('appointments').update(updatePayload).eq('id', editAppointmentId)
+      if (updateError && (updateError.message?.includes('family_member') || updateError.message?.includes('schema cache'))) {
+        delete updatePayload.family_member_id
+        delete updatePayload.family_member_name
+        const { error: retryError } = await supabase.from('appointments').update(updatePayload).eq('id', editAppointmentId)
+        updateError = retryError
+      }
       error = updateError
     } else {
       const { count } = await supabase
@@ -356,7 +394,7 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
 
       const nextPosition = (count || 0) + 1
 
-      const { error: insertError } = await supabase.from('appointments').insert({
+      const insertPayload: any = {
         patient_id: targetPatientId,
         manual_patient_id: manualPatientId,
         doctor_id: selectedDoctor.id,
@@ -366,9 +404,18 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
         appointment_type: appointmentType,
         status: newStatus,
         payment_status: paymentChoice === 'prepay' ? 'pending' : 'pending',
+        notes: combinedNotes || null,
         family_member_id: selectedFamilyMemberId || null,
         family_member_name: famMemberName
-      })
+      }
+
+      let { error: insertError } = await supabase.from('appointments').insert(insertPayload)
+      if (insertError && (insertError.message?.includes('family_member') || insertError.message?.includes('schema cache'))) {
+        delete insertPayload.family_member_id
+        delete insertPayload.family_member_name
+        const { error: retryError } = await supabase.from('appointments').insert(insertPayload)
+        insertError = retryError
+      }
       error = insertError
     }
 
@@ -569,47 +616,143 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
                     </div>
                   )}
 
-                  {/* Family Member Selection (Who is this visit for?) */}
-                  {familyMembers.length > 0 && !isStaff && (
-                    <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                  {/* Family Member Selection (Who is this visit for?) - Always shown for patients */}
+                  {!isStaff && (
+                    <div className="space-y-3 pt-3 border-t border-gray-100 dark:border-gray-800">
                       <label className="text-xs font-black uppercase tracking-widest text-gray-500">
                         👨‍👩‍👧 Who is this appointment for?
                       </label>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      
+                      <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
-                          onClick={() => setSelectedFamilyMemberId('')}
-                          className={`p-3 rounded-xl border-2 text-xs font-bold transition-all text-left ${
-                            selectedFamilyMemberId === ''
+                          onClick={() => {
+                            setBookingFor('myself')
+                            setSelectedFamilyMemberId('')
+                            setCustomMemberName('')
+                          }}
+                          className={`p-3.5 rounded-2xl border-2 text-xs font-bold transition-all text-left flex items-center gap-3 ${
+                            bookingFor === 'myself'
                               ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-200 shadow-sm'
                               : 'border-gray-100 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:border-gray-300'
                           }`}
                         >
-                          <span className="block text-base mb-0.5">👤</span>
-                          <span className="font-black block">Myself</span>
-                          <span className="text-[10px] text-gray-400 block">Personal Account</span>
+                          <span className="text-xl">👤</span>
+                          <div>
+                            <span className="font-black block text-sm">Myself</span>
+                            <span className="text-[10px] text-gray-400 block">Personal Profile</span>
+                          </div>
                         </button>
-                        {familyMembers.map((m) => (
-                          <button
-                            key={m.id}
-                            type="button"
-                            onClick={() => setSelectedFamilyMemberId(m.id)}
-                            className={`p-3 rounded-xl border-2 text-xs font-bold transition-all text-left ${
-                              selectedFamilyMemberId === m.id
-                                ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-200 shadow-sm'
-                                : 'border-gray-100 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:border-gray-300'
-                            }`}
-                          >
-                            <span className="block text-base mb-0.5">
-                              {m.relationship === 'Son' || m.relationship === 'Daughter' ? '👶' : m.relationship === 'Spouse' ? '💍' : '👵'}
-                            </span>
-                            <span className="font-black block truncate">{m.full_name}</span>
-                            <span className="text-[10px] text-gray-400 block">{m.relationship}</span>
-                          </button>
-                        ))}
+
+                        <button
+                          type="button"
+                          onClick={() => setBookingFor('family')}
+                          className={`p-3.5 rounded-2xl border-2 text-xs font-bold transition-all text-left flex items-center gap-3 ${
+                            bookingFor === 'family'
+                              ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-200 shadow-sm'
+                              : 'border-gray-100 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:border-gray-300'
+                          }`}
+                        >
+                          <span className="text-xl">👨‍👩‍👧</span>
+                          <div>
+                            <span className="font-black block text-sm">Family Member</span>
+                            <span className="text-[10px] text-gray-400 block">Child, Spouse, Parent...</span>
+                          </div>
+                        </button>
                       </div>
+
+                      {bookingFor === 'family' && (
+                        <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 space-y-3 animate-in fade-in">
+                          {familyMembers.length > 0 && (
+                            <div>
+                              <p className="text-[11px] font-bold text-gray-400 uppercase mb-2">Saved Family Members</p>
+                              <div className="flex flex-wrap gap-2">
+                                {familyMembers.map((m) => (
+                                  <button
+                                    key={m.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedFamilyMemberId(m.id)
+                                      setCustomMemberName(m.full_name)
+                                      setCustomMemberRel(m.relationship)
+                                    }}
+                                    className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${
+                                      selectedFamilyMemberId === m.id
+                                        ? 'border-blue-600 bg-blue-600 text-white'
+                                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300'
+                                    }`}
+                                  >
+                                    {m.full_name} ({m.relationship})
+                                  </button>
+                                ))}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedFamilyMemberId('')
+                                    setCustomMemberName('')
+                                  }}
+                                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${
+                                    selectedFamilyMemberId === ''
+                                      ? 'border-blue-600 bg-blue-600 text-white'
+                                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300'
+                                  }`}
+                                >
+                                  + Other Dependent
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {(!selectedFamilyMemberId || familyMembers.length === 0) && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                              <div>
+                                <label className="text-[10px] font-black uppercase text-gray-400">Dependent Full Name</label>
+                                <input
+                                  type="text"
+                                  value={customMemberName}
+                                  onChange={(e) => setCustomMemberName(e.target.value)}
+                                  placeholder="e.g. Salma, Ahmed, Laila..."
+                                  className="w-full mt-1 px-3 py-2 text-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-black uppercase text-gray-400">Relationship</label>
+                                <select
+                                  value={customMemberRel}
+                                  onChange={(e) => setCustomMemberRel(e.target.value)}
+                                  className="w-full mt-1 px-3 py-2 text-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold"
+                                >
+                                  <option value="Son">Son (ابن)</option>
+                                  <option value="Daughter">Daughter (ابنة)</option>
+                                  <option value="Spouse">Spouse (زوج / زوجة)</option>
+                                  <option value="Father">Father (أب)</option>
+                                  <option value="Mother">Mother (أم)</option>
+                                  <option value="Brother">Brother (أخ)</option>
+                                  <option value="Sister">Sister (أخت)</option>
+                                  <option value="Other">Other (آخر)</option>
+                                </select>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
+
+                  {/* Medical Notes & Condition */}
+                  <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                    <label className="text-xs font-black uppercase tracking-widest text-gray-500 flex items-center justify-between">
+                      <span>📝 Condition Notes for the Doctor</span>
+                      <span className="text-[10px] font-normal text-gray-400">Optional</span>
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={patientNotes}
+                      onChange={(e) => setPatientNotes(e.target.value)}
+                      placeholder="Describe symptoms, complaints, medical history, or questions for Dr. to review..."
+                      className="w-full p-3.5 text-xs bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                    />
+                  </div>
 
                   <button 
                     onClick={() => setStep(2)}

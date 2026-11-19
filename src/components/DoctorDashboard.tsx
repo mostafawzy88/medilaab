@@ -11,11 +11,13 @@ import ClinicSchedule from './ClinicSchedule'
 import PatientsTab from './PatientsTab'
 import DoctorAnalytics from './DoctorAnalytics'
 import DoctorHistoryTab from './DoctorHistoryTab'
+import { getWhatsAppLink } from '@/utils/whatsapp'
 
 type Appointment = {
   id: string
   patient_id: string | null
   manual_patient_id?: string | null
+  family_member_name?: string | null
   scheduled_time: string
   status: 'scheduled' | 'waiting' | 'in_progress' | 'completed' | 'cancelled' | 'proposed'
   queue_position: number
@@ -506,10 +508,58 @@ export default function DoctorDashboard({
                     <tr key={apt.id} className="hover:bg-gray-50/50">
                       <td className="p-4 font-black text-gray-400">Q{apt.queue_position}</td>
                       <td className="p-4">
-                        <div className="font-bold">{apt.patient?.full_name || apt.manual_patient?.full_name}</div>
+                        <div className="font-bold text-gray-900 dark:text-white">
+                          {apt.patient?.full_name || apt.manual_patient?.full_name}
+                        </div>
+                        {/* Family member tag */}
+                        {(() => {
+                          let fam = apt.family_member_name;
+                          if (!fam && apt.notes) {
+                            const m = apt.notes.match(/\[FOR:\s*([^\]]+)\]/);
+                            if (m) fam = m[1];
+                          }
+                          if (!fam) return null;
+                          return (
+                            <span className="inline-block mt-0.5 text-[10px] font-black px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                              👨‍👩‍👧 {locale === 'ar' ? `لصالح: ${fam}` : `For: ${fam}`}
+                            </span>
+                          );
+                        })()}
+
+                        {/* Phone & WhatsApp */}
                         {(apt.patient?.phone_number || apt.manual_patient?.phone_number) && (
-                          <div className="text-xs text-gray-400 font-medium">{apt.patient?.phone_number || apt.manual_patient?.phone_number}</div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs text-gray-400 font-medium">{apt.patient?.phone_number || apt.manual_patient?.phone_number}</span>
+                            <a
+                              href={getWhatsAppLink(
+                                apt.patient?.phone_number || apt.manual_patient?.phone_number,
+                                `Hello ${apt.patient?.full_name || apt.manual_patient?.full_name}, this is your clinic from MediLab.`
+                              )}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] font-black text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800 transition-colors flex items-center gap-1"
+                              title="Chat on WhatsApp"
+                            >
+                              <span>💬</span>
+                              <span>WhatsApp</span>
+                            </a>
+                          </div>
                         )}
+
+                        {/* Patient Condition Note */}
+                        {(() => {
+                          if (!apt.notes) return null;
+                          const match = apt.notes.match(/\[PATIENT_NOTE:\s*([^\]]+)\]/);
+                          if (!match || !match[1]) return null;
+                          return (
+                            <div className="mt-1.5 p-2 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/40 text-[11px] max-w-xs">
+                              <span className="font-black text-blue-600 dark:text-blue-400 block text-[10px] uppercase">
+                                📝 {locale === 'ar' ? 'شكوى المريض:' : 'Patient Condition Notes:'}
+                              </span>
+                              <span className="text-gray-700 dark:text-gray-300 italic">"{match[1]}"</span>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="p-4 text-xs font-bold capitalize text-blue-600 dark:text-blue-400">
                         {(apt.appointment_type || 'clinic_normal').replace(/_/g, ' ')}
@@ -586,10 +636,57 @@ export default function DoctorDashboard({
                   <div key={apt.id} className="p-5 hover:bg-gray-50/50 dark:hover:bg-gray-800/30">
                     <div className="flex items-center justify-between gap-4 flex-wrap">
                       <div className="flex-1 min-w-[200px]">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 flex items-center justify-center text-sm font-bold">🕐</span>
-                          <h4 className="font-bold">{apt.patient?.full_name || apt.manual_patient?.full_name}</h4>
+                          <h4 className="font-bold text-gray-900 dark:text-white">{apt.patient?.full_name || apt.manual_patient?.full_name}</h4>
+
+                          {/* Family member tag */}
+                          {(() => {
+                            let fam = apt.family_member_name;
+                            if (!fam && apt.notes) {
+                              const m = apt.notes.match(/\[FOR:\s*([^\]]+)\]/);
+                              if (m) fam = m[1];
+                            }
+                            if (!fam) return null;
+                            return (
+                              <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                                👨‍👩‍👧 {locale === 'ar' ? `لصالح: ${fam}` : `For: ${fam}`}
+                              </span>
+                            );
+                          })()}
+
+                          {/* WhatsApp Patient Button */}
+                          {(apt.patient?.phone_number || apt.manual_patient?.phone_number) && (
+                            <a
+                              href={getWhatsAppLink(
+                                apt.patient?.phone_number || apt.manual_patient?.phone_number,
+                                `Hello ${apt.patient?.full_name || apt.manual_patient?.full_name}, this is Dr. ${doctorName} regarding your appointment request at MediLab.`
+                              )}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] font-black text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800 transition-colors flex items-center gap-1"
+                              title="Chat on WhatsApp"
+                            >
+                              <span>💬 WhatsApp</span>
+                            </a>
+                          )}
                         </div>
+
+                        {/* Patient Condition Note */}
+                        {(() => {
+                          if (!apt.notes) return null;
+                          const match = apt.notes.match(/\[PATIENT_NOTE:\s*([^\]]+)\]/);
+                          if (!match || !match[1]) return null;
+                          return (
+                            <div className="mt-2 ml-10 p-2.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 text-xs">
+                              <span className="font-black text-blue-600 dark:text-blue-400 block text-[10px] uppercase">
+                                📝 {locale === 'ar' ? 'شكوى وأعراض المريض:' : 'Patient Condition & Symptoms:'}
+                              </span>
+                              <span className="text-gray-700 dark:text-gray-300 italic">"{match[1]}"</span>
+                            </div>
+                          );
+                        })()}
+
                         <div className="flex flex-wrap gap-3 mt-2 text-sm text-gray-500 ml-10">
                           <span>📅 {new Date(apt.scheduled_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
                           <span className="capitalize">🏥 {(apt.appointment_type || 'clinic_normal').replace(/_/g, ' ')}</span>

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import PrescriptionViewerModal from './PrescriptionViewerModal'
 import PrescriptionModal from './PrescriptionModal'
+import { getWhatsAppLink } from '@/utils/whatsapp'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type Patient = {
@@ -173,12 +174,25 @@ function PatientDetailModal({
               <div className="bg-gray-50 dark:bg-gray-800/50 rounded-2xl p-5 space-y-3">
                 <h3 className="font-black text-sm uppercase tracking-widest text-gray-400">Contact Information</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">📞</span>
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">Phone</p>
-                      <p className="font-bold text-gray-900 dark:text-white">{patient.phone_number || '—'}</p>
+                  <div className="flex items-center justify-between sm:col-span-2 bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">📞</span>
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Phone</p>
+                        <p className="font-bold text-gray-900 dark:text-white">{patient.phone_number || '—'}</p>
+                      </div>
                     </div>
+                    {patient.phone_number && (
+                      <a
+                        href={getWhatsAppLink(patient.phone_number, `Hello ${patient.full_name}, this is your clinic following up with you.`)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                      >
+                        <span>💬</span>
+                        <span>WhatsApp Chat</span>
+                      </a>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-xl">📧</span>
@@ -275,20 +289,35 @@ function PatientDetailModal({
               {patient.appointments?.length === 0 ? (
                 <div className="text-center py-10 text-gray-400 italic">No visits recorded yet.</div>
               ) : (
-                patient.appointments?.map((apt: any) => (
-                  <div key={apt.id} className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-gray-800 flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-3 h-3 rounded-full flex-shrink-0 ${apt.status === 'completed' ? 'bg-green-500' : apt.status === 'cancelled' ? 'bg-red-400' : 'bg-blue-500'}`} />
-                      <div>
-                        <p className="font-bold text-gray-900 dark:text-white text-sm">
-                          {new Date(apt.scheduled_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
-                        </p>
-                        <p className="text-xs text-gray-500 capitalize">{apt.appointment_type?.replace('_', ' ')} • {apt.status}</p>
+                patient.appointments?.map((apt: any) => {
+                  const patientNote = apt.notes ? (apt.notes.match(/\[PATIENT_NOTE:\s*([\s\S]*?)\]/)?.[1] || (apt.notes.includes('[FOR:') ? '' : apt.notes)) : ''
+                  const forDependent = apt.family_member_name || apt.notes?.match(/\[FOR:\s*([^\]]+)\]/)?.[1]
+                  return (
+                    <div key={apt.id} className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-gray-800 flex flex-col gap-2">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-3 h-3 rounded-full flex-shrink-0 ${apt.status === 'completed' ? 'bg-green-500' : apt.status === 'cancelled' ? 'bg-red-400' : 'bg-blue-500'}`} />
+                          <div>
+                            <p className="font-bold text-gray-900 dark:text-white text-sm">
+                              {new Date(apt.scheduled_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                            </p>
+                            <p className="text-xs text-gray-500 capitalize">
+                              {apt.appointment_type?.replace('_', ' ')} • {apt.status}
+                              {forDependent && <span className="ml-2 text-blue-600 dark:text-blue-400 font-semibold">(For: {forDependent})</span>}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="font-black text-gray-900 dark:text-white text-sm flex-shrink-0">{Number(apt.fees || 0).toLocaleString()} EGP</p>
                       </div>
+                      {patientNote && (
+                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                          <span className="font-bold">📝 Patient Note / Symptoms: </span>
+                          <span>{patientNote}</span>
+                        </div>
+                      )}
                     </div>
-                    <p className="font-black text-gray-900 dark:text-white text-sm flex-shrink-0">{Number(apt.fees || 0).toLocaleString()} EGP</p>
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
           )}
@@ -473,7 +502,7 @@ export default function PatientsTab({ doctorId }: { doctorId: string }) {
 
     // Fetch appointments
     let apptQuery = supabase.from('appointments')
-      .select('id, scheduled_time, status, appointment_type, fees, payment_status')
+      .select('id, scheduled_time, status, appointment_type, fees, payment_status, notes')
       .eq('doctor_id', doctorId)
       .order('scheduled_time', { ascending: false })
 
@@ -686,7 +715,21 @@ export default function PatientsTab({ doctorId }: { doctorId: string }) {
                       </div>
                     </td>
                     <td className="px-6 py-4 hidden md:table-cell">
-                      <p className="text-sm text-gray-900 dark:text-gray-200">{p.phone_number || <span className="text-gray-400 italic text-xs">No phone</span>}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm text-gray-900 dark:text-gray-200">{p.phone_number || <span className="text-gray-400 italic text-xs">No phone</span>}</p>
+                        {p.phone_number && (
+                          <a
+                            href={getWhatsAppLink(p.phone_number, `Hello ${p.full_name}, this is your clinic.`)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center text-xs px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 font-bold transition-colors"
+                            title="Chat on WhatsApp"
+                          >
+                            💬
+                          </a>
+                        )}
+                      </div>
                       <p className="text-xs text-gray-400 truncate max-w-[180px]">{p.email || ''}</p>
                     </td>
                     <td className="px-6 py-4">

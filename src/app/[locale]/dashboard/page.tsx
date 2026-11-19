@@ -156,7 +156,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
         rejection_reason,
         reviewed_by,
         reviewed_at,
-        doctor:profiles!appointments_doctor_id_fkey(full_name, instapay_address),
+        doctor:profiles!appointments_doctor_id_fkey(full_name, instapay_address, phone_number),
         reviewer:profiles!appointments_reviewed_by_fkey(full_name)
       `)
       .eq('patient_id', user.id)
@@ -169,6 +169,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
       queue_position: apt.queue_position || 0,
       fees: apt.fees,
       doctor_name: apt.doctor?.full_name || 'Doctor',
+      doctor_phone: apt.doctor?.phone_number || null,
       instapay_address: apt.doctor?.instapay_address || null,
       payment_status: apt.payment_status,
       payment_reference: apt.payment_reference || null,

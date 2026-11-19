@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
+import { getWhatsAppLink } from '@/utils/whatsapp'
 
 type Appointment = {
   id: string
@@ -497,16 +498,26 @@ export default function DoctorOverview({
                       </span>
                     </div>
 
-                    {/* Patient Phone & Contact Bar */}
-                    <div className="flex items-center justify-between gap-3 pt-2 border-t border-amber-200/60 dark:border-amber-900/40">
+                    {/* Patient Phone & WhatsApp Bar */}
+                    <div className="flex items-center justify-between gap-3 pt-2 border-t border-amber-200/60 dark:border-amber-900/40 flex-wrap">
                       {phone ? (
-                        <a 
-                          href={`tel:${phone}`}
-                          className="text-xs font-bold text-amber-700 dark:text-amber-300 hover:underline flex items-center gap-1.5"
-                        >
-                          <span>📞</span>
-                          <span>{phone}</span>
-                        </a>
+                        <div className="flex items-center gap-3">
+                          <a 
+                            href={`tel:${phone}`}
+                            className="text-xs font-bold text-amber-700 dark:text-amber-300 hover:underline flex items-center gap-1.5"
+                          >
+                            <span>📞</span>
+                            <span>{phone}</span>
+                          </a>
+                          <a
+                            href={getWhatsAppLink(phone, `Hello ${visit.patient?.full_name || visit.manual_patient?.full_name}, this is Dr. ${doctorName} regarding your home visit today.`)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 hover:text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800 transition-colors"
+                          >
+                            <span>💬 WhatsApp</span>
+                          </a>
+                        </div>
                       ) : (
                         <span className="text-xs text-gray-400 italic">No phone provided</span>
                       )}
@@ -611,9 +622,24 @@ export default function DoctorOverview({
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          🕒 {new Date(apt.scheduled_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })} • {(apt.appointment_type || 'clinic_normal').replace(/_/g, ' ')}
-                        </p>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <p className="text-xs text-gray-400">
+                            🕒 {new Date(apt.scheduled_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })} • {(apt.appointment_type || 'clinic_normal').replace(/_/g, ' ')}
+                          </p>
+                          {(apt.patient?.phone_number || apt.manual_patient?.phone_number) && (
+                            <a
+                              href={getWhatsAppLink(
+                                apt.patient?.phone_number || apt.manual_patient?.phone_number,
+                                `Hello ${apt.patient?.full_name || apt.manual_patient?.full_name}, this is your clinic regarding your visit today.`
+                              )}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] font-black text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800 transition-colors"
+                            >
+                              💬 WhatsApp
+                            </a>
+                          )}
+                        </div>
                       </div>
                     </div>
 

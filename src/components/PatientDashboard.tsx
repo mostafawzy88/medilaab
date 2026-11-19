@@ -10,6 +10,7 @@ import PrescriptionViewerModal from './PrescriptionViewerModal'
 import DoctorProfileModal from './DoctorProfileModal'
 import FamilyMembersTab from './FamilyMembersTab'
 import PatientHistoryTab from './PatientHistoryTab'
+import { getWhatsAppLink } from '@/utils/whatsapp'
 
 type AppointmentProps = {
   id: string
@@ -17,6 +18,7 @@ type AppointmentProps = {
   queue_position: number
   fees: number
   doctor_name: string
+  doctor_phone?: string | null
   instapay_address: string | null
   payment_status?: string
   payment_reference?: string | null
@@ -563,7 +565,7 @@ export default function PatientDashboard({
                            )}
                         </div>
                       </div>
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
                         <button
                           type="button"
                           onClick={() => setViewingDoctorId(apt.doctor_id)}
@@ -573,6 +575,25 @@ export default function PatientDashboard({
                           <span>Dr. {apt.doctor_name}</span>
                           <span className="text-xs text-blue-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity">ℹ️ View Profile →</span>
                         </button>
+
+                        {/* WhatsApp Dr. button */}
+                        {(() => {
+                          const docObj = doctors.find(d => d.id === apt.doctor_id) || allDoctors.find(d => d.id === apt.doctor_id);
+                          const docPhone = apt.doctor_phone || docObj?.phone_number;
+                          if (!docPhone) return null;
+                          return (
+                            <a
+                              href={getWhatsAppLink(docPhone, `Hello Dr. ${apt.doctor_name}, this is regarding my appointment at MediLab.`)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 px-3 py-1 rounded-xl border border-emerald-200 dark:border-emerald-800 transition-colors flex items-center gap-1 shadow-sm"
+                              title="Chat with doctor on WhatsApp"
+                            >
+                              <span>💬</span>
+                              <span>WhatsApp</span>
+                            </a>
+                          );
+                        })()}
                       </div>
 
                       {apt.family_member_name && (
@@ -582,6 +603,23 @@ export default function PatientDashboard({
                           </span>
                         </div>
                       )}
+
+                      {/* Display Patient Condition Note if available */}
+                      {(() => {
+                        if (!apt.notes) return null;
+                        const match = apt.notes.match(/\[PATIENT_NOTE:\s*([^\]]+)\]/);
+                        if (!match || !match[1]) return null;
+                        return (
+                          <div className="mt-2.5 p-2.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 text-xs">
+                            <p className="font-bold text-[10px] uppercase text-blue-500 mb-0.5">
+                              📝 {locale === 'ar' ? 'ملاحظاتك للطبيب:' : 'Your Note to Doctor:'}
+                            </p>
+                            <p className="text-gray-700 dark:text-gray-300 italic leading-relaxed">
+                              "{match[1]}"
+                            </p>
+                          </div>
+                        );
+                      })()}
                       
                       {apt.status === 'proposed' && (
                         <div className="mt-4 p-4 bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-2xl flex flex-col gap-3 animate-in fade-in slide-in-from-top-2">
@@ -1029,10 +1067,9 @@ export default function PatientDashboard({
                          className="cursor-pointer group flex-1"
                          onClick={() => setViewingDoctorId(doc.id)}
                        >
-                         <p className="font-bold group-hover:text-blue-600 transition-colors flex items-center gap-1.5">
-                           Dr. {doc.full_name}
-                           <span className="text-[10px] text-gray-400 font-normal">🔍 View</span>
-                         </p>
+                         <p className="font-bold group-hover:text-blue-600 transition-colors">
+                            Dr. {doc.full_name}
+                          </p>
                          <p className="text-xs text-blue-600 font-medium">{doc.specialization || 'General Practitioner'}</p>
                        </div>
                        <div className="flex items-center gap-2">
