@@ -5,6 +5,7 @@ import { useLocale } from 'next-intl'
 import { createClient } from '@/utils/supabase/client'
 import NotificationPermissionBanner from './NotificationPermissionBanner'
 import { sendMedicationReminderNotification } from '@/utils/notifications'
+import { getFormIcon, inferFormFromName, MedicationFormType } from './PrescriptionModal'
 
 // ─── TYPES ──────────────────────────────────────────────────────────────────
 export type CupSlot = 'morning' | 'midday' | 'evening' | 'night' | 'bedtime'
@@ -15,6 +16,7 @@ export type PillItem = {
   dosage: string
   instructions?: string
   slot: CupSlot
+  form?: MedicationFormType
   colorType: 'red_white' | 'cyan_white' | 'amber_gold' | 'emerald' | 'purple' | 'orange'
   shape: 'capsule' | 'tablet' | 'softgel' | 'caplet'
   sourceRxId?: string
@@ -252,12 +254,18 @@ function PillVisual({
 
       <div className="min-w-0 flex-1 text-left">
         <div className="flex items-center gap-2">
+          <span className="text-sm shrink-0">{getFormIcon(pill.form)}</span>
           <p className={`font-bold text-sm truncate ${isTaken ? 'line-through text-gray-400' : 'text-white'}`}>
             {pill.name}
           </p>
           <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-white/10 text-cyan-300 shrink-0">
             {pill.dosage}
           </span>
+          {pill.form && pill.form !== 'pill' && (
+            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-cyan-950/60 text-cyan-400 border border-cyan-800/40 shrink-0">
+              {pill.form}
+            </span>
+          )}
         </div>
         {pill.instructions && (
           <p className="text-[11px] text-gray-400 truncate mt-0.5">
@@ -320,6 +328,7 @@ export default function PrescriptionCupsTimeline({
   const [customDosage, setCustomDosage] = useState('')
   const [customSlot, setCustomSlot] = useState<CupSlot>('morning')
   const [customInstructions, setCustomInstructions] = useState('')
+  const [viewMode, setViewMode] = useState<'cups' | 'categories'>('cups')
 
   // Determine current time and auto-select active cup
   useEffect(() => {
@@ -446,12 +455,15 @@ export default function PrescriptionCupsTimeline({
         const color = colorCycle[colorIdx % colorCycle.length]
         colorIdx++
 
+        const medForm = med.form || inferFormFromName(med.name)
+
         slots.forEach((s, sIdx) => {
           pills.push({
             id: `rx-${rx.id}-${mIdx}-${sIdx}`,
             name: med.name,
             dosage: med.dosage || '1 tab',
             instructions: med.instructions,
+            form: medForm,
             slot: s,
             colorType: color,
             shape: color === 'amber_gold' ? 'softgel' : color === 'emerald' ? 'tablet' : 'capsule',
@@ -640,9 +652,43 @@ export default function PrescriptionCupsTimeline({
           </div>
         </div>
 
+        {/* View Switcher: 5-Cup Timeline vs Medications by Type */}
+        <div className="mt-8 pt-6 border-t border-white/10 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-2 p-1.5 bg-white/[0.04] rounded-2xl border border-white/10">
+            <button
+              type="button"
+              onClick={() => setViewMode('cups')}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
+                viewMode === 'cups'
+                  ? 'bg-gradient-to-r from-cyan-500 to-teal-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <span>☕</span>
+              <span>{isAr ? 'كؤوس اليوم الخمسة' : '5-Cup Daily Timeline'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('categories')}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
+                viewMode === 'categories'
+                  ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-md shadow-purple-500/20'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <span>📋</span>
+              <span>{isAr ? 'الأدوية حسب النوع (أقراص، شراب، كريم، حقن)' : 'Medications by Type (Pills, Syrups, Creams)'}</span>
+            </button>
+          </div>
+
+          <div className="text-xs text-gray-400 font-semibold">
+            {allActivePills.length} {isAr ? 'جرعة مقررة' : 'scheduled item(s)'}
+          </div>
+        </div>
+
         {/* Preview Mode Notification Banner if demo is active */}
         {showDemo && !hasRealPills && (
-          <div className="mt-8 pt-5 border-t border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="mt-4 pt-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2 text-amber-300">
               <span className="text-base">✨</span>
               <span className="font-bold">
@@ -661,214 +707,317 @@ export default function PrescriptionCupsTimeline({
         )}
       </div>
 
-      {/* ── THE 5 CUPS HORIZONTAL TIMELINE ── */}
-      <div className="relative bg-[#07050E] rounded-[32px] p-6 sm:p-10 border border-white/10 shadow-2xl overflow-hidden">
-        {/* Glowing Day Timeline Track */}
-        <div className="hidden lg:block absolute top-[110px] left-12 right-12 h-1 bg-gradient-to-r from-amber-400 via-cyan-400 via-orange-500 via-purple-500 to-indigo-600 rounded-full opacity-40 blur-[0.5px]" />
+      {/* ── CONDITIONAL VIEW: 5 CUPS HORIZONTAL TIMELINE vs CATEGORIZED MEDICATIONS ── */}
+      {viewMode === 'cups' ? (
+        <div className="relative bg-[#07050E] rounded-[32px] p-6 sm:p-10 border border-white/10 shadow-2xl overflow-hidden animate-in fade-in">
+          {/* Glowing Day Timeline Track */}
+          <div className="hidden lg:block absolute top-[110px] left-12 right-12 h-1 bg-gradient-to-r from-amber-400 via-cyan-400 via-orange-500 via-purple-500 to-indigo-600 rounded-full opacity-40 blur-[0.5px]" />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 relative z-10">
-          {CUP_DEFINITIONS.map((def) => {
-            const isSelected = activeSlot === def.slot
-            const slotPills = allActivePills.filter(p => p.slot === def.slot)
-            const takenSlotPills = slotPills.filter(p => takenPills[p.id])
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 relative z-10">
+            {CUP_DEFINITIONS.map((def) => {
+              const isSelected = activeSlot === def.slot
+              const slotPills = allActivePills.filter(p => p.slot === def.slot)
+              const takenSlotPills = slotPills.filter(p => takenPills[p.id])
 
-            return (
-              <div
-                key={def.slot}
-                onClick={() => setActiveSlot(def.slot)}
-                className={`relative rounded-3xl p-5 transition-all cursor-pointer flex flex-col justify-between group ${
-                  isSelected
-                    ? 'bg-white/[0.08] border-2 border-cyan-400 shadow-2xl shadow-cyan-500/15 scale-[1.03]'
-                    : 'bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 hover:border-white/20'
-                }`}
-                style={{
-                  boxShadow: isSelected ? `0 10px 40px -10px ${def.glowColor}` : undefined,
-                }}
-              >
-                {/* Top Slot Header */}
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">{def.icon}</span>
-                    <div>
-                      <h3 className="font-black text-white text-sm">
-                        {isAr ? def.titleAr : def.titleEn}
-                      </h3>
-                      <p className="text-[11px] text-gray-400 font-mono font-semibold">
-                        {def.timeStr}
+              return (
+                <div
+                  key={def.slot}
+                  onClick={() => setActiveSlot(def.slot)}
+                  className={`relative rounded-3xl p-5 transition-all cursor-pointer flex flex-col justify-between group ${
+                    isSelected
+                      ? 'bg-white/[0.08] border-2 border-cyan-400 shadow-2xl shadow-cyan-500/15 scale-[1.03]'
+                      : 'bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 hover:border-white/20'
+                  }`}
+                  style={{
+                    boxShadow: isSelected ? `0 10px 40px -10px ${def.glowColor}` : undefined,
+                  }}
+                >
+                  {/* Top Slot Header */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">{def.icon}</span>
+                      <div>
+                        <h3 className="font-black text-white text-sm">
+                          {isAr ? def.titleAr : def.titleEn}
+                        </h3>
+                        <p className="text-[11px] text-gray-400 font-mono font-semibold">
+                          {def.timeStr}
+                        </p>
+                      </div>
+                    </div>
+
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                      slotPills.length > 0 
+                        ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                        : 'bg-white/5 text-gray-500'
+                    }`}>
+                      {slotPills.length} {isAr ? 'حبوب' : 'pills'}
+                    </span>
+                  </div>
+
+                  {/* ── THE 3D GLASS MEDICINE CUP VISUAL ── */}
+                  <div className="my-6 relative flex flex-col items-center justify-center">
+                    {/* Glowing Ambient Light Beneath Cup */}
+                    <div
+                      className="absolute w-24 h-24 rounded-full blur-2xl opacity-50 pointer-events-none transition-opacity"
+                      style={{ backgroundColor: def.glowColor }}
+                    />
+
+                    {/* Glass Cup Graphic */}
+                    <div className="relative w-28 h-32 rounded-b-[28px] rounded-t-[10px] border-2 border-white/30 backdrop-blur-xl shadow-inner flex flex-col justify-end p-2 overflow-hidden"
+                      style={{
+                        background: `linear-gradient(180deg, rgba(255,255,255,0.08) 0%, ${def.liquidColor} 100%)`,
+                      }}
+                    >
+                      {/* Glass measurement markings */}
+                      <div className="absolute top-4 left-2 flex flex-col gap-2.5 opacity-30 pointer-events-none">
+                        <div className="w-3 h-0.5 bg-white" />
+                        <div className="w-2 h-0.5 bg-white" />
+                        <div className="w-4 h-0.5 bg-white" />
+                        <div className="w-2 h-0.5 bg-white" />
+                      </div>
+
+                      {/* Top glass refraction rim */}
+                      <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-b from-white/40 to-transparent" />
+
+                      {/* PILLS "THROWN" INSIDE CUP */}
+                      <div className="relative z-10 flex flex-wrap items-center justify-center gap-1.5 min-h-[50px]">
+                        {slotPills.length === 0 ? (
+                          <div className="text-[10px] font-medium text-gray-500 italic text-center px-1">
+                            {isAr ? 'كوب فارغ' : 'Empty cup'}
+                          </div>
+                        ) : (
+                          slotPills.map((pill, idx) => (
+                            <div
+                              key={pill.id}
+                              className={`transform transition-transform duration-300 ${
+                                idx % 2 === 0 ? '-rotate-12 translate-y-1' : 'rotate-12 -translate-y-1'
+                              }`}
+                              title={`${pill.name} (${pill.dosage})`}
+                            >
+                              {pill.colorType === 'red_white' ? (
+                                <div className="w-4 h-8 rounded-full overflow-hidden shadow-md border border-white/30">
+                                  <div className="h-1/2 bg-red-500" />
+                                  <div className="h-1/2 bg-white" />
+                                </div>
+                              ) : pill.colorType === 'cyan_white' ? (
+                                <div className="w-4 h-8 rounded-full overflow-hidden shadow-md border border-white/30">
+                                  <div className="h-1/2 bg-cyan-400" />
+                                  <div className="h-1/2 bg-white" />
+                                </div>
+                              ) : pill.colorType === 'amber_gold' ? (
+                                <div className="w-4 h-7 rounded-full bg-gradient-to-b from-amber-300 to-yellow-500 shadow-md border border-amber-200/50" />
+                              ) : pill.colorType === 'emerald' ? (
+                                <div className="w-5 h-5 rounded-full bg-emerald-400 shadow-md border border-emerald-300/40" />
+                              ) : pill.colorType === 'purple' ? (
+                                <div className="w-4 h-8 rounded-full overflow-hidden shadow-md border border-purple-300/40">
+                                  <div className="h-1/2 bg-purple-500" />
+                                  <div className="h-1/2 bg-pink-400" />
+                                </div>
+                              ) : (
+                                <div className="w-5 h-5 rounded-full bg-orange-400 shadow-md border border-orange-300/40" />
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      {/* Bottom cup base refraction */}
+                      <div className="w-full h-1 bg-white/20 rounded-full mt-1" />
+                    </div>
+                  </div>
+
+                  {/* Bottom Cup Status Indicator */}
+                  <div className="pt-3 border-t border-white/10 flex items-center justify-between text-xs">
+                    <span className={`font-bold ${isSelected ? 'text-cyan-300' : 'text-gray-400'}`}>
+                      {isSelected ? (isAr ? 'الكوب المحدد' : 'Selected') : (isAr ? 'عرض الكوب' : 'Inspect')}
+                    </span>
+                    {slotPills.length > 0 && (
+                      <span className="text-[11px] font-mono font-bold text-gray-400">
+                        {takenSlotPills.length}/{slotPills.length} ✓
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* ── ACTIVE CUP DETAIL DRAWER (Pills & Instructions) ── */}
+          <div className="mt-8 pt-8 border-t border-white/10">
+            {(() => {
+              const currentDef = CUP_DEFINITIONS.find(d => d.slot === activeSlot)!
+              const activeSlotPills = allActivePills.filter(p => p.slot === activeSlot)
+
+              return (
+                <div className="space-y-6">
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <span className="text-3xl">{currentDef.icon}</span>
+                      <div>
+                        <h3 className="text-xl sm:text-2xl font-black text-white">
+                          {isAr ? currentDef.titleAr : currentDef.titleEn} — {currentDef.timeStr}
+                        </h3>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {isAr
+                            ? `تحتوي هذه الجرعة على ${activeSlotPills.length} أدوية مقررة لتناولها في هذا التوقيت.`
+                            : `Contains ${activeSlotPills.length} prescribed medication(s) scheduled for this time.`}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleTriggerTestReminder}
+                        disabled={testingReminder}
+                        className="text-xs font-bold text-cyan-300 hover:text-cyan-200 bg-cyan-950/50 hover:bg-cyan-900/60 px-3 py-1.5 rounded-xl border border-cyan-500/30 flex items-center gap-1.5 transition-all shadow-sm"
+                      >
+                        <span>🔔</span>
+                        <span>{reminderSent ? (isAr ? '✓ تم الإرسال!' : '✓ Alert Sent!') : (isAr ? 'تنبيه الهاتف' : 'Test Reminder')}</span>
+                      </button>
+                      <span className="text-xs font-black uppercase tracking-wider text-cyan-300 bg-cyan-950/40 px-3 py-1.5 rounded-xl border border-cyan-500/30">
+                        {activeSlotPills.filter(p => takenPills[p.id]).length} / {activeSlotPills.length} {isAr ? 'تم تناولها' : 'taken'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {activeSlotPills.length === 0 ? (
+                    <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-10 text-center text-gray-400 space-y-2">
+                      <p className="font-bold text-sm">
+                        {isAr ? 'لا توجد أدوية مقررة في هذا الكوب حالياً.' : 'No medications scheduled in this cup.'}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {isAr
+                          ? 'يمكنك إضافة جرعاتك الشخصية عبر زر "+ إضافة دواء للجدول".'
+                          : 'You can add your vitamins or custom doses using the Add Medication button.'}
                       </p>
                     </div>
-                  </div>
-
-                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                    slotPills.length > 0 
-                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                      : 'bg-white/5 text-gray-500'
-                  }`}>
-                    {slotPills.length} {isAr ? 'حبوب' : 'pills'}
-                  </span>
-                </div>
-
-                {/* ── THE 3D GLASS MEDICINE CUP VISUAL ── */}
-                <div className="my-6 relative flex flex-col items-center justify-center">
-                  {/* Glowing Ambient Light Beneath Cup */}
-                  <div
-                    className="absolute w-24 h-24 rounded-full blur-2xl opacity-50 pointer-events-none transition-opacity"
-                    style={{ backgroundColor: def.glowColor }}
-                  />
-
-                  {/* Glass Cup Graphic */}
-                  <div className="relative w-28 h-32 rounded-b-[28px] rounded-t-[10px] border-2 border-white/30 backdrop-blur-xl shadow-inner flex flex-col justify-end p-2 overflow-hidden"
-                    style={{
-                      background: `linear-gradient(180deg, rgba(255,255,255,0.08) 0%, ${def.liquidColor} 100%)`,
-                    }}
-                  >
-                    {/* Glass measurement markings */}
-                    <div className="absolute top-4 left-2 flex flex-col gap-2.5 opacity-30 pointer-events-none">
-                      <div className="w-3 h-0.5 bg-white" />
-                      <div className="w-2 h-0.5 bg-white" />
-                      <div className="w-4 h-0.5 bg-white" />
-                      <div className="w-2 h-0.5 bg-white" />
-                    </div>
-
-                    {/* Top glass refraction rim */}
-                    <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-b from-white/40 to-transparent" />
-
-                    {/* PILLS "THROWN" INSIDE CUP */}
-                    <div className="relative z-10 flex flex-wrap items-center justify-center gap-1.5 min-h-[50px]">
-                      {slotPills.length === 0 ? (
-                        <div className="text-[10px] font-medium text-gray-500 italic text-center px-1">
-                          {isAr ? 'كوب فارغ' : 'Empty cup'}
-                        </div>
-                      ) : (
-                        slotPills.map((pill, idx) => (
-                          <div
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {activeSlotPills.map(pill => {
+                        const takenVal = takenPills[pill.id]
+                        const isTaken = !!takenVal
+                        const takenAt = typeof takenVal === 'string' ? takenVal : null
+                        return (
+                          <PillVisual
                             key={pill.id}
-                            className={`transform transition-transform duration-300 ${
-                              idx % 2 === 0 ? '-rotate-12 translate-y-1' : 'rotate-12 -translate-y-1'
-                            }`}
-                            title={`${pill.name} (${pill.dosage})`}
-                          >
-                            {pill.colorType === 'red_white' ? (
-                              <div className="w-4 h-8 rounded-full overflow-hidden shadow-md border border-white/30">
-                                <div className="h-1/2 bg-red-500" />
-                                <div className="h-1/2 bg-white" />
-                              </div>
-                            ) : pill.colorType === 'cyan_white' ? (
-                              <div className="w-4 h-8 rounded-full overflow-hidden shadow-md border border-white/30">
-                                <div className="h-1/2 bg-cyan-400" />
-                                <div className="h-1/2 bg-white" />
-                              </div>
-                            ) : pill.colorType === 'amber_gold' ? (
-                              <div className="w-4 h-7 rounded-full bg-gradient-to-b from-amber-300 to-yellow-500 shadow-md border border-amber-200/50" />
-                            ) : pill.colorType === 'emerald' ? (
-                              <div className="w-5 h-5 rounded-full bg-emerald-400 shadow-md border border-emerald-300/40" />
-                            ) : pill.colorType === 'purple' ? (
-                              <div className="w-4 h-8 rounded-full overflow-hidden shadow-md border border-purple-300/40">
-                                <div className="h-1/2 bg-purple-500" />
-                                <div className="h-1/2 bg-pink-400" />
-                              </div>
-                            ) : (
-                              <div className="w-5 h-5 rounded-full bg-orange-400 shadow-md border border-orange-300/40" />
-                            )}
-                          </div>
-                        ))
-                      )}
+                            pill={pill}
+                            isTaken={isTaken}
+                            takenAt={takenAt}
+                            onToggleTaken={() => toggleTaken(pill.id)}
+                          />
+                        )
+                      })}
                     </div>
+                  )}
+                </div>
+              )
+            })()}
+          </div>
+        </div>
+      ) : (
+        /* ── CATEGORIZED MEDICATIONS CABINET (Pills, Syrups, Creams, Injections, Drops) ── */
+        <div className="bg-[#07050E] rounded-[32px] p-6 sm:p-10 border border-white/10 shadow-2xl space-y-8 animate-in fade-in">
+          <div>
+            <h3 className="text-xl font-black text-white flex items-center gap-2">
+              <span>💊</span>
+              <span>{isAr ? 'صيدلية المريض المصنفة حسب نوع الدواء' : 'Categorized Medication Cabinet by Form'}</span>
+            </h3>
+            <p className="text-xs text-gray-400 mt-1">
+              {isAr ? 'أدويتك مقسمة بدقة: أقراص، شراب، كريمات، حقن، وقطرات مع تعليمات الاستخدام والتأكيد.' : 'Divided cleanly into Pills, Syrups, Creams, Injections, and Drops with intake directions.'}
+            </p>
+          </div>
 
-                    {/* Bottom cup base refraction */}
-                    <div className="w-full h-1 bg-white/20 rounded-full mt-1" />
+          {[
+            { form: 'pill', titleEn: 'Pills & Tablets', titleAr: 'الأقراص والكبسولات', icon: '💊' },
+            { form: 'drinking', titleEn: 'Syrups & Oral Liquids', titleAr: 'أدوية الشراب والسوائل', icon: '🧴' },
+            { form: 'cream', titleEn: 'Creams, Ointments & Gels', titleAr: 'المراهم والدهانات الموضعية', icon: '🧴' },
+            { form: 'injection', titleEn: 'Injections & Ampoules', titleAr: 'الحقن والأمبولات', icon: '💉' },
+            { form: 'drops', titleEn: 'Eye & Ear Drops', titleAr: 'القطرات والنقط', icon: '💧' },
+            { form: 'spray', titleEn: 'Sprays & Inhalers', titleAr: 'البخاخات والاستنشاق', icon: '💨' },
+            { form: 'other', titleEn: 'Other Prescriptions', titleAr: 'أدوية وعلاجات أخرى', icon: '🩺' },
+          ].map(cat => {
+            const catMeds = allActivePills.filter(p => (p.form || inferFormFromName(p.name)) === cat.form)
+            if (catMeds.length === 0) return null
+
+            return (
+              <div key={cat.form} className="space-y-4">
+                <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">{cat.icon}</span>
+                    <h4 className="font-black text-white text-sm sm:text-base">
+                      {isAr ? cat.titleAr : cat.titleEn}
+                    </h4>
                   </div>
+                  <span className="text-xs font-black text-cyan-300 bg-cyan-950/50 px-3 py-1 rounded-full border border-cyan-500/30">
+                    {catMeds.length} {isAr ? 'دواء' : 'item(s)'}
+                  </span>
                 </div>
 
-                {/* Bottom Cup Status Indicator */}
-                <div className="pt-3 border-t border-white/10 flex items-center justify-between text-xs">
-                  <span className={`font-bold ${isSelected ? 'text-cyan-300' : 'text-gray-400'}`}>
-                    {isSelected ? (isAr ? 'الكوب المحدد' : 'Selected') : (isAr ? 'عرض الكوب' : 'Inspect')}
-                  </span>
-                  {slotPills.length > 0 && (
-                    <span className="text-[11px] font-mono font-bold text-gray-400">
-                      {takenSlotPills.length}/{slotPills.length} ✓
-                    </span>
-                  )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {catMeds.map(pill => {
+                    const takenVal = takenPills[pill.id]
+                    const isTaken = !!takenVal
+                    const takenAt = typeof takenVal === 'string' ? takenVal : null
+                    const slotDef = CUP_DEFINITIONS.find(d => d.slot === pill.slot)
+
+                    return (
+                      <div 
+                        key={pill.id} 
+                        className={`p-4 rounded-2xl border transition-all ${
+                          isTaken 
+                            ? 'bg-emerald-950/25 border-emerald-500/40 opacity-80' 
+                            : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/10 hover:border-white/20'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3 mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-2xl">{getFormIcon(pill.form)}</span>
+                            <div>
+                              <h5 className="font-bold text-white text-sm">{pill.name}</h5>
+                              <span className="text-[10px] font-black uppercase text-cyan-300 bg-white/10 px-2 py-0.5 rounded">
+                                {pill.dosage}
+                              </span>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => toggleTaken(pill.id)}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                              isTaken 
+                                ? 'bg-emerald-500 text-white shadow-sm' 
+                                : 'bg-white/10 hover:bg-white/20 text-gray-300'
+                            }`}
+                          >
+                            {isTaken ? '✓ Taken' : 'Take'}
+                          </button>
+                        </div>
+
+                        {pill.instructions && (
+                          <p className="text-xs text-gray-300 bg-black/30 p-2.5 rounded-xl border border-white/5 my-2" dir="auto">
+                            {pill.instructions}
+                          </p>
+                        )}
+
+                        <div className="flex items-center justify-between text-[10px] text-gray-400 pt-2 border-t border-white/5">
+                          <span>{slotDef ? `${slotDef.icon} ${isAr ? slotDef.titleAr : slotDef.titleEn}` : 'Daily Routine'}</span>
+                          {takenAt && (
+                            <span className="text-emerald-400 font-bold">
+                              {new Date(takenAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )
           })}
         </div>
-
-        {/* ── ACTIVE CUP DETAIL DRAWER (Pills & Instructions) ── */}
-        <div className="mt-8 pt-8 border-t border-white/10">
-          {(() => {
-            const currentDef = CUP_DEFINITIONS.find(d => d.slot === activeSlot)!
-            const activeSlotPills = allActivePills.filter(p => p.slot === activeSlot)
-
-            return (
-              <div className="space-y-6">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <span className="text-3xl">{currentDef.icon}</span>
-                    <div>
-                      <h3 className="text-xl sm:text-2xl font-black text-white">
-                        {isAr ? currentDef.titleAr : currentDef.titleEn} — {currentDef.timeStr}
-                      </h3>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        {isAr
-                          ? `تحتوي هذه الجرعة على ${activeSlotPills.length} أقراص / كبسولات مقررة لتناولها في هذا التوقيت.`
-                          : `Contains ${activeSlotPills.length} prescribed medication(s) scheduled for this time.`}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleTriggerTestReminder}
-                      disabled={testingReminder}
-                      className="text-xs font-bold text-cyan-300 hover:text-cyan-200 bg-cyan-950/50 hover:bg-cyan-900/60 px-3 py-1.5 rounded-xl border border-cyan-500/30 flex items-center gap-1.5 transition-all shadow-sm"
-                    >
-                      <span>🔔</span>
-                      <span>{reminderSent ? (isAr ? '✓ تم الإرسال!' : '✓ Alert Sent!') : (isAr ? 'تنبيه الهاتف' : 'Test Reminder')}</span>
-                    </button>
-                    <span className="text-xs font-black uppercase tracking-wider text-cyan-300 bg-cyan-950/40 px-3 py-1.5 rounded-xl border border-cyan-500/30">
-                      {activeSlotPills.filter(p => takenPills[p.id]).length} / {activeSlotPills.length} {isAr ? 'تم تناولها' : 'taken'}
-                    </span>
-                  </div>
-                </div>
-
-                {activeSlotPills.length === 0 ? (
-                  <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-10 text-center text-gray-400 space-y-2">
-                    <p className="font-bold text-sm">
-                      {isAr ? 'لا توجد أدوية مقررة في هذا الكوب حالياً.' : 'No medications scheduled in this cup.'}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {isAr
-                        ? 'يمكنك إضافة جرعاتك الشخصية عبر زر "+ إضافة دواء للجدول".'
-                        : 'You can add your vitamins or custom doses using the Add Medication button.'}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {activeSlotPills.map(pill => {
-                      const takenVal = takenPills[pill.id]
-                      const isTaken = !!takenVal
-                      const takenAt = typeof takenVal === 'string' ? takenVal : null
-                      return (
-                        <PillVisual
-                          key={pill.id}
-                          pill={pill}
-                          isTaken={isTaken}
-                          takenAt={takenAt}
-                          onToggleTaken={() => toggleTaken(pill.id)}
-                        />
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )
-          })()}
-        </div>
-      </div>
+      )}
 
       {/* ── OFFICIAL DOCTOR PRESCRIPTION ARCHIVES ── */}
       <div className="bg-white dark:bg-gray-900 rounded-[32px] shadow-xl border border-gray-100 dark:border-gray-800 p-6 sm:p-8">

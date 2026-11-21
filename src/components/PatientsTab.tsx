@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import PrescriptionViewerModal from './PrescriptionViewerModal'
-import PrescriptionModal from './PrescriptionModal'
+import PrescriptionModal, { getFormIcon, getFormLabel, inferFormFromName, MedicationFormType } from './PrescriptionModal'
 import { getWhatsAppLink } from '@/utils/whatsapp'
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
 
@@ -80,8 +80,67 @@ function PatientDetailModal({
   const [doctorNote, setDoctorNote] = useState(patient.doctor_note || '')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [activeTab, setActiveTab] = useState<'overview' | 'visits' | 'prescriptions'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'medications' | 'prescriptions' | 'visits'>('overview')
   const [viewingPrescription, setViewingPrescription] = useState<any | null>(null)
+  const [localPrescriptions, setLocalPrescriptions] = useState<any[]>(patient.prescriptions || [])
+  const [medCategoryFilter, setMedCategoryFilter] = useState<'all' | MedicationFormType>('all')
+  const [showAddMedModal, setShowAddMedModal] = useState(false)
+
+  // Add Medication State
+  const [newMedName, setNewMedName] = useState('')
+  const [newMedDosage, setNewMedDosage] = useState('')
+  const [newMedForm, setNewMedForm] = useState<MedicationFormType>('pill')
+  const [newMedInstructions, setNewMedInstructions] = useState('')
+  const [newMedDiagnosis, setNewMedDiagnosis] = useState('')
+  const [saveToDoctorFavs, setSaveToDoctorFavs] = useState(false)
+  const [addingMed, setAddingMed] = useState(false)
+  const [medSuccessMsg, setMedSuccessMsg] = useState(false)
+
+  // Doctor's saved medications for autocomplete
+  const [doctorFavs, setDoctorFavs] = useState<any[]>([])
+  const [matchingFavs, setMatchingFavs] = useState<any[]>([])
+
+  useEffect(() => {
+    async function fetchFavs() {
+      try {
+        const supabase = createClient()
+        const { data } = await supabase
+          .from('doctor_medications')
+          .select('*')
+          .eq('doctor_id', doctorId)
+          .order('name')
+        if (data) {
+          setDoctorFavs(data.map(m => ({
+            ...m,
+            form: m.form || inferFormFromName(m.name)
+          })))
+        }
+      } catch (e) {
+        console.warn('Could not fetch doctor favorites:', e)
+      }
+    }
+    fetchFavs()
+  }, [doctorId])
+
+  const handleMedNameChange = (val: string) => {
+    setNewMedName(val)
+    if (newMedForm === 'pill') {
+      setNewMedForm(inferFormFromName(val))
+    }
+    if (val.length > 1) {
+      const q = val.toLowerCase()
+      setMatchingFavs(doctorFavs.filter(f => f.name.toLowerCase().includes(q)))
+    } else {
+      setMatchingFavs([])
+    }
+  }
+
+  const handleSelectFav = (fav: any) => {
+    setNewMedName(fav.name)
+    setNewMedDosage(fav.default_dosage || '')
+    setNewMedForm(fav.form || inferFormFromName(fav.name))
+    setMatchingFavs([])
+  }
 
   const handleSaveNote = async () => {
     setSaving(true)
@@ -89,7 +148,6 @@ function PatientDetailModal({
     if (patient.is_manual) {
       await supabase.from('manual_patients').update({ doctor_note: doctorNote }).eq('id', patient.id)
     } else {
-      // Store note in a doctor-private table keyed by (doctor_id, patient_id)
       await supabase.from('doctor_patient_notes').upsert({
         doctor_id: doctorId,
         patient_id: patient.id,
@@ -102,157 +160,365 @@ function PatientDetailModal({
     setTimeout(() => setSaved(false), 2000)
   }
 
+  // Extract all single medication items from all prescriptions
+  const allMedications = useMemo(() => {
+    const list: any[] = []
+    localPrescriptions.forEach(rx => {
+      if (!Array.isArray(rx.medications)) return
+      rx.medications.forEach((m: any, idx: number) => {
+        if (!m.name) return
+        const form = (m.form || inferFormFromName(m.name)) as MedicationFormType
+        list.push({
+          id: `${rx.id}-${idx}`,
+          rxId: rx.id,
+          name: m.name,
+          dosage: m.dosage || '',
+          instructions: m.instructions || '',
+          form: form,
+          date: rx.created_at,
+          diagnosis: rx.diagnosis || 'Clinical Prescription',
+          doctorNotes: rx.doctor_notes || '',
+          doctorName: rx.doctor_name || 'Dr. Attending',
+          rawRx: rx
+        })
+      })
+    })
+    return list
+  }, [localPrescriptions])
+
+  const pillsCount = allMedications.filter(m => m.form === 'pill').length
+  const drinkingCount = allMedications.filter(m => m.form === 'drinking').length
+  const creamCount = allMedications.filter(m => m.form === 'cream').length
+  const injectionCount = allMedications.filter(m => m.form === 'injection').length
+  const dropsCount = allMedications.filter(m => m.form === 'drops').length
+  const sprayCount = allMedications.filter(m => m.form === 'spray').length
+
+  const filteredMeds = medCategoryFilter === 'all'
+    ? allMedications
+    : allMedications.filter(m => m.form === medCategoryFilter)
+
+  // Parse Triage Vitals from appointments if present
+  const latestVitals = useMemo(() => {
+    if (!patient.appointments || patient.appointments.length === 0) return null
+    for (const apt of patient.appointments) {
+      const notes = apt.notes || ''
+      const bpMatch = notes.match(/(?:BP|ضغط|blood pressure)[:\s]*([0-9]{2,3}\/[0-9]{2,3})/i)
+      const hrMatch = notes.match(/(?:HR|نبض|pulse|heart rate)[:\s]*([0-9]{2,3})/i)
+      const tempMatch = notes.match(/(?:Temp|حرارة|temperature)[:\s]*([0-9]{2}(?:\.[0-9])?)/i)
+      const sugarMatch = notes.match(/(?:Sugar|سكر|glucose)[:\s]*([0-9]{2,3})/i)
+      const spo2Match = notes.match(/(?:SpO2|أكسجين|oxygen)[:\s]*([0-9]{2,3}%?)/i)
+
+      if (bpMatch || hrMatch || tempMatch || sugarMatch || spo2Match) {
+        return {
+          bp: bpMatch ? bpMatch[1] : null,
+          hr: hrMatch ? `${hrMatch[1]} bpm` : null,
+          temp: tempMatch ? `${tempMatch[1]} °C` : null,
+          sugar: sugarMatch ? `${sugarMatch[1]} mg/dL` : null,
+          spo2: spo2Match ? `${spo2Match[1]}` : null,
+          date: apt.scheduled_time
+        }
+      }
+    }
+    return null
+  }, [patient.appointments])
+
+  const handleDirectAddMedication = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newMedName.trim()) return
+    setAddingMed(true)
+    try {
+      const supabase = createClient()
+      const medItem = {
+        name: newMedName.trim(),
+        dosage: newMedDosage.trim(),
+        instructions: newMedInstructions.trim(),
+        form: newMedForm
+      }
+
+      const { data: newRx, error } = await supabase.from('prescriptions').insert({
+        patient_id: patient.is_manual ? null : patient.id,
+        manual_patient_id: patient.is_manual ? patient.id : null,
+        doctor_id: doctorId,
+        diagnosis: newMedDiagnosis.trim() || 'Prescribed Medication',
+        symptoms: '',
+        medications: [medItem],
+        doctor_notes: 'Added from Patient Profile'
+      }).select().single()
+
+      if (error) {
+        alert('Could not save medication: ' + error.message)
+        setAddingMed(false)
+        return
+      }
+
+      if (saveToDoctorFavs) {
+        try {
+          const payload: any = {
+            doctor_id: doctorId,
+            name: newMedName.trim(),
+            default_dosage: newMedDosage.trim(),
+            common_symptoms: newMedDiagnosis.trim(),
+            form: newMedForm
+          }
+          const { error: favErr } = await supabase.from('doctor_medications').insert(payload)
+          if (favErr && favErr.message?.includes('form')) {
+            delete payload.form
+            payload.default_dosage = `${newMedDosage.trim()} [${newMedForm}]`
+            await supabase.from('doctor_medications').insert(payload)
+          }
+        } catch (err) {
+          console.warn('Could not save to frequent medications:', err)
+        }
+      }
+
+      if (newRx) {
+        setLocalPrescriptions(prev => [newRx, ...prev])
+      }
+
+      setMedSuccessMsg(true)
+      setTimeout(() => {
+        setMedSuccessMsg(false)
+        setShowAddMedModal(false)
+        setNewMedName('')
+        setNewMedDosage('')
+        setNewMedInstructions('')
+        setNewMedDiagnosis('')
+        setSaveToDoctorFavs(false)
+      }, 1000)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setAddingMed(false)
+    }
+  }
+
   const totalFees = patient.appointments?.reduce((s, a) => s + (Number(a.fees) || 0), 0) || 0
   const initials = patient.full_name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in">
-      <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-3xl border border-gray-100 dark:border-gray-800 flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in">
+      <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-4xl border border-gray-100 dark:border-gray-800 flex flex-col max-h-[92vh] overflow-hidden">
         
         {/* Header */}
-        <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex items-start justify-between flex-shrink-0">
+        <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex items-start justify-between flex-shrink-0 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md">
           <div className="flex items-center gap-4">
             <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-white font-black text-xl shadow-lg ${patient.is_manual ? 'bg-gradient-to-br from-amber-400 to-orange-500' : 'bg-gradient-to-br from-blue-500 to-indigo-600'}`}>
               {initials}
             </div>
             <div>
-              <h2 className="text-2xl font-black text-gray-900 dark:text-white">{patient.full_name}</h2>
-              <span className={`text-xs font-black uppercase tracking-widest ${patient.is_manual ? 'text-amber-500' : 'text-blue-500'}`}>
-                {patient.is_manual ? '⚡ Offline Patient' : '✓ Registered User'}
-              </span>
+              <h2 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-2">
+                <span>{patient.full_name}</span>
+                {patient.phone_number && (
+                  <a
+                    href={getWhatsAppLink(patient.phone_number, `Hello ${patient.full_name}, this is Dr. from your clinic.`)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1.5 rounded-lg bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#25D366] transition-colors"
+                    title="WhatsApp Chat"
+                  >
+                    <WhatsAppIcon className="w-4 h-4" />
+                  </a>
+                )}
+              </h2>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md ${patient.is_manual ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'}`}>
+                  {patient.is_manual ? '⚡ Offline Patient' : '✓ Registered User'}
+                </span>
+                <span className="text-xs text-gray-400">• Phone: {patient.phone_number || '—'}</span>
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={onWritePrescription}
-              className="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl text-xs sm:text-sm shadow-md shadow-blue-500/20 transition-all flex items-center gap-1.5"
+              className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black rounded-xl text-xs sm:text-sm shadow-md shadow-blue-500/20 transition-all flex items-center gap-1.5"
             >
               <span>💊</span>
               <span>+ Write Prescription</span>
             </button>
-            <button onClick={() => onClose(doctorNote)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">
+            <button onClick={() => onClose(doctorNote)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors text-gray-500">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>
         </div>
 
-        {/* Stats Row */}
-        <div className="grid grid-cols-3 gap-4 px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 flex-shrink-0">
-          <div className="text-center">
-            <p className="text-2xl font-black text-blue-600">{patient.appointments?.length || 0}</p>
-            <p className="text-xs font-bold text-gray-500 mt-0.5">Total Visits</p>
+        {/* Clinical Stats Row */}
+        <div className="grid grid-cols-4 gap-2 sm:gap-4 px-6 py-3.5 border-b border-gray-100 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/40 flex-shrink-0 text-center">
+          <div>
+            <p className="text-xl sm:text-2xl font-black text-blue-600">{patient.appointments?.length || 0}</p>
+            <p className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider">Total Visits</p>
           </div>
-          <div className="text-center border-x border-gray-200 dark:border-gray-700">
-            <p className="text-2xl font-black text-emerald-600">{totalFees.toLocaleString()} <span className="text-sm">EGP</span></p>
-            <p className="text-xs font-bold text-gray-500 mt-0.5">Total Fees</p>
+          <div className="border-x border-gray-200 dark:border-gray-700">
+            <p className="text-xl sm:text-2xl font-black text-emerald-600">{totalFees.toLocaleString()} <span className="text-xs">EGP</span></p>
+            <p className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider">Total Fees</p>
           </div>
-          <div className="text-center">
-            <p className="text-2xl font-black text-purple-600">{patient.prescriptions?.length || 0}</p>
-            <p className="text-xs font-bold text-gray-500 mt-0.5">Prescriptions</p>
+          <div>
+            <p className="text-xl sm:text-2xl font-black text-purple-600">{localPrescriptions.length}</p>
+            <p className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider">Prescriptions</p>
+          </div>
+          <div className="border-l border-gray-200 dark:border-gray-700">
+            <p className="text-xl sm:text-2xl font-black text-teal-600">{allMedications.length}</p>
+            <p className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider">Medications</p>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 px-6 pt-4 flex-shrink-0">
-          {(['overview', 'visits', 'prescriptions'] as const).map(tab => (
+        {/* Navigation Tabs */}
+        <div className="flex items-center gap-1 px-6 pt-3 border-b border-gray-100 dark:border-gray-800 flex-shrink-0 bg-white dark:bg-gray-900 overflow-x-auto">
+          {[
+            { id: 'overview', label: 'Overview & Vitals', icon: '🩺' },
+            { id: 'medications', label: `Medications (${allMedications.length})`, icon: '💊' },
+            { id: 'prescriptions', label: `Prescriptions (${localPrescriptions.length})`, icon: '📋' },
+            { id: 'visits', label: `Visits (${patient.appointments?.length || 0})`, icon: '📅' },
+          ].map(tab => (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-xl font-bold text-sm capitalize transition-all ${activeTab === tab ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all whitespace-nowrap mb-2 ${
+                activeTab === tab.id
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
             >
-              {tab}
+              <span>{tab.icon}</span>
+              <span>{tab.label}</span>
             </button>
           ))}
         </div>
 
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+        {/* Scrollable Content Body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
 
-          {/* Overview Tab */}
+          {/* ─────────────────────────────────────────────────────────────
+              TAB 1: OVERVIEW & CLINICAL VITALS
+             ───────────────────────────────────────────────────────────── */}
           {activeTab === 'overview' && (
-            <div className="space-y-5 animate-in fade-in">
-              {/* Contact Info */}
-              <div className="bg-gray-50 dark:bg-gray-800/50 rounded-2xl p-5 space-y-3">
-                <h3 className="font-black text-sm uppercase tracking-widest text-gray-400">Contact Information</h3>
+            <div className="space-y-6 animate-in fade-in">
+              
+              {/* Vitals Monitoring Card */}
+              <div className="p-5 rounded-2xl bg-gradient-to-br from-blue-500/10 via-teal-500/5 to-purple-500/10 border border-blue-500/20 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">💓</span>
+                    <h3 className="font-black text-sm uppercase tracking-wider text-blue-900 dark:text-blue-300">
+                      Triage Vitals & Clinical Health Matrix
+                    </h3>
+                  </div>
+                  {latestVitals?.date && (
+                    <span className="text-[10px] text-gray-500 bg-white dark:bg-gray-800 px-2.5 py-1 rounded-full font-bold">
+                      Recorded: {new Date(latestVitals.date).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+
+                {latestVitals ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    <div className="p-3 bg-white dark:bg-gray-800/80 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm text-center">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase">Blood Pressure</p>
+                      <p className="text-base font-black text-rose-600 mt-0.5">{latestVitals.bp || '—'}</p>
+                      <span className="text-[9px] text-gray-400">mmHg</span>
+                    </div>
+                    <div className="p-3 bg-white dark:bg-gray-800/80 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm text-center">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase">Heart Rate</p>
+                      <p className="text-base font-black text-emerald-600 mt-0.5">{latestVitals.hr || '—'}</p>
+                      <span className="text-[9px] text-gray-400">Pulse</span>
+                    </div>
+                    <div className="p-3 bg-white dark:bg-gray-800/80 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm text-center">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase">Body Temp</p>
+                      <p className="text-base font-black text-amber-600 mt-0.5">{latestVitals.temp || '—'}</p>
+                      <span className="text-[9px] text-gray-400">Celsius</span>
+                    </div>
+                    <div className="p-3 bg-white dark:bg-gray-800/80 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm text-center">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase">Blood Sugar</p>
+                      <p className="text-base font-black text-indigo-600 mt-0.5">{latestVitals.sugar || '—'}</p>
+                      <span className="text-[9px] text-gray-400">Random/Fasting</span>
+                    </div>
+                    <div className="p-3 bg-white dark:bg-gray-800/80 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm text-center col-span-2 sm:col-span-1">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase">SpO2 Oxygen</p>
+                      <p className="text-base font-black text-teal-600 mt-0.5">{latestVitals.spo2 || '—'}</p>
+                      <span className="text-[9px] text-gray-400">Blood Saturation</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="py-4 text-center text-xs text-gray-500 bg-white/60 dark:bg-gray-800/40 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
+                    No recent vitals documented in triage yet. Vitals recorded during queue triage will appear here automatically.
+                  </div>
+                )}
+              </div>
+
+              {/* Patient Contact & Clinical Status */}
+              <div className="bg-gray-50 dark:bg-gray-800/50 rounded-2xl p-5 space-y-4 border border-gray-100 dark:border-gray-800">
+                <h3 className="font-black text-xs uppercase tracking-wider text-gray-400">Patient Details & Communication</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="flex items-center justify-between sm:col-span-2 bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
+                  <div className="flex items-center justify-between sm:col-span-2 bg-white dark:bg-gray-800 p-3.5 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
                     <div className="flex items-center gap-3">
                       <span className="text-xl">📞</span>
                       <div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase">Phone</p>
-                        <p className="font-bold text-gray-900 dark:text-white">{patient.phone_number || '—'}</p>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Phone Number</p>
+                        <p className="font-bold text-gray-900 dark:text-white text-sm">{patient.phone_number || '—'}</p>
                       </div>
                     </div>
                     {patient.phone_number && (
                       <a
-                        href={getWhatsAppLink(patient.phone_number, `Hello ${patient.full_name}, this is your clinic following up with you.`)}
+                        href={getWhatsAppLink(patient.phone_number, `Hello ${patient.full_name}, this is your clinic following up.`)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-[#25D366] hover:bg-[#20bd5a] text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                        className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#25D366] hover:bg-[#20bd5a] text-white rounded-xl text-xs font-bold transition-all shadow-sm"
                       >
                         <WhatsAppIcon className="w-4 h-4 text-white" />
                         <span>WhatsApp Chat</span>
                       </a>
                     )}
                   </div>
-                  <div className="flex items-center gap-3">
+
+                  <div className="flex items-center gap-3 bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
                     <span className="text-xl">📧</span>
                     <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">Email</p>
-                      <p className="font-bold text-gray-900 dark:text-white break-all">{patient.email || '—'}</p>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase">Email Address</p>
+                      <p className="font-bold text-gray-900 dark:text-white text-xs break-all">{patient.email || '—'}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+
+                  <div className="flex items-center gap-3 bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
                     <span className="text-xl">📅</span>
                     <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">First Seen</p>
-                      <p className="font-bold text-gray-900 dark:text-white">
-                        {patient.appointments?.[patient.appointments.length - 1]?.scheduled_time
-                          ? new Date(patient.appointments[patient.appointments.length - 1].scheduled_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                          : '—'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">🕐</span>
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">Last Visit</p>
-                      <p className="font-bold text-gray-900 dark:text-white">
-                        {patient.last_visit
-                          ? new Date(patient.last_visit).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                          : '—'}
+                      <p className="text-[10px] font-bold text-gray-400 uppercase">Last Visit Date</p>
+                      <p className="font-bold text-gray-900 dark:text-white text-xs">
+                        {patient.last_visit ? new Date(patient.last_visit).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
                       </p>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Last Prescription Summary */}
-              {patient.prescriptions?.[0] && (
+              {/* Latest Medical Summary */}
+              {localPrescriptions[0] && (
                 <div className="bg-purple-50 dark:bg-purple-900/10 rounded-2xl p-5 border border-purple-100 dark:border-purple-900/30 space-y-3">
-                  <h3 className="font-black text-sm uppercase tracking-widest text-purple-500">Latest Medical Summary</h3>
-                  {patient.prescriptions[0].diagnosis && (
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Diagnosis</p>
-                      <p className="font-bold text-gray-900 dark:text-white">{patient.prescriptions[0].diagnosis}</p>
+                  <div className="flex justify-between items-center">
+                    <h3 className="font-black text-xs uppercase tracking-wider text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
+                      <span>📋</span>
+                      <span>Latest Prescription & Diagnosis</span>
+                    </h3>
+                    <button
+                      onClick={() => setViewingPrescription(localPrescriptions[0])}
+                      className="text-xs font-bold text-purple-600 hover:underline"
+                    >
+                      View Full Rx →
+                    </button>
+                  </div>
+                  {localPrescriptions[0].diagnosis && (
+                    <div className="text-sm font-black text-gray-900 dark:text-white">
+                      Diagnosis: {localPrescriptions[0].diagnosis}
                     </div>
                   )}
-                  {patient.prescriptions[0].symptoms && (
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Symptoms</p>
-                      <p className="text-gray-700 dark:text-gray-300">{patient.prescriptions[0].symptoms}</p>
-                    </div>
-                  )}
-                  {patient.prescriptions[0].medications?.length > 0 && (
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Medications</p>
-                      <div className="flex flex-wrap gap-2">
-                        {patient.prescriptions[0].medications.map((m: any, i: number) => (
-                          <span key={i} className="px-3 py-1 bg-white dark:bg-gray-800 rounded-full text-xs font-bold border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300">
-                            {m.name} {m.dosage ? `· ${m.dosage}` : ''}
-                          </span>
-                        ))}
-                      </div>
+                  {localPrescriptions[0].medications?.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {localPrescriptions[0].medications.map((m: any, i: number) => (
+                        <span key={i} className="inline-flex items-center gap-1 px-3 py-1 bg-white dark:bg-gray-800 rounded-full text-xs font-bold border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 shadow-sm">
+                          <span>{getFormIcon(m.form)}</span>
+                          <span>{m.name}</span>
+                          {m.dosage && <span className="text-[10px] text-gray-400 font-normal">({m.dosage})</span>}
+                        </span>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -260,31 +526,393 @@ function PatientDetailModal({
 
               {/* Doctor's Private Note */}
               <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-black text-sm uppercase tracking-widest text-gray-400">🔒 Private Doctor Note</h3>
-                  <span className="text-[10px] bg-gray-100 dark:bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full font-bold">Only visible to you</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-black text-xs uppercase tracking-wider text-gray-400">🔒 Doctor's Private Clinical File</h3>
+                    <span className="text-[9px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full font-bold">Confidential</span>
+                  </div>
+                  <span className="text-[10px] text-gray-400">Allergies, chronic history & personal medical instructions</span>
                 </div>
                 <textarea
                   value={doctorNote}
                   onChange={e => setDoctorNote(e.target.value)}
                   rows={4}
-                  className="w-full rounded-2xl p-4 bg-amber-50 dark:bg-amber-900/10 border-2 border-amber-200 dark:border-amber-800/50 text-gray-900 dark:text-white outline-none focus:border-amber-400 resize-none text-sm"
-                  placeholder="Add private notes about this patient (allergies, preferences, follow-ups)..."
+                  className="w-full rounded-2xl p-4 bg-amber-50/50 dark:bg-amber-900/10 border-2 border-amber-200 dark:border-amber-800/40 text-gray-900 dark:text-white outline-none focus:border-amber-400 resize-none text-sm leading-relaxed"
+                  placeholder="Document private clinical notes (e.g. Penicillin allergy, diabetic, family history, next check-up schedule)..."
                 />
                 <div className="flex justify-end">
                   <button
                     onClick={handleSaveNote}
                     disabled={saving}
-                    className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-sm transition-all disabled:opacity-50"
+                    className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs transition-all disabled:opacity-50 shadow-md shadow-amber-500/20"
                   >
-                    {saving ? 'Saving...' : saved ? '✓ Saved!' : 'Save Note'}
+                    {saving ? 'Saving Note...' : saved ? '✓ Note Saved!' : 'Save Clinical Note'}
                   </button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Visits Tab */}
+          {/* ─────────────────────────────────────────────────────────────
+              TAB 2: MEDICATIONS CABINET (Categorized by Pills, Syrups, Creams, etc.)
+             ───────────────────────────────────────────────────────────── */}
+          {activeTab === 'medications' && (
+            <div className="space-y-5 animate-in fade-in">
+              
+              {/* Header with + Add Medication Button */}
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-gray-50 dark:bg-gray-800/50 p-4 rounded-2xl border border-gray-100 dark:border-gray-800">
+                <div>
+                  <h3 className="font-black text-sm text-gray-900 dark:text-white flex items-center gap-2">
+                    <span>💊</span>
+                    <span>Patient Medication Cabinet</span>
+                  </h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Categorized into Pills, Syrups, Creams, Injections, Drops & Inhalers
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddMedModal(true)}
+                  className="px-4 py-2 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white font-black rounded-xl text-xs shadow-md shadow-teal-500/20 transition-all flex items-center gap-1.5"
+                >
+                  <span>+</span>
+                  <span>Add Medication to Patient</span>
+                </button>
+              </div>
+
+              {/* Category Filter Chips */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                {[
+                  { id: 'all', label: `All (${allMedications.length})`, icon: '📋' },
+                  { id: 'pill', label: `Pills (${pillsCount})`, icon: '💊' },
+                  { id: 'drinking', label: `Syrups (${drinkingCount})`, icon: '🧴' },
+                  { id: 'cream', label: `Creams (${creamCount})`, icon: '🧴' },
+                  { id: 'injection', label: `Injections (${injectionCount})`, icon: '💉' },
+                  { id: 'drops', label: `Drops (${dropsCount})`, icon: '💧' },
+                  { id: 'spray', label: `Sprays (${sprayCount})`, icon: '💨' },
+                ].map(cat => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setMedCategoryFilter(cat.id as any)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                      medCategoryFilter === cat.id
+                        ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    <span>{cat.icon}</span>
+                    <span>{cat.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Medication Cards List */}
+              {filteredMeds.length === 0 ? (
+                <div className="text-center py-12 bg-gray-50/50 dark:bg-gray-800/30 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700 space-y-3">
+                  <span className="text-4xl block">💊</span>
+                  <p className="text-gray-500 font-bold text-sm">No medications found in this category.</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddMedModal(true)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-500/20 transition-all"
+                  >
+                    + Add First Medication
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {filteredMeds.map((med) => (
+                    <div 
+                      key={med.id} 
+                      className="p-4 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700/80 shadow-sm space-y-3 hover:border-blue-500/40 transition-all"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-2xl p-2 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex-shrink-0">
+                            {getFormIcon(med.form)}
+                          </span>
+                          <div>
+                            <h4 className="font-black text-gray-900 dark:text-white text-sm">{med.name}</h4>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              {med.dosage && (
+                                <span className="text-xs font-bold text-blue-600 dark:text-blue-400">
+                                  {med.dosage}
+                                </span>
+                              )}
+                              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.2 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500">
+                                {med.form}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setViewingPrescription(med.rawRx)}
+                          className="px-2.5 py-1 bg-gray-100 hover:bg-blue-50 dark:bg-gray-700 dark:hover:bg-blue-900/40 text-gray-600 dark:text-gray-300 hover:text-blue-600 text-[10px] font-bold rounded-lg transition-colors"
+                          title="View Source Prescription"
+                        >
+                          Rx View
+                        </button>
+                      </div>
+
+                      {med.instructions && (
+                        <div className="p-2.5 bg-gray-50 dark:bg-gray-900/60 rounded-xl text-xs text-gray-700 dark:text-gray-300 font-medium" dir="auto">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase block mb-0.5">Instructions:</span>
+                          {med.instructions}
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between text-[10px] text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-700/60">
+                        <span>Diagnosis: <strong className="text-gray-700 dark:text-gray-300">{med.diagnosis}</strong></span>
+                        <span>{new Date(med.date).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Inline Add Medication Modal (Similar to adding a family member) */}
+              {showAddMedModal && (
+                <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+                  <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-lg border border-gray-100 dark:border-gray-800 p-6 space-y-5">
+                    <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
+                      <div>
+                        <h3 className="font-black text-lg text-gray-900 dark:text-white flex items-center gap-2">
+                          <span>💊</span>
+                          <span>Add Medication for {patient.full_name}</span>
+                        </h3>
+                        <p className="text-xs text-gray-400">Add an unlisted or frequent medicine with form & dosage</p>
+                      </div>
+                      <button 
+                        onClick={() => setShowAddMedModal(false)}
+                        className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full text-gray-400"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleDirectAddMedication} className="space-y-4">
+                      {/* Name & Form */}
+                      <div className="space-y-3">
+                        <div className="relative">
+                          <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-1">Medication Name</label>
+                          <input
+                            required
+                            value={newMedName}
+                            onChange={e => handleMedNameChange(e.target.value)}
+                            placeholder="e.g. Panadol Extra / Augmentin"
+                            className="w-full rounded-xl px-3.5 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500 text-sm font-semibold"
+                          />
+                          {matchingFavs.length > 0 && (
+                            <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-xl z-30 max-h-40 overflow-y-auto">
+                              {matchingFavs.map(f => (
+                                <button
+                                  key={f.id}
+                                  type="button"
+                                  onClick={() => handleSelectFav(f)}
+                                  className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 dark:hover:bg-blue-900/30 flex items-center justify-between border-b border-gray-50 dark:border-gray-800 last:border-0"
+                                >
+                                  <span className="font-bold text-blue-600 dark:text-blue-400">{f.name}</span>
+                                  <span className="text-[10px] text-gray-400">{f.default_dosage}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-1">Form / Type</label>
+                            <select
+                              value={newMedForm}
+                              onChange={e => setNewMedForm(e.target.value as any)}
+                              className="w-full rounded-xl px-3 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold"
+                            >
+                              <option value="pill">💊 Pill / Capsule</option>
+                              <option value="drinking">🧴 Syrup / Drinking</option>
+                              <option value="cream">🧴 Cream / Ointment</option>
+                              <option value="injection">💉 Injection</option>
+                              <option value="drops">💧 Drops</option>
+                              <option value="spray">💨 Spray / Inhaler</option>
+                              <option value="other">🩺 Other</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-1">Dosage</label>
+                            <input
+                              value={newMedDosage}
+                              onChange={e => setNewMedDosage(e.target.value)}
+                              placeholder="e.g. 500mg, 10ml"
+                              className="w-full rounded-xl px-3.5 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-1">Intake Instructions</label>
+                          <textarea
+                            value={newMedInstructions}
+                            onChange={e => setNewMedInstructions(e.target.value)}
+                            dir="auto"
+                            placeholder="e.g. قرص كل 8 ساعات بعد الأكل"
+                            className="w-full rounded-xl p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none h-18"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-1">Diagnosis / Indication</label>
+                          <input
+                            value={newMedDiagnosis}
+                            onChange={e => setNewMedDiagnosis(e.target.value)}
+                            placeholder="e.g. #برد, Headache, Follow-up relief"
+                            className="w-full rounded-xl px-3.5 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                          />
+                        </div>
+
+                        <label className="flex items-center gap-2 text-xs font-bold text-amber-600 dark:text-amber-400 cursor-pointer pt-1">
+                          <input
+                            type="checkbox"
+                            checked={saveToDoctorFavs}
+                            onChange={e => setSaveToDoctorFavs(e.target.checked)}
+                            className="w-4 h-4 rounded text-amber-500"
+                          />
+                          <span>⭐ Save unlisted medication to My Frequent Medications list</span>
+                        </label>
+                      </div>
+
+                      {medSuccessMsg && (
+                        <div className="p-3 bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 rounded-xl text-xs font-bold text-center animate-in fade-in">
+                          ✓ Medication successfully saved and added to patient cabinet!
+                        </div>
+                      )}
+
+                      <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                        <button
+                          type="button"
+                          onClick={() => setShowAddMedModal(false)}
+                          className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold rounded-xl text-xs"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={addingMed}
+                          className="px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black rounded-xl text-xs shadow-md transition-all disabled:opacity-50"
+                        >
+                          {addingMed ? 'Adding...' : 'Save Medication'}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─────────────────────────────────────────────────────────────
+              TAB 3: PRESCRIPTIONS (Interactive & Clickable Cards)
+             ───────────────────────────────────────────────────────────── */}
+          {activeTab === 'prescriptions' && (
+            <div className="space-y-4 animate-in fade-in">
+              <div className="flex justify-between items-center mb-1">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wider text-gray-400">Prescription Archives & Records</p>
+                  <p className="text-[10px] text-gray-500">Tap on any prescription card to preview, download PDF, or print</p>
+                </div>
+                <button
+                  onClick={onWritePrescription}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-blue-500/20"
+                >
+                  <span>💊</span>
+                  <span>+ New Prescription</span>
+                </button>
+              </div>
+
+              {localPrescriptions.length === 0 ? (
+                <div className="text-center py-12 bg-gray-50/50 dark:bg-gray-800/30 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700 space-y-3">
+                  <p className="text-3xl">💊</p>
+                  <p className="text-gray-500 font-bold text-sm">No prescriptions recorded yet.</p>
+                  <button
+                    onClick={onWritePrescription}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-500/20"
+                  >
+                    + Write First Prescription
+                  </button>
+                </div>
+              ) : (
+                localPrescriptions.map((rx: any) => (
+                  <div 
+                    key={rx.id} 
+                    onClick={() => setViewingPrescription(rx)}
+                    className="p-5 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700/80 shadow-sm space-y-3.5 cursor-pointer hover:border-blue-500 hover:shadow-md transition-all group"
+                  >
+                    <div className="flex justify-between items-start gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-black text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">
+                            {rx.diagnosis || 'Clinical Prescription'}
+                          </span>
+                          <span className="px-2.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-[10px] font-black rounded-full uppercase">
+                            Rx Official
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {new Date(rx.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => setViewingPrescription(rx)}
+                          className="px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/40 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 shadow-sm"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                          <span>View & PDF</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {rx.symptoms && (
+                      <p className="text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-900/40 p-2.5 rounded-xl border border-gray-100 dark:border-gray-800">
+                        <strong className="text-gray-400 uppercase text-[9px] block mb-0.5">Symptoms:</strong>
+                        {rx.symptoms}
+                      </p>
+                    )}
+
+                    {rx.medications?.length > 0 && (
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Medications ({rx.medications.length})</p>
+                        <div className="flex flex-wrap gap-2">
+                          {rx.medications.map((m: any, i: number) => (
+                            <span 
+                              key={i} 
+                              className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 dark:bg-purple-900/20 rounded-full text-xs font-bold border border-purple-100 dark:border-purple-900/30 text-purple-700 dark:text-purple-300"
+                            >
+                              <span>{getFormIcon(m.form)}</span>
+                              <span>{m.name}</span>
+                              {m.dosage && <span className="text-[10px] text-gray-500 font-normal">({m.dosage})</span>}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {rx.doctor_notes && (
+                      <p className="text-xs italic text-gray-500 border-t border-gray-100 dark:border-gray-700/60 pt-2">
+                        "{rx.doctor_notes}"
+                      </p>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* ─────────────────────────────────────────────────────────────
+              TAB 4: VISITS TIMELINE
+             ───────────────────────────────────────────────────────────── */}
           {activeTab === 'visits' && (
             <div className="space-y-3 animate-in fade-in">
               {patient.appointments?.length === 0 ? (
@@ -322,74 +950,9 @@ function PatientDetailModal({
               )}
             </div>
           )}
-
-          {/* Prescriptions Tab */}
-          {activeTab === 'prescriptions' && (
-            <div className="space-y-4 animate-in fade-in">
-              <div className="flex justify-between items-center mb-1">
-                <p className="text-xs font-black uppercase tracking-wider text-gray-400">Prescription History</p>
-                <button
-                  onClick={onWritePrescription}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400 font-bold rounded-xl text-xs transition-colors"
-                >
-                  <span>💊</span>
-                  <span>+ New Prescription</span>
-                </button>
-              </div>
-              {patient.prescriptions?.length === 0 ? (
-                <div className="text-center py-12 bg-gray-50/50 dark:bg-gray-800/30 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700 space-y-3">
-                  <p className="text-3xl">💊</p>
-                  <p className="text-gray-500 font-medium text-sm">No prescriptions recorded yet.</p>
-                  <button
-                    onClick={onWritePrescription}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-500/20"
-                  >
-                    + Write First Prescription
-                  </button>
-                </div>
-              ) : (
-                patient.prescriptions?.map((rx: any) => (
-                  <div key={rx.id} className="p-5 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm space-y-3">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        {rx.diagnosis && <p className="font-black text-gray-900 dark:text-white">{rx.diagnosis}</p>}
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {new Date(rx.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                        </p>
-                      </div>
-                      <div className="flex gap-2 items-center">
-                        <button
-                          onClick={() => setViewingPrescription(rx)}
-                          className="px-3 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/40 rounded-xl font-bold text-xs transition-all flex items-center gap-1"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                          </svg>
-                          PDF
-                        </button>
-                        <span className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-xs font-bold rounded-full">Rx</span>
-                      </div>
-                    </div>
-                    {rx.symptoms && <p className="text-sm text-gray-600 dark:text-gray-400">{rx.symptoms}</p>}
-                    {rx.medications?.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {rx.medications.map((m: any, i: number) => (
-                          <span key={i} className="px-3 py-1 bg-purple-50 dark:bg-purple-900/20 rounded-full text-xs font-bold border border-purple-100 dark:border-purple-900/30 text-purple-700 dark:text-purple-300">
-                            {m.name}{m.dosage ? ` · ${m.dosage}` : ''}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    {rx.doctor_notes && (
-                      <p className="text-sm italic text-gray-500 border-t border-gray-100 dark:border-gray-700 pt-2">"{rx.doctor_notes}"</p>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          )}
         </div>
       </div>
+
       {viewingPrescription && (
         <PrescriptionViewerModal
           prescription={viewingPrescription}

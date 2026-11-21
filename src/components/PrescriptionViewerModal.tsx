@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
+import { getFormIcon, inferFormFromName } from './PrescriptionModal'
 
 type PrescriptionViewerModalProps = {
   prescription: any
@@ -37,15 +38,22 @@ export default function PrescriptionViewerModal({
   const buildPrintContent = () => {
     const meds = prescription.medications || []
     const medicationsHtml = meds.length > 0
-      ? meds.map((med: any) => `
+      ? meds.map((med: any) => {
+        const form = med.form || inferFormFromName(med.name)
+        const icon = getFormIcon(form)
+        return `
         <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:16px 0;border-bottom:1px solid #f3f4f6;gap:16px;">
           <div style="flex:1;">
-            <div style="font-size:16px;font-weight:700;color:#111827;margin:0;">${med.name || ''}</div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:18px;">${icon}</span>
+              <span style="font-size:16px;font-weight:700;color:#111827;margin:0;">${med.name || ''}</span>
+              <span style="font-size:10px;font-weight:700;color:#2563eb;background:#eff6ff;padding:2px 8px;border-radius:99px;text-transform:uppercase;">${form}</span>
+            </div>
             ${med.dosage ? `<div style="font-size:12px;color:#2563eb;font-weight:600;margin-top:4px;">Dosage: ${med.dosage}</div>` : ''}
           </div>
           <div style="flex:1;font-size:13px;color:#374151;background:#f9fafb;padding:10px 14px;border-radius:10px;text-align:right;direction:rtl;">${med.instructions || ''}</div>
         </div>
-      `).join('')
+      `}).join('')
       : '<p style="color:#9ca3af;font-style:italic;text-align:center;padding:32px 0;">No medications prescribed.</p>'
 
     const dateStr = new Date(prescription.created_at).toLocaleDateString('en-US', {
@@ -238,19 +246,28 @@ export default function PrescriptionViewerModal({
               {meds.length === 0 && (
                 <p className="text-gray-400 italic text-center py-10">No medications prescribed.</p>
               )}
-              {meds.map((med: any, idx: number) => (
-                <div key={idx} className="flex items-start justify-between gap-4 py-4 border-b border-gray-50 last:border-0">
-                  <div className="flex-1">
-                    <p className="font-bold text-gray-900">{med.name}</p>
-                    {med.dosage && <p className="text-xs text-blue-600 font-semibold mt-0.5">Dosage: {med.dosage}</p>}
+              {meds.map((med: any, idx: number) => {
+                const form = med.form || inferFormFromName(med.name)
+                return (
+                  <div key={idx} className="flex items-start justify-between gap-4 py-4 border-b border-gray-50 last:border-0">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">{getFormIcon(form)}</span>
+                        <p className="font-bold text-gray-900">{med.name}</p>
+                        <span className="text-[9px] uppercase font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
+                          {form}
+                        </span>
+                      </div>
+                      {med.dosage && <p className="text-xs text-blue-600 font-semibold mt-0.5">Dosage: {med.dosage}</p>}
+                    </div>
+                    <div className="flex-1 text-right" dir="auto">
+                      <p className="inline-block bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-sm text-gray-700 font-medium leading-snug text-left min-w-[160px]">
+                        {med.instructions}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex-1 text-right" dir="auto">
-                    <p className="inline-block bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-sm text-gray-700 font-medium leading-snug text-left min-w-[160px]">
-                      {med.instructions}
-                    </p>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
 
             {/* Footer */}

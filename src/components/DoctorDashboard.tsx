@@ -5,7 +5,7 @@ import { createClient } from '@/utils/supabase/client'
 import { useTranslations, useLocale } from 'next-intl'
 import { useSearchParams, useRouter } from 'next/navigation'
 import DoctorOverview from './DoctorOverview'
-import PrescriptionModal from './PrescriptionModal'
+import PrescriptionModal, { getFormIcon, inferFormFromName } from './PrescriptionModal'
 import BookingModal from './BookingModal'
 import ClinicSchedule from './ClinicSchedule'
 import PatientsTab from './PatientsTab'
@@ -319,7 +319,7 @@ export default function DoctorDashboard({
 
   const [meds, setMeds] = useState<any[]>([])
   const [loadingMeds, setLoadingMeds] = useState(false)
-  const [newMed, setNewMed] = useState({ name: '', dosage: '', symptoms: '' })
+  const [newMed, setNewMed] = useState({ name: '', dosage: '', symptoms: '', form: 'pill' })
   const [editingMedId, setEditingMedId] = useState<string | null>(null)
   const [patientHistory, setPatientHistory] = useState<any[] | null>(null)
   const [loadingHistory, setLoadingHistory] = useState(false)
@@ -330,7 +330,11 @@ export default function DoctorDashboard({
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
       const { data } = await supabase.from('doctor_medications').select('*').eq('doctor_id', user.id).order('name')
-      setMeds(data || [])
+      const parsed = (data || []).map(m => ({
+        ...m,
+        form: m.form || inferFormFromName(m.name)
+      }))
+      setMeds(parsed)
     }
     setLoadingMeds(false)
   }
@@ -342,24 +346,38 @@ export default function DoctorDashboard({
     if (!user) return
 
     if (editingMedId) {
-      await supabase.from('doctor_medications')
-        .update({
-          name: newMed.name,
-          default_dosage: newMed.dosage,
-          common_symptoms: newMed.symptoms
-        })
+      const updatePayload: any = {
+        name: newMed.name,
+        default_dosage: newMed.dosage,
+        common_symptoms: newMed.symptoms,
+        form: newMed.form || 'pill'
+      }
+      const { error: upErr } = await supabase.from('doctor_medications')
+        .update(updatePayload)
         .eq('id', editingMedId)
+      if (upErr && upErr.message?.includes('form')) {
+        delete updatePayload.form
+        updatePayload.default_dosage = `${newMed.dosage} [${newMed.form}]`
+        await supabase.from('doctor_medications').update(updatePayload).eq('id', editingMedId)
+      }
       setEditingMedId(null)
     } else {
-      await supabase.from('doctor_medications').insert({
+      const insertPayload: any = {
         doctor_id: user.id,
         name: newMed.name,
         default_dosage: newMed.dosage,
-        common_symptoms: newMed.symptoms
-      })
+        common_symptoms: newMed.symptoms,
+        form: newMed.form || 'pill'
+      }
+      const { error: inErr } = await supabase.from('doctor_medications').insert(insertPayload)
+      if (inErr && inErr.message?.includes('form')) {
+        delete insertPayload.form
+        insertPayload.default_dosage = `${newMed.dosage} [${newMed.form}]`
+        await supabase.from('doctor_medications').insert(insertPayload)
+      }
     }
     
-    setNewMed({ name: '', dosage: '', symptoms: '' })
+    setNewMed({ name: '', dosage: '', symptoms: '', form: 'pill' })
     fetchMeds()
   }
 
@@ -978,17 +996,39 @@ export default function DoctorDashboard({
                     <input 
                       placeholder="Medication Name" 
                       value={newMed.name}
-                      onChange={e => setNewMed({...newMed, name: e.target.value})}
+                      onChange={e => {
+                        const val = e.target.value
+                        setNewMed(prev => ({
+                          ...prev,
+                          name: val,
+                          form: prev.form === 'pill' ? inferFormFromName(val) : prev.form
+                        }))
+                      }}
                       className="rounded-xl px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
                     />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input 
+                        placeholder="Default Dosage (e.g. 500mg)" 
+                        value={newMed.dosage}
+                        onChange={e => setNewMed({...newMed, dosage: e.target.value})}
+                        className="rounded-xl px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                      />
+                      <select
+                        value={newMed.form || 'pill'}
+                        onChange={e => setNewMed({...newMed, form: e.target.value as any})}
+                        className="rounded-xl px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold"
+                      >
+                        <option value="pill">💊 Pill / Capsule</option>
+                        <option value="drinking">🧴 Syrup / Drinking</option>
+                        <option value="cream">🧴 Cream / Ointment</option>
+                        <option value="injection">💉 Injection</option>
+                        <option value="drops">💧 Drops</option>
+                        <option value="spray">💨 Spray / Inhaler</option>
+                        <option value="other">🩺 Other</option>
+                      </select>
+                    </div>
                     <input 
-                      placeholder="Default Dosage (e.g. 500mg)" 
-                      value={newMed.dosage}
-                      onChange={e => setNewMed({...newMed, dosage: e.target.value})}
-                      className="rounded-xl px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <input 
-                      placeholder="Common Symptoms (e.g. Fever, Cough)" 
+                      placeholder="Common Symptoms (e.g. #برد, Fever, Cough, صداع)" 
                       value={newMed.symptoms}
                       onChange={e => setNewMed({...newMed, symptoms: e.target.value})}
                       className="rounded-xl px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500 sm:col-span-2"
@@ -998,7 +1038,7 @@ export default function DoctorDashboard({
                     </button>
                     {editingMedId && (
                       <button 
-                        onClick={() => { setEditingMedId(null); setNewMed({ name: '', dosage: '', symptoms: '' }); }} 
+                        onClick={() => { setEditingMedId(null); setNewMed({ name: '', dosage: '', symptoms: '', form: 'pill' }); }} 
                         className="text-xs font-bold text-gray-500 hover:text-red-500 sm:col-span-2 underline underline-offset-4"
                       >Cancel Edit</button>
                     )}
@@ -1014,15 +1054,23 @@ export default function DoctorDashboard({
                   ) : (
                     meds.map((m) => (
                       <div key={m.id} className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl shadow-sm">
-                        <div>
-                          <p className="font-bold">{m.name}</p>
-                          <p className="text-xs text-gray-500">{m.default_dosage} • {m.common_symptoms}</p>
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl p-2 rounded-xl bg-blue-50 dark:bg-blue-900/30">{getFormIcon(m.form)}</span>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-bold">{m.name}</p>
+                              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                                {m.form || 'pill'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500">{m.default_dosage} {m.common_symptoms ? `• ${m.common_symptoms}` : ''}</p>
+                          </div>
                         </div>
                         <div className="flex gap-2">
                           <button 
                             onClick={() => {
                               setEditingMedId(m.id);
-                              setNewMed({ name: m.name, dosage: m.default_dosage || '', symptoms: m.common_symptoms || '' });
+                              setNewMed({ name: m.name, dosage: m.default_dosage || '', symptoms: m.common_symptoms || '', form: m.form || 'pill' });
                               window.scrollTo({ top: 0, behavior: 'smooth' });
                             }} 
                             className="p-2 text-gray-400 hover:text-amber-500 transition-colors" title="Edit"
@@ -1172,8 +1220,12 @@ export default function DoctorDashboard({
           patientId={activePrescription.patient_id}
           manualPatientId={activePrescription.manual_patient_id}
           patientName={activePrescription.patient?.full_name || activePrescription.manual_patient?.full_name || 'Patient'}
+          patientNotes={activePrescription.notes}
           onClose={() => setActivePrescription(null)}
-          onComplete={() => setActivePrescription(null)}
+          onComplete={() => {
+            setActivePrescription(null)
+            router.refresh()
+          }}
         />
       )}
 
