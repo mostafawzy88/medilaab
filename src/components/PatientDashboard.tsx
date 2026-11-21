@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useTranslations, useLocale } from 'next-intl'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import BookingModal from './BookingModal'
 import PrescriptionViewerModal from './PrescriptionViewerModal'
@@ -232,8 +232,9 @@ export default function PatientDashboard({
     getPatientAuth()
   }, [])
   
+  const router = useRouter()
   const searchParams = useSearchParams()
-  const activeTab = searchParams.get('tab') || 'bookings'
+  const activeTab = searchParams.get('tab') || 'overview'
 
   const [viewMode, setViewMode] = useState<'cards' | 'calendar'>('cards')
   
@@ -708,6 +709,7 @@ export default function PatientDashboard({
   // Separate active from past
   const activeAppointments = appointments.filter(a => ['waiting', 'scheduled', 'in_progress', 'proposed'].includes(a.status || ''))
   const pastAppointments = appointments.filter(a => ['completed', 'cancelled'].includes(a.status || ''))
+  const todayAppointments = activeAppointments.filter(a => isSameLocalDate(a.scheduled_time) && ['scheduled', 'in_progress', 'waiting'].includes(a.status || ''))
 
   const renderDoctorWorkingHours = (workingHours: any) => {
     if (!workingHours) return <p className="text-gray-500 italic text-sm">Not specified</p>;
@@ -728,36 +730,9 @@ export default function PatientDashboard({
     )
   }
 
-  return (
-    <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-700 max-w-5xl mx-auto">
-      {/* Bookings View */}
-      {activeTab === 'bookings' && (
-        <div className="space-y-6">
-          {/* Phone Push Notifications Permission & Status Banner */}
-          <NotificationPermissionBanner />
 
-          <div className="flex flex-wrap gap-4 justify-between items-center bg-white dark:bg-gray-900 p-4 rounded-3xl border border-gray-100 dark:border-gray-800">
-            <div className="flex gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
-               <button onClick={() => setViewMode('cards')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'cards' ? 'bg-white dark:bg-gray-700 shadow-sm' : 'text-gray-500'}`}>{tp('cards') || 'Cards'}</button>
-               <button onClick={() => setViewMode('calendar')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'calendar' ? 'bg-white dark:bg-gray-700 shadow-sm' : 'text-gray-500'}`}>{tp('calendar') || 'Calendar'}</button>
-            </div>
-            <button
-              onClick={() => { setEditAppointmentId(null); setShowBooking(true); }}
-              className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] hover:bg-blue-700 text-white font-bold py-2.5 px-6 rounded-xl shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2 text-sm"
-            >
-              {tp('book_new_visit') || '+ Book New Visit'}
-            </button>
-          </div>
+  const renderAppointmentCard = (apt: any) => {
 
-          {activeAppointments.length === 0 ? (
-             <div className="text-center py-20 bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800">
-              <div className="text-5xl mb-4">📅</div>
-              <h3 className="text-xl font-bold">{tp('no_active_bookings') || 'No Active Bookings'}</h3>
-              <p className="text-gray-500 mt-2">{tp('no_active_desc') || "You don't have any upcoming visits booked."}</p>
-            </div>
-          ) : viewMode === 'cards' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {activeAppointments.map(apt => {
                 const cfg = STATUS_CONFIG[apt.status || 'waiting']
                 const isPending = apt.status === 'waiting'
                 const isApproved = apt.status === 'scheduled'
@@ -1275,8 +1250,543 @@ export default function PatientDashboard({
                     )}
                   </div>
                 )
-              })}
+  }
+
+  return (
+    <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-700 max-w-5xl mx-auto">
+
+      {/* Overview / Home Dashboard View */}
+      {activeTab === 'overview' && (
+        <div className="space-y-6">
+          {/* Phone Push Notifications Permission & Status Banner */}
+          <NotificationPermissionBanner />
+
+          {/* Hero Welcome & Quick Stats Banner */}
+          <div className="bg-gradient-to-r from-blue-900/40 via-indigo-950/40 to-slate-900/60 border border-blue-500/20 rounded-3xl p-6 sm:p-8 backdrop-blur-xl shadow-xl relative overflow-hidden">
+            <div className="absolute -top-24 -right-24 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 relative z-10">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-3 py-1 rounded-full text-[11px] font-black bg-blue-500/20 text-blue-300 border border-blue-400/30 flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    {locale === 'ar' ? 'بوابة المريض الذكية' : 'MediLab Patient Portal'}
+                  </span>
+                  <span className="text-xs text-gray-400 font-bold">
+                    {new Date().toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
+                  </span>
+                </div>
+                <h1 className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white tracking-tight">
+                  {locale === 'ar' ? `أهلاً بك، ${patientName}` : `Welcome back, ${patientName}`}
+                </h1>
+                <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300 max-w-xl">
+                  {locale === 'ar'
+                    ? 'تابع طابور عيادتك المباشر، وقت الانتظار المتوقع، مواعيد الكشف، وأكواب جدول أدويتك اليومية بكل سهولة.'
+                    : 'Monitor your live clinic queue, estimated wait times, consultation bookings, and 5-cup medication timeline seamlessly.'}
+                </p>
+              </div>
+
+              {/* Quick Book Visit CTA */}
+              <div className="flex flex-wrap items-center gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => { setEditAppointmentId(null); setShowBooking(true); }}
+                  className="px-6 py-3 rounded-2xl bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] hover:brightness-110 text-white font-black text-sm shadow-lg shadow-blue-500/30 transition-all flex items-center gap-2 active:scale-95"
+                >
+                  <span className="text-base">+</span>
+                  <span>{locale === 'ar' ? 'حجز موعد كشف جديد' : 'Book New Visit'}</span>
+                </button>
+              </div>
             </div>
+
+            {/* Quick Metric Cards Strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-6 border-t border-gray-200/20 dark:border-white/10">
+              <div
+                onClick={() => router.push(`/${locale}/dashboard?tab=bookings`)}
+                className="p-3.5 rounded-2xl bg-white/40 dark:bg-white/5 hover:bg-white/60 dark:hover:bg-white/10 border border-gray-200/50 dark:border-white/10 transition-all cursor-pointer group"
+                title="View bookings"
+              >
+                <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 font-bold">
+                  <span>{locale === 'ar' ? 'الحجوزات النشطة' : 'Active Bookings'}</span>
+                  <span className="text-base group-hover:scale-110 transition-transform">📅</span>
+                </div>
+                <p className="text-2xl font-black text-gray-900 dark:text-white mt-1">{activeAppointments.length}</p>
+                <span className="text-[10px] text-blue-600 dark:text-blue-300 font-bold group-hover:underline">
+                  {locale === 'ar' ? 'عرض الكشوفات ←' : 'View bookings →'}
+                </span>
+              </div>
+
+              <div
+                onClick={() => {
+                  const queueElement = document.getElementById('live-queue-radar');
+                  if (queueElement) queueElement.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="p-3.5 rounded-2xl bg-white/40 dark:bg-white/5 hover:bg-white/60 dark:hover:bg-white/10 border border-gray-200/50 dark:border-white/10 transition-all cursor-pointer group"
+                title="Today's queue status"
+              >
+                <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 font-bold">
+                  <span>{locale === 'ar' ? 'كشوفات اليوم' : "Today's Visits"}</span>
+                  <span className="text-base group-hover:scale-110 transition-transform">⚡</span>
+                </div>
+                <p className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-1">
+                  {todayAppointments.length}
+                </p>
+                <span className="text-[10px] text-amber-600 dark:text-amber-300 font-bold group-hover:underline">
+                  {todayAppointments.length > 0 ? (locale === 'ar' ? 'متابعة الطابور المباشر ↓' : 'Track live turn ↓') : (locale === 'ar' ? 'لا زيارات اليوم' : 'No visits today')}
+                </span>
+              </div>
+
+              <div
+                onClick={() => router.push(`/${locale}/dashboard?tab=prescriptions`)}
+                className="p-3.5 rounded-2xl bg-white/40 dark:bg-white/5 hover:bg-white/60 dark:hover:bg-white/10 border border-gray-200/50 dark:border-white/10 transition-all cursor-pointer group"
+                title="View prescriptions"
+              >
+                <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 font-bold">
+                  <span>{locale === 'ar' ? 'أكواب وجرعات الدواء' : 'Medication Cups'}</span>
+                  <span className="text-base group-hover:scale-110 transition-transform">💊</span>
+                </div>
+                <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{prescriptions.length}</p>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-300 font-bold group-hover:underline">
+                  {locale === 'ar' ? 'جدول الجرعات ←' : '5-Cup Timeline →'}
+                </span>
+              </div>
+
+              <div
+                onClick={() => router.push(`/${locale}/dashboard?tab=doctors`)}
+                className="p-3.5 rounded-2xl bg-white/40 dark:bg-white/5 hover:bg-white/60 dark:hover:bg-white/10 border border-gray-200/50 dark:border-white/10 transition-all cursor-pointer group"
+                title="View doctors"
+              >
+                <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 font-bold">
+                  <span>{locale === 'ar' ? 'أطباؤك المعتمدون' : 'Linked Doctors'}</span>
+                  <span className="text-base group-hover:scale-110 transition-transform">👨‍⚕️</span>
+                </div>
+                <p className="text-2xl font-black text-purple-600 dark:text-purple-400 mt-1">{doctors.length}</p>
+                <span className="text-[10px] text-purple-600 dark:text-purple-300 font-bold group-hover:underline">
+                  {locale === 'ar' ? 'عيادات الأطباء ←' : 'My clinics →'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section: Live Waiting Room Queue & Wait Time Radar */}
+          <div id="live-queue-radar">
+            {todayAppointments.length > 0 ? (() => {
+              const primaryApt = todayAppointments[0]
+              const docStatus = liveDoctorData[primaryApt.doctor_id]
+              const activeQueueToday = (docStatus?.queue || []).filter(q => q.status !== 'completed' && q.status !== 'cancelled')
+              const myIdx = activeQueueToday.findIndex(q => q.id === primaryApt.id)
+              let patientsAhead = 0
+              if (myIdx >= 0) {
+                patientsAhead = myIdx
+              } else if (primaryApt.scheduled_time) {
+                const aptDate = new Date(primaryApt.scheduled_time).getTime()
+                patientsAhead = activeQueueToday.filter(q => q.scheduled_time && new Date(q.scheduled_time).getTime() < aptDate).length
+              }
+              const myTurnNumber = myIdx >= 0 ? (myIdx + 1) : ((primaryApt.queue_position && primaryApt.queue_position <= (activeQueueToday.length || 1)) ? primaryApt.queue_position : 1)
+              const isCallingMeNow = primaryApt.status === 'in_progress'
+              const inProgressIdx = activeQueueToday.findIndex(q => q.status === 'in_progress')
+              const currentServing = inProgressIdx >= 0 ? (inProgressIdx + 1) : (docStatus?.current_serving_position || (docStatus?.is_in_consultation ? 1 : 0))
+              const arrivalTime = parseArrivalTime(primaryApt.notes)
+              const isArrived = !!arrivalTime
+              const estWaitMins = Math.max(5, patientsAhead * 15)
+
+              const docObj = doctors.find(d => d.id === primaryApt.doctor_id) || allDoctors.find(d => d.id === primaryApt.doctor_id)
+              const docPhone = primaryApt.doctor_phone || docObj?.phone_number
+              const waUrl = getWhatsAppLink(docPhone, `Hello Dr. ${primaryApt.doctor_name}, this is regarding my appointment at MediLab.`)
+
+              return (
+                <div className="bg-gradient-to-br from-blue-500/10 via-indigo-500/5 to-emerald-500/10 border-2 border-blue-400/40 dark:border-blue-500/30 rounded-3xl p-6 shadow-lg shadow-blue-500/5 space-y-4">
+                  {/* Top Bar */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-blue-100 dark:border-blue-900/40">
+                    <div className="flex items-center gap-2.5">
+                      <span className="relative flex h-3.5 w-3.5">
+                        <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${docStatus?.is_unavailable ? 'bg-rose-400' : docStatus?.is_in_consultation ? 'bg-amber-400' : 'bg-emerald-400'}`}></span>
+                        <span className={`relative inline-flex rounded-full h-3.5 w-3.5 ${docStatus?.is_unavailable ? 'bg-rose-500' : docStatus?.is_in_consultation ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
+                      </span>
+                      <div>
+                        <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                          <span>{locale === 'ar' ? 'رادار طابور العيادة المباشر اليوم' : 'Live Clinic Queue Radar'}</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-bold">
+                            {locale === 'ar' ? 'موعد اليوم' : 'Visit Today'}
+                          </span>
+                        </h3>
+                        <p className="text-xs text-gray-500">
+                          Dr. {primaryApt.doctor_name} • {primaryApt.scheduled_time ? new Date(primaryApt.scheduled_time).toLocaleTimeString(locale === 'ar' ? 'ar-EG' : 'en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : 'Today'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Doctor availability badge */}
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-black px-3 py-1 rounded-xl flex items-center gap-1.5 ${
+                        docStatus?.is_unavailable
+                          ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                          : docStatus?.is_in_consultation
+                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                            : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                      }`}>
+                        <span>{docStatus?.is_unavailable ? '🔴' : docStatus?.is_in_consultation ? '🟡' : '🟢'}</span>
+                        <span>
+                          {docStatus?.is_unavailable
+                            ? (locale === 'ar' ? 'الطبيب في استراحة مؤقتة' : 'Doctor on Break')
+                            : docStatus?.is_in_consultation
+                              ? (locale === 'ar' ? 'الطبيب مع مريض بالكشف' : 'Doctor with Patient')
+                              : (locale === 'ar' ? 'الطبيب متاح ومستعد' : 'Doctor Free & Ready')}
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Calling banner if doctor is calling */}
+                  {isCallingMeNow && (
+                    <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-xl shadow-emerald-500/20 border-2 border-emerald-400 animate-pulse flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="text-3xl">🔔</span>
+                        <div>
+                          <p className="font-black text-sm uppercase tracking-wide">
+                            {locale === 'ar' ? 'الطبيب ينادي عليك الآن!' : 'Doctor is Calling You Now!'}
+                          </p>
+                          <p className="text-xs text-emerald-100">
+                            {locale === 'ar' ? 'تذكرتك حان دورها، يرجى الدخول لغرفة الكشف فوراً.' : 'Your turn is ready! Please proceed directly into the examination room.'}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-base font-black bg-white text-emerald-700 px-4 py-2 rounded-xl shadow-md">
+                        Q{myTurnNumber}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* 4 Metric Radar Gauges */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                    <div className="p-3.5 rounded-2xl bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900/40 shadow-sm">
+                      <p className="text-[10px] uppercase font-black text-gray-400">
+                        {locale === 'ar' ? 'رقم تذكرتك' : 'Your Ticket'}
+                      </p>
+                      <p className="text-2xl font-black text-blue-600 mt-0.5">Q{myTurnNumber}</p>
+                      <span className="text-[10px] text-gray-500 font-bold">{locale === 'ar' ? 'دورك في العيادة' : 'Your place'}</span>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900/40 shadow-sm">
+                      <p className="text-[10px] uppercase font-black text-gray-400">
+                        {locale === 'ar' ? 'الكشف الحالي' : 'Now Serving'}
+                      </p>
+                      <p className="text-2xl font-black text-gray-800 dark:text-gray-100 mt-0.5">
+                        {isCallingMeNow ? `Q${myTurnNumber}` : (currentServing > 0 ? `Q${currentServing}` : (docStatus?.is_in_consultation ? 'In Room' : 'Ready'))}
+                      </p>
+                      <span className="text-[10px] text-gray-500 font-bold">{locale === 'ar' ? 'بالغرفة حالياً' : 'In room'}</span>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900/40 shadow-sm">
+                      <p className="text-[10px] uppercase font-black text-gray-400">
+                        {locale === 'ar' ? 'المرضى قبلك' : 'Patients Ahead'}
+                      </p>
+                      <p className="text-2xl font-black text-purple-600 mt-0.5">{patientsAhead}</p>
+                      <span className="text-[10px] text-purple-500 font-bold">
+                        {patientsAhead === 0 ? (locale === 'ar' ? '⚡ أنت التالي فوراً' : '⚡ Next in line!') : (locale === 'ar' ? 'في صالة الانتظار' : 'Waiting outside')}
+                      </span>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900/40 shadow-sm">
+                      <p className="text-[10px] uppercase font-black text-gray-400">
+                        {locale === 'ar' ? 'الوقت المتوقع' : 'Estimated Wait'}
+                      </p>
+                      <p className="text-2xl font-black text-emerald-600 mt-0.5">~{estWaitMins}m</p>
+                      <span className="text-[10px] text-emerald-500 font-bold">{locale === 'ar' ? 'دقائق انتظار تقريبية' : 'Estimated wait'}</span>
+                    </div>
+                  </div>
+
+                  {/* Arrival check-in action */}
+                  <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <div className="w-full sm:w-auto flex-1">
+                      {!isArrived ? (
+                        <button
+                          type="button"
+                          disabled={arrivingId === primaryApt.id}
+                          onClick={() => handleMarkArrival(primaryApt.id)}
+                          className="w-full py-2.5 px-5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-500/20 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
+                        >
+                          <span>📍</span>
+                          <span>{arrivingId === primaryApt.id ? (locale === 'ar' ? 'جاري إخطار الاستقبال...' : 'Notifying Reception...') : (locale === 'ar' ? 'وصلت إلى العيادة (إخطار الاستقبال)' : 'I Have Arrived at Clinic')}</span>
+                        </button>
+                      ) : (
+                        <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-200 font-black">
+                            <span className="text-base">✅</span>
+                            <span>{locale === 'ar' ? 'تم تسجيل حضورك بالعيادة' : 'Checked In at Clinic'} ({arrivalTime})</span>
+                          </div>
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-200 dark:bg-emerald-800 text-emerald-900 dark:text-emerald-100">
+                            {locale === 'ar' ? 'تم إخطار الطبيب' : 'Doctor Notified'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {waUrl && (
+                        <a
+                          href={waUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-bold text-emerald-800 dark:text-emerald-200 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 px-4 py-2.5 rounded-xl border border-emerald-300 dark:border-emerald-800 transition-all flex items-center gap-1.5 shadow-sm"
+                        >
+                          <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
+                          <span className="font-black">WhatsApp Dr.</span>
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setViewingDoctorId(primaryApt.doctor_id)}
+                        className="text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 px-4 py-2.5 rounded-xl border border-blue-200 dark:border-blue-900/40 transition-colors"
+                      >
+                        {locale === 'ar' ? 'الملف الشخصي' : 'Doctor Profile'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })() : (
+              <div className="bg-white dark:bg-gray-900 rounded-3xl p-5 border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center text-2xl shrink-0">
+                    🗓️
+                  </div>
+                  <div>
+                    <h4 className="font-black text-sm text-gray-900 dark:text-white">
+                      {locale === 'ar' ? 'لا توجد كشوفات بالعيادة مجدولة لليوم' : 'No Clinic Consultations Today'}
+                    </h4>
+                    <p className="text-xs text-gray-500">
+                      {activeAppointments.length > 0 && activeAppointments[0].scheduled_time
+                        ? (locale === 'ar'
+                            ? `موعد كشفك القادم مع د. ${activeAppointments[0].doctor_name} في ${new Date(activeAppointments[0].scheduled_time).toLocaleDateString('ar-EG', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}`
+                            : `Your next upcoming visit is with Dr. ${activeAppointments[0].doctor_name} on ${new Date(activeAppointments[0].scheduled_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}`)
+                        : (locale === 'ar' ? 'جميع مواعيدك القادمة ستظهر هنا مع وقت الانتظار المباشر ورقم التذكرة.' : 'Upcoming visits and real-time waiting queue radar will appear here.')}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setEditAppointmentId(null); setShowBooking(true); }}
+                  className="px-4 py-2 rounded-xl text-xs font-black bg-blue-50 hover:bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-900/40 transition-colors whitespace-nowrap"
+                >
+                  {locale === 'ar' ? '+ حجز موعد كشف' : '+ Book an Appointment'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Section: Active Bookings & Consultations (The Cards from My Bookings) */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2">
+                  <span>📅</span>
+                  <span>{locale === 'ar' ? 'حجوزاتك الحالية ومتابعة الطابور' : 'Active Bookings & Live Queue Watch'}</span>
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {locale === 'ar' ? 'راقب مدة الانتظار المتوقعة، وقم بتأكيد الدفع أو تعديل الموعد' : 'Keep an eye on how long you have to wait to see the doctor, pay or reschedule'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => router.push(`/${locale}/dashboard?tab=bookings`)}
+                className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+              >
+                <span>{locale === 'ar' ? 'عرض الكل والتقويم' : 'View All & Calendar'}</span>
+                <span>→</span>
+              </button>
+            </div>
+
+            {activeAppointments.length === 0 ? (
+              <div className="text-center py-12 bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800">
+                <div className="text-4xl mb-3">📅</div>
+                <h4 className="font-bold text-gray-800 dark:text-gray-200 text-sm">
+                  {locale === 'ar' ? 'لا توجد حجوزات نشطة حالياً' : 'No active bookings right now'}
+                </h4>
+                <p className="text-xs text-gray-500 mt-1">
+                  {locale === 'ar' ? 'يمكنك حجز موعد جديد مع طبيبك المفضل بسهولة.' : 'Book a visit to secure your slot with your preferred doctor.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => { setEditAppointmentId(null); setShowBooking(true); }}
+                  className="mt-4 px-5 py-2.5 bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] hover:brightness-110 text-white rounded-xl text-xs font-black shadow-md transition-all"
+                >
+                  {locale === 'ar' ? '+ حجز موعد جديد' : '+ Book New Visit'}
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {activeAppointments.map(apt => renderAppointmentCard(apt))}
+              </div>
+            )}
+          </div>
+
+          {/* Section: Today's 5 Medication Cups Glance */}
+          <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2">
+                  <span>💊</span>
+                  <span>{locale === 'ar' ? 'جدول أكواب وجرعات أدوية اليوم (5 كؤوس)' : "Today's Medication Cups (5 Daily Cups)"}</span>
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {locale === 'ar' ? 'تقسيم مواعيد تناول الأدوية على مدار اليوم لضمان الالتزام الدوائي' : 'Visual dosage timeline divided across your day to ensure medication adherence'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => router.push(`/${locale}/dashboard?tab=prescriptions`)}
+                className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
+              >
+                <span>{locale === 'ar' ? 'فتح جدول الأكواب الكامل والتسجيل' : 'Open Full 5-Cup Timeline'}</span>
+                <span>→</span>
+              </button>
+            </div>
+
+            {/* 5 Cups Visual Row */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              {[
+                { slot: 'morning', titleEn: 'Morning Cup', titleAr: 'كوب الصباح', time: '08:00 AM', icon: '🌅', color: 'from-amber-400 to-orange-500' },
+                { slot: 'midday', titleEn: 'Midday Cup', titleAr: 'كوب الظهيرة', time: '01:00 PM', icon: '☀️', color: 'from-cyan-400 to-teal-500' },
+                { slot: 'evening', titleEn: 'Evening Cup', titleAr: 'كوب المساء', time: '05:30 PM', icon: '🌇', color: 'from-orange-500 to-amber-500' },
+                { slot: 'night', titleEn: 'Night Cup', titleAr: 'كوب الليل', time: '08:30 PM', icon: '🌆', color: 'from-indigo-400 to-purple-600' },
+                { slot: 'bedtime', titleEn: 'Bedtime Cup', titleAr: 'قبل النوم', time: '10:30 PM', icon: '🌙', color: 'from-purple-500 to-slate-700' },
+              ].map((cup) => (
+                <div
+                  key={cup.slot}
+                  onClick={() => router.push(`/${locale}/dashboard?tab=prescriptions`)}
+                  className="p-3.5 rounded-2xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-800 hover:border-blue-400 dark:hover:border-blue-600 cursor-pointer transition-all text-center group"
+                >
+                  <div className={`w-10 h-10 mx-auto rounded-xl bg-gradient-to-br ${cup.color} text-white flex items-center justify-center text-lg shadow-sm group-hover:scale-110 transition-transform`}>
+                    {cup.icon}
+                  </div>
+                  <p className="text-xs font-black text-gray-800 dark:text-gray-200 mt-2">
+                    {locale === 'ar' ? cup.titleAr : cup.titleEn}
+                  </p>
+                  <p className="text-[10px] text-gray-400 font-bold">{cup.time}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Section: Linked Doctors Quick Grid */}
+          {doctors.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-black uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                  <span>👨‍⚕️</span>
+                  <span>{locale === 'ar' ? 'أطباؤك المعتمدون' : 'My Attending Doctors'}</span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => router.push(`/${locale}/dashboard?tab=doctors`)}
+                  className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  {locale === 'ar' ? 'عرض جميع الأطباء →' : 'View All Doctors →'}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {doctors.slice(0, 3).map(doc => {
+                  return (
+                    <div key={doc.id} className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-100 dark:border-gray-800 shadow-sm flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-black flex items-center justify-center text-sm shrink-0">
+                          {doc.full_name ? doc.full_name[0] : 'D'}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-black text-xs text-gray-900 dark:text-white truncate">
+                            Dr. {doc.full_name}
+                          </p>
+                          <p className="text-[11px] text-gray-500 truncate">{doc.specialization || 'General Practitioner'}</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedDoctor(doc)
+                          setEditAppointmentId(null)
+                          setShowBooking(true)
+                        }}
+                        className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 text-blue-600 dark:text-blue-300 rounded-xl text-xs font-bold transition-colors whitespace-nowrap"
+                      >
+                        {locale === 'ar' ? 'حجز' : 'Book'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Section: Recent Prescription Highlight */}
+          {prescriptions.length > 0 && (
+            <div className="bg-white dark:bg-gray-900 rounded-3xl p-5 border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 flex items-center justify-center text-2xl shrink-0">
+                  📄
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase tracking-wider text-purple-600 dark:text-purple-400">
+                      {locale === 'ar' ? 'أحدث روشتة طبية' : 'Latest Medical Prescription'}
+                    </span>
+                    <span className="text-[10px] text-gray-400">
+                      {new Date(prescriptions[0].created_at).toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </span>
+                  </div>
+                  <h4 className="font-bold text-sm text-gray-900 dark:text-white mt-0.5">
+                    {prescriptions[0].diagnosis || 'General Consultation'} • Dr. {prescriptions[0].doctor_name}
+                  </h4>
+                  <p className="text-xs text-gray-500">
+                    {(prescriptions[0].medications || []).length} {locale === 'ar' ? 'أدوية موصوفة' : 'medications prescribed'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setViewingPrescription(prescriptions[0])}
+                  className="px-4 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 dark:hover:bg-purple-900/60 rounded-xl text-xs font-black transition-colors"
+                >
+                  {locale === 'ar' ? 'عرض الروشتة و PDF' : 'View Rx & PDF'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Bookings View */}
+      {activeTab === 'bookings' && (
+        <div className="space-y-6">
+          {/* Phone Push Notifications Permission & Status Banner */}
+          <NotificationPermissionBanner />
+
+          <div className="flex flex-wrap gap-4 justify-between items-center bg-white dark:bg-gray-900 p-4 rounded-3xl border border-gray-100 dark:border-gray-800">
+            <div className="flex gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+               <button onClick={() => setViewMode('cards')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'cards' ? 'bg-white dark:bg-gray-700 shadow-sm' : 'text-gray-500'}`}>{tp('cards') || 'Cards'}</button>
+               <button onClick={() => setViewMode('calendar')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'calendar' ? 'bg-white dark:bg-gray-700 shadow-sm' : 'text-gray-500'}`}>{tp('calendar') || 'Calendar'}</button>
+            </div>
+            <button
+              onClick={() => { setEditAppointmentId(null); setShowBooking(true); }}
+              className="bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] hover:bg-blue-700 text-white font-bold py-2.5 px-6 rounded-xl shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2 text-sm"
+            >
+              {tp('book_new_visit') || '+ Book New Visit'}
+            </button>
+          </div>
+
+          {activeAppointments.length === 0 ? (
+             <div className="text-center py-20 bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800">
+              <div className="text-5xl mb-4">📅</div>
+              <h3 className="text-xl font-bold">{tp('no_active_bookings') || 'No Active Bookings'}</h3>
+              <p className="text-gray-500 mt-2">{tp('no_active_desc') || "You don't have any upcoming visits booked."}</p>
+            </div>
+          ) : viewMode === 'cards' ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {activeAppointments.map(apt => renderAppointmentCard(apt))}            </div>
           ) : (
             <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800 shadow-sm overflow-x-auto">
                <div className="min-w-[800px]">

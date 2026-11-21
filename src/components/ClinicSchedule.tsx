@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { getWhatsAppLink } from '@/utils/whatsapp'
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
@@ -46,6 +46,98 @@ export default function ClinicSchedule({
   const [scheduleAppointments, setScheduleAppointments] = useState<Appointment[]>(initialAppointments || [])
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null)
   const [loading, setLoading] = useState(false)
+  const [isRescheduling, setIsRescheduling] = useState(false)
+  const [rescheduleDate, setRescheduleDate] = useState('')
+  const [rescheduleTime, setRescheduleTime] = useState('')
+  const [rescheduleNote, setRescheduleNote] = useState('')
+  const [reschedulingLoading, setReschedulingLoading] = useState(false)
+  const [rescheduleSuccess, setRescheduleSuccess] = useState(false)
+
+  // 15-minute slot generator (8:00 AM to 10:00 PM)
+  const timeSlots = useMemo(() => {
+    const list: string[] = []
+    for (let h = 8; h <= 22; h++) {
+      for (const m of [0, 15, 30, 45]) {
+        if (h === 22 && m > 0) break
+        const period = h >= 12 ? 'PM' : 'AM'
+        const displayH = h % 12 === 0 ? 12 : h % 12
+        const displayM = m === 0 ? '00' : String(m).padStart(2, '0')
+        list.push(`${displayH}:${displayM} ${period}`)
+      }
+    }
+    return list
+  }, [])
+
+  useEffect(() => {
+    if (selectedAppt) {
+      setIsRescheduling(false)
+      const d = new Date(selectedAppt.scheduled_time)
+      const yyyy = d.getFullYear()
+      const mm = String(d.getMonth() + 1).padStart(2, '0')
+      const dd = String(d.getDate()).padStart(2, '0')
+      setRescheduleDate(`${yyyy}-${mm}-${dd}`)
+
+      const period = d.getHours() >= 12 ? 'PM' : 'AM'
+      const h = d.getHours() % 12 === 0 ? 12 : d.getHours() % 12
+      const m = d.getMinutes() === 0 ? '00' : String(d.getMinutes()).padStart(2, '0')
+      setRescheduleTime(`${h}:${m} ${period}`)
+      setRescheduleNote('')
+    }
+  }, [selectedAppt?.id])
+
+  const handleConfirmReschedule = async () => {
+    if (!selectedAppt || !rescheduleDate || !rescheduleTime) return
+    setReschedulingLoading(true)
+    try {
+      const [timePart, period] = rescheduleTime.split(' ')
+      let [h, m] = timePart.split(':').map(Number)
+      if (period === 'PM' && h < 12) h += 12
+      if (period === 'AM' && h === 12) h = 0
+
+      const [y, mon, d] = rescheduleDate.split('-').map(Number)
+      const newDateTime = new Date(y, mon - 1, d, h, m, 0, 0)
+      const isoString = newDateTime.toISOString()
+
+      const supabase = createClient()
+      const currentNotes = selectedAppt.notes || ''
+      const moveTag = `[RESCHEDULED_AGREED: ${newDateTime.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })} - Note: ${rescheduleNote || 'Agreed with patient'}]`
+      const updatedNotes = currentNotes ? `${currentNotes} ${moveTag}` : moveTag
+
+      const { error } = await supabase
+        .from('appointments')
+        .update({
+          scheduled_time: isoString,
+          notes: updatedNotes,
+        })
+        .eq('id', selectedAppt.id)
+
+      if (error) {
+        alert('Error updating schedule: ' + error.message)
+        setReschedulingLoading(false)
+        return
+      }
+
+      const updatedAppt = {
+        ...selectedAppt,
+        scheduled_time: isoString,
+        notes: updatedNotes,
+      }
+      setSelectedAppt(updatedAppt)
+      setScheduleAppointments(prev =>
+        prev.map(a => (a.id === selectedAppt.id ? updatedAppt : a))
+      )
+      setRescheduleSuccess(true)
+      setTimeout(() => {
+        setRescheduleSuccess(false)
+        setIsRescheduling(false)
+      }, 1500)
+    } catch (err) {
+      console.error('Failed to reschedule:', err)
+      alert('Failed to update appointment time.')
+    } finally {
+      setReschedulingLoading(false)
+    }
+  }
 
   // Fetch appointments for schedule range
   const fetchScheduleAppointments = useCallback(async () => {
@@ -525,6 +617,122 @@ export default function ClinicSchedule({
                 )}
               </div>
             )}
+
+            {/* Reschedule / Move Visit Button & Panel */}
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setIsRescheduling(!isRescheduling)}
+                className="w-full py-2.5 px-4 rounded-xl bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors border border-blue-200 dark:border-blue-800 shadow-sm"
+              >
+                <span>✏️</span>
+                <span>{isRescheduling ? 'Cancel Rescheduling' : 'Move / Reschedule Visit'}</span>
+              </button>
+
+              {isRescheduling && (
+                <div className="p-4 rounded-2xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 space-y-3 animate-in fade-in">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black uppercase tracking-wider text-blue-700 dark:text-blue-300">
+                      📅 Move Visit as Agreed with Patient
+                    </span>
+                    <span className="text-[10px] text-gray-400">15-min increments</span>
+                  </div>
+
+                  {/* Quick Date Chips */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+                    {[
+                      { label: 'Today', days: 0 },
+                      { label: 'Tomorrow', days: 1 },
+                      { label: '+2 Days', days: 2 },
+                      { label: '+7 Days', days: 7 },
+                      { label: '+14 Days', days: 14 },
+                    ].map(btn => {
+                      const d = new Date()
+                      d.setDate(d.getDate() + btn.days)
+                      const yyyy = d.getFullYear()
+                      const mm = String(d.getMonth() + 1).padStart(2, '0')
+                      const dd = String(d.getDate()).padStart(2, '0')
+                      const dateVal = `${yyyy}-${mm}-${dd}`
+                      return (
+                        <button
+                          key={btn.label}
+                          type="button"
+                          onClick={() => setRescheduleDate(dateVal)}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap transition-all ${
+                            rescheduleDate === dateVal
+                              ? 'bg-blue-600 text-white shadow-sm'
+                              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'
+                          }`}
+                        >
+                          {btn.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {/* Date & Time Picker */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-0.5">Date</label>
+                      <input
+                        type="date"
+                        value={rescheduleDate}
+                        onChange={e => setRescheduleDate(e.target.value)}
+                        min={new Date().toISOString().slice(0, 10)}
+                        className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-0.5">Time (15-min slots)</label>
+                      <select
+                        value={rescheduleTime}
+                        onChange={e => setRescheduleTime(e.target.value)}
+                        className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        {timeSlots.map((slot: string) => (
+                          <option key={slot} value={slot}>{slot}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Note field */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-0.5">Agreement Note (optional)</label>
+                    <input
+                      type="text"
+                      value={rescheduleNote}
+                      onChange={e => setRescheduleNote(e.target.value)}
+                      placeholder="e.g. Moved as agreed on WhatsApp with patient"
+                      className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  {rescheduleSuccess && (
+                    <div className="p-2.5 bg-emerald-500/20 border border-emerald-500/40 text-emerald-600 dark:text-emerald-400 text-xs font-bold rounded-xl text-center animate-in fade-in">
+                      ✓ Visit rescheduled! Patient calendar updated.
+                    </div>
+                  )}
+
+                  {/* Confirm Button */}
+                  <button
+                    type="button"
+                    disabled={reschedulingLoading}
+                    onClick={handleConfirmReschedule}
+                    className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  >
+                    {reschedulingLoading ? (
+                      <span>Updating Schedule...</span>
+                    ) : (
+                      <>
+                        <span>✓</span>
+                        <span>Confirm New Time & Update Patient Calendar</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Actions: Phone & WhatsApp */}
             {(() => {

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { useLocale } from 'next-intl'
 import PrescriptionViewerModal from './PrescriptionViewerModal'
@@ -47,10 +48,14 @@ export default function DoctorHistoryTab({
   const locale = useLocale()
   const isAr = locale === 'ar'
 
+  const router = useRouter()
   const [visits, setVisits] = useState<PastVisit[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterPayment, setFilterPayment] = useState<'all' | 'paid' | 'pending' | 'paid_by_patient'>('all')
+  const [datePreset, setDatePreset] = useState<'all' | 'today' | 'this_week' | 'this_month' | 'last_30' | 'custom'>('all')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
   const [viewingRx, setViewingRx] = useState<{ rx: any; patientName: string } | null>(null)
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
 
@@ -148,7 +153,7 @@ export default function DoctorHistoryTab({
     setConfirmingId(null)
   }
 
-  // Filter and search
+  // Filter and search with date range
   const filteredVisits = useMemo(() => {
     return visits.filter(v => {
       // Payment filter
@@ -156,6 +161,37 @@ export default function DoctorHistoryTab({
         if (filterPayment === 'paid' && v.payment_status !== 'paid') return false
         if (filterPayment === 'paid_by_patient' && v.payment_status !== 'paid_by_patient') return false
         if (filterPayment === 'pending' && (v.payment_status === 'paid' || v.payment_status === 'paid_by_patient')) return false
+      }
+
+      // Date Range filter
+      if (datePreset !== 'all') {
+        const vDate = new Date(v.scheduled_time || v.created_at)
+        const now = new Date()
+        if (datePreset === 'today') {
+          const isToday = vDate.getDate() === now.getDate() && vDate.getMonth() === now.getMonth() && vDate.getFullYear() === now.getFullYear()
+          if (!isToday) return false
+        } else if (datePreset === 'this_week') {
+          const startOfWeek = new Date(now)
+          startOfWeek.setDate(now.getDate() - now.getDay())
+          startOfWeek.setHours(0, 0, 0, 0)
+          if (vDate < startOfWeek) return false
+        } else if (datePreset === 'this_month') {
+          if (vDate.getMonth() !== now.getMonth() || vDate.getFullYear() !== now.getFullYear()) return false
+        } else if (datePreset === 'last_30') {
+          const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000)
+          if (vDate < thirtyDaysAgo) return false
+        } else if (datePreset === 'custom') {
+          if (startDate) {
+            const start = new Date(startDate)
+            start.setHours(0, 0, 0, 0)
+            if (vDate < start) return false
+          }
+          if (endDate) {
+            const end = new Date(endDate)
+            end.setHours(23, 59, 59, 999)
+            if (vDate > end) return false
+          }
+        }
       }
 
       // Search term
@@ -170,83 +206,228 @@ export default function DoctorHistoryTab({
 
       return true
     })
-  }, [visits, filterPayment, searchTerm])
+  }, [visits, filterPayment, datePreset, startDate, endDate, searchTerm])
 
   const totalCollectedRevenue = visits
     .filter(v => v.payment_status === 'paid')
     .reduce((sum, v) => sum + (Number(v.fees) || 0), 0)
 
+  // Excel / CSV Export
+  const handleExportToExcel = () => {
+    if (filteredVisits.length === 0) {
+      alert(isAr ? 'لا توجد بيانات لتصديرها وفق الفلتر المحدد.' : 'No records found to export for the selected filters.')
+      return
+    }
+
+    const rows = filteredVisits.map((v, i) => {
+      const pName = v.patient?.full_name || v.manual_patient?.full_name || 'Patient'
+      const pPhone = v.patient?.phone_number || v.manual_patient?.phone_number || ''
+      const isManual = !v.patient_id
+      const dateStr = new Date(v.scheduled_time).toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      })
+      const medsStr = (v.prescription?.medications || [])
+        .map((m: any) => `${m.name}${m.dosage ? ` (${m.dosage})` : ''}`)
+        .join('; ')
+
+      return {
+        '#': i + 1,
+        'Patient Name': pName,
+        'Patient Type': isManual ? 'Offline Patient' : 'Registered User',
+        'Phone Number': pPhone,
+        'Scheduled Time': dateStr,
+        'Visit Type': v.appointment_type || 'Clinic Normal',
+        'Fee (EGP)': v.fees || 0,
+        'Payment Status': v.payment_status || 'pending',
+        'Payment Ref': v.payment_reference || '',
+        'Diagnosis': v.prescription?.diagnosis || '',
+        'Prescribed Medications': medsStr,
+        'Patient Symptoms/Notes': v.prescription?.symptoms || v.notes || '',
+        'Doctor Notes': v.prescription?.doctor_notes || '',
+        'Review Rating': v.review?.rating ? `${v.review.rating} / 5` : 'No rating',
+        'Review Comment': v.review?.review_text || ''
+      }
+    })
+
+    const headers = Object.keys(rows[0])
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row =>
+        headers.map(h => `"${String((row as any)[h] || '').replace(/"/g, '""')}"`).join(',')
+      )
+    ].join('\n')
+
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `medilab_clinical_records_${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      {/* Header Metric Bar */}
+      {/* Header Metric Bar (Interactive / Clickable) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800 shadow-sm flex items-center justify-between">
+        {/* Card 1: Directs to Patients tab */}
+        <div 
+          onClick={() => router.push(`/${locale}/dashboard?tab=patients`)}
+          className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-xl hover:border-blue-500/30 transition-all cursor-pointer group flex items-center justify-between"
+          title="Click to view all Patients"
+        >
           <div>
-            <p className="text-xs font-black uppercase tracking-wider text-gray-400">
-              {isAr ? 'إجمالي الزيارات المسجلة' : 'Total Recorded Visits'}
-            </p>
-            <h3 className="text-3xl font-black text-gray-900 dark:text-white mt-1">
+            <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-gray-400 group-hover:text-blue-600 transition-colors">
+              <span>{isAr ? 'إجمالي الزيارات المسجلة' : 'Total Recorded Visits'}</span>
+              <span>→</span>
+            </div>
+            <h3 className="text-3xl font-black text-gray-900 dark:text-white mt-1 group-hover:text-blue-600 transition-colors">
               {visits.length}
             </h3>
+            <span className="text-[10px] text-blue-500 font-bold">Open Patients Directory ↗</span>
           </div>
-          <span className="text-3xl">📋</span>
+          <span className="text-3xl group-hover:scale-110 transition-transform">📋</span>
         </div>
 
-        <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800 shadow-sm flex items-center justify-between">
+        {/* Card 2: Confirmed payments */}
+        <div 
+          onClick={() => setFilterPayment('paid')}
+          className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-xl hover:border-emerald-500/30 transition-all cursor-pointer group flex items-center justify-between"
+          title="Click to filter Paid visits"
+        >
           <div>
-            <p className="text-xs font-black uppercase tracking-wider text-gray-400">
-              {isAr ? 'إجمالي المبالغ المستلمة' : 'Confirmed Payments Received'}
-            </p>
+            <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-gray-400 group-hover:text-emerald-600 transition-colors">
+              <span>{isAr ? 'إجمالي المبالغ المستلمة' : 'Confirmed Payments Received'}</span>
+              <span>✓</span>
+            </div>
             <h3 className="text-3xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
               {totalCollectedRevenue.toLocaleString()} <span className="text-sm font-bold">EGP</span>
             </h3>
+            <span className="text-[10px] text-emerald-600 font-bold">Filter Paid Only ↗</span>
           </div>
-          <span className="text-3xl">💰</span>
+          <span className="text-3xl group-hover:scale-110 transition-transform">💰</span>
         </div>
 
-        <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800 shadow-sm flex items-center justify-between">
+        {/* Card 3: Prescriptions Issued -> Directs to Patients tab */}
+        <div 
+          onClick={() => router.push(`/${locale}/dashboard?tab=patients`)}
+          className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-xl hover:border-purple-500/30 transition-all cursor-pointer group flex items-center justify-between"
+          title="Click to view Patients & Prescriptions"
+        >
           <div>
-            <p className="text-xs font-black uppercase tracking-wider text-gray-400">
-              {isAr ? 'روشتات وعلاجات صادرة' : 'Prescriptions Issued'}
-            </p>
-            <h3 className="text-3xl font-black text-purple-600 dark:text-purple-400 mt-1">
+            <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-gray-400 group-hover:text-purple-600 transition-colors">
+              <span>{isAr ? 'روشتات وعلاجات صادرة' : 'Prescriptions Issued'}</span>
+              <span>→</span>
+            </div>
+            <h3 className="text-3xl font-black text-purple-600 dark:text-purple-400 mt-1 group-hover:text-purple-600 transition-colors">
               {visits.filter(v => !!v.prescription).length}
             </h3>
+            <span className="text-[10px] text-purple-500 font-bold">Manage in Patients Tab ↗</span>
           </div>
-          <span className="text-3xl">💊</span>
+          <span className="text-3xl group-hover:scale-110 transition-transform">💊</span>
         </div>
       </div>
 
-      {/* Toolbar / Search & Filters */}
-      <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between bg-white dark:bg-gray-900 p-4 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm">
-        <div className="relative flex-1">
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder={isAr ? 'البحث باسم المريض، التشخيص، أو الدواء...' : 'Search by patient name, diagnosis, symptoms, or medications...'}
-            className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <span className="absolute left-3.5 top-3 text-gray-400">🔍</span>
+      {/* Toolbar: Date Range Filters & Export to Excel */}
+      <div className="bg-white dark:bg-gray-900 p-4 sm:p-5 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm space-y-3.5">
+        
+        {/* Top Row: Search + Export Button */}
+        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder={isAr ? 'البحث باسم المريض، التشخيص، أو الدواء...' : 'Search by patient name, diagnosis, symptoms, or medications...'}
+              className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <span className="absolute left-3.5 top-3 text-gray-400">🔍</span>
+          </div>
+
+          {/* Export to Excel / CSV Button */}
+          <button
+            type="button"
+            onClick={handleExportToExcel}
+            className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 shrink-0 active:scale-95"
+          >
+            <span>📊</span>
+            <span>{isAr ? 'تصدير إكسيل (Excel .csv)' : 'Export to Excel (.csv)'}</span>
+            <span className="text-[11px] opacity-80">({filteredVisits.length})</span>
+          </button>
         </div>
 
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
-          {(['all', 'paid', 'paid_by_patient', 'pending'] as const).map((st) => (
-            <button
-              key={st}
-              onClick={() => setFilterPayment(st)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                filterPayment === st
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
-            >
-              {st === 'all' && (isAr ? 'الكل' : 'All Payments')}
-              {st === 'paid' && (isAr ? '✅ مؤكد الدفع' : '✅ Confirmed Paid')}
-              {st === 'paid_by_patient' && (isAr ? '⚠️ بانتظار التأكيد' : '⚠️ Paid by Patient')}
-              {st === 'pending' && (isAr ? '⏳ لم يدفع' : '⏳ Unpaid')}
-            </button>
-          ))}
+        {/* Date Range Selector Row */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+            <span className="text-xs font-bold text-gray-400 mr-1 flex items-center gap-1">
+              <span>📅</span>
+              <span>{isAr ? 'التاريخ:' : 'Date:'}</span>
+            </span>
+            {[
+              { id: 'all', label: isAr ? 'كل الفترات' : 'All Time' },
+              { id: 'today', label: isAr ? 'اليوم' : 'Today' },
+              { id: 'this_week', label: isAr ? 'هذا الأسبوع' : 'This Week' },
+              { id: 'this_month', label: isAr ? 'هذا الشهر' : 'This Month' },
+              { id: 'last_30', label: isAr ? 'آخر 30 يوم' : 'Last 30 Days' },
+              { id: 'custom', label: isAr ? 'مخصص' : 'Custom Range' },
+            ].map(p => (
+              <button
+                key={p.id}
+                onClick={() => setDatePreset(p.id as any)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                  datePreset === p.id
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Custom Date Pickers */}
+          {datePreset === 'custom' && (
+            <div className="flex items-center gap-2 animate-in fade-in">
+              <input
+                type="date"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-2.5 py-1 text-xs font-bold outline-none"
+              />
+              <span className="text-xs text-gray-400">→</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+                className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-2.5 py-1 text-xs font-bold outline-none"
+              />
+            </div>
+          )}
+
+          {/* Payment Status Filter Buttons */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+            {(['all', 'paid', 'paid_by_patient', 'pending'] as const).map((st) => (
+              <button
+                key={st}
+                onClick={() => setFilterPayment(st)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                  filterPayment === st
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                {st === 'all' && (isAr ? 'الكل' : 'All Payments')}
+                {st === 'paid' && (isAr ? '✅ مؤكد' : '✅ Paid')}
+                {st === 'paid_by_patient' && (isAr ? '⚠️ بانتظار التأكيد' : '⚠️ Verifying')}
+                {st === 'pending' && (isAr ? '⏳ لم يدفع' : '⏳ Pending')}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
+import { useLocale } from 'next-intl'
 import { createClient } from '@/utils/supabase/client'
 
 type AppointmentItem = {
@@ -22,6 +24,8 @@ type AppointmentItem = {
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 export default function DoctorAnalytics({ doctorId }: { doctorId: string }) {
+  const router = useRouter()
+  const locale = useLocale()
   const [loading, setLoading] = useState(true)
   const [appointments, setAppointments] = useState<AppointmentItem[]>([])
 
@@ -495,10 +499,17 @@ export default function DoctorAnalytics({ doctorId }: { doctorId: string }) {
       {/* METRIC CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Money Made */}
-        <div className="bg-gradient-to-br from-emerald-500/10 via-white to-teal-500/10 dark:from-emerald-950/20 dark:via-gray-900 dark:to-teal-950/20 p-6 rounded-3xl border border-emerald-200 dark:border-emerald-800/50 shadow-sm relative overflow-hidden">
+        <div
+          onClick={() => router.push(`/${locale}/dashboard?tab=history`)}
+          title="Click to view full visit history & revenue"
+          className="bg-gradient-to-br from-emerald-500/10 via-white to-teal-500/10 dark:from-emerald-950/20 dark:via-gray-900 dark:to-teal-950/20 p-6 rounded-3xl border border-emerald-200 dark:border-emerald-800/50 shadow-sm relative overflow-hidden cursor-pointer hover:shadow-lg hover:border-emerald-400 dark:hover:border-emerald-600 hover:-translate-y-0.5 transition-all group"
+        >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">Total Money Made</span>
-            <span className="text-xl">💰</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+              Total Money Made
+              <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs">↗</span>
+            </span>
+            <span className="text-xl group-hover:scale-110 transition-transform">💰</span>
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-black text-gray-900 dark:text-white">
@@ -508,17 +519,26 @@ export default function DoctorAnalytics({ doctorId }: { doctorId: string }) {
           </div>
           <div className="mt-3 flex items-center justify-between text-[11px] font-bold text-gray-500 dark:text-gray-400 pt-3 border-t border-gray-100 dark:border-gray-800">
             <span className="text-emerald-600">{metrics.paidFees.toLocaleString()} EGP Collected</span>
-            {metrics.pendingFees > 0 && (
+            {metrics.pendingFees > 0 ? (
               <span className="text-amber-600 font-bold">{metrics.pendingFees.toLocaleString()} EGP Pending</span>
+            ) : (
+              <span className="text-xs text-gray-400 group-hover:text-emerald-600 transition-colors">View details →</span>
             )}
           </div>
         </div>
 
         {/* Card 2: Patients Seen */}
-        <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm relative overflow-hidden">
+        <div
+          onClick={() => router.push(`/${locale}/dashboard?tab=patients`)}
+          title="Click to view full patient directory & records"
+          className="bg-white dark:bg-gray-900 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm relative overflow-hidden cursor-pointer hover:shadow-lg hover:border-blue-400 dark:hover:border-blue-600 hover:-translate-y-0.5 transition-all group"
+        >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400">Patient Visits</span>
-            <span className="text-xl">👥</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+              Patient Visits
+              <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs">↗</span>
+            </span>
+            <span className="text-xl group-hover:scale-110 transition-transform">👥</span>
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-black text-gray-900 dark:text-white">
@@ -528,15 +548,22 @@ export default function DoctorAnalytics({ doctorId }: { doctorId: string }) {
           </div>
           <div className="mt-3 flex items-center justify-between text-[11px] font-bold text-gray-500 dark:text-gray-400 pt-3 border-t border-gray-100 dark:border-gray-800">
             <span>{metrics.uniquePatientsCount} Unique Patients</span>
-            <span>Avg {metrics.avgFee} EGP / Visit</span>
+            <span className="text-blue-600 font-black flex items-center gap-1">Open Patients →</span>
           </div>
         </div>
 
         {/* Card 3: Patient Retention */}
-        <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm relative overflow-hidden">
+        <div
+          onClick={() => router.push(`/${locale}/dashboard?tab=patients`)}
+          title="Click to view patient records & loyalty"
+          className="bg-white dark:bg-gray-900 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm relative overflow-hidden cursor-pointer hover:shadow-lg hover:border-purple-400 dark:hover:border-purple-600 hover:-translate-y-0.5 transition-all group"
+        >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-black uppercase tracking-widest text-purple-600 dark:text-purple-400">Patient Loyalty</span>
-            <span className="text-xl">🔄</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
+              Patient Loyalty
+              <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs">↗</span>
+            </span>
+            <span className="text-xl group-hover:scale-110 transition-transform">🔄</span>
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-black text-gray-900 dark:text-white">
@@ -546,15 +573,22 @@ export default function DoctorAnalytics({ doctorId }: { doctorId: string }) {
           </div>
           <div className="mt-3 flex items-center justify-between text-[11px] font-bold text-gray-500 dark:text-gray-400 pt-3 border-t border-gray-100 dark:border-gray-800">
             <span>{metrics.returningPatientsCount} Repeat Visitors</span>
-            <span>{metrics.newPatientsCount} First-Timers</span>
+            <span className="text-purple-600 font-black flex items-center gap-1">View Patients →</span>
           </div>
         </div>
 
         {/* Card 4: Peak Activity Snapshot */}
-        <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm relative overflow-hidden">
+        <div
+          onClick={() => router.push(`/${locale}/dashboard?tab=schedule`)}
+          title="Click to view clinic schedule"
+          className="bg-white dark:bg-gray-900 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm relative overflow-hidden cursor-pointer hover:shadow-lg hover:border-amber-400 dark:hover:border-amber-600 hover:-translate-y-0.5 transition-all group"
+        >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400">Peak Congestion</span>
-            <span className="text-xl">⚡</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+              Peak Congestion
+              <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs">↗</span>
+            </span>
+            <span className="text-xl group-hover:scale-110 transition-transform">⚡</span>
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-black text-gray-900 dark:text-white truncate">
@@ -565,7 +599,7 @@ export default function DoctorAnalytics({ doctorId }: { doctorId: string }) {
             <span className="text-amber-600 font-black">
               {busyHours.peakShift ? busyHours.peakShift.label.split(' ')[0] : 'Peak Shift'}
             </span>
-            <span>{busyDays.peakDay ? `${busyDays.peakDay.count} visits` : ''}</span>
+            <span className="text-amber-600 font-black flex items-center gap-1">Open Schedule →</span>
           </div>
         </div>
       </div>
