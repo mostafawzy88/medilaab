@@ -16,6 +16,7 @@ import QueueRemovalModal from './QueueRemovalModal'
 import MedicationManagerModal from './MedicationManagerModal'
 import FollowUpModal from './FollowUpModal'
 import MedicationAdherenceReport from './MedicationAdherenceReport'
+import ObourMedicalWiki from './ObourMedicalWiki'
 import { getWhatsAppLink } from '@/utils/whatsapp'
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
 
@@ -1126,6 +1127,10 @@ export default function DoctorDashboard({
                   })
                 }}
               />
+            </div>
+          ) : activeTab === 'obour_wiki' ? (
+            <div className="p-4 sm:p-8">
+              <ObourMedicalWiki />
             </div>
           ) : (
             <div className="p-12 text-center text-gray-400">Settings & Other features coming soon...</div>

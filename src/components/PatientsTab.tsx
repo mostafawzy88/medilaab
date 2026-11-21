@@ -260,6 +260,7 @@ function PatientDetailModal({
               list.push({
                 ...order,
                 id: order.id || `lab-${rx.id}`,
+                rxId: rx.id,
                 test_name: order.test_name || order.testName || 'Diagnostic Test',
                 category: order.category || 'blood',
                 instructions: order.instructions || '',
@@ -267,7 +268,10 @@ function PatientDetailModal({
                 preferred_lab: order.preferred_lab || order.preferredLab || 'almokhtabar',
                 ordered_at: order.ordered_at || order.date || rx.created_at,
                 doctor_name: order.doctor_name || rx.doctor_name || 'Dr. Attending',
-                status: order.status || 'pending'
+                status: order.status || 'pending',
+                chosen_facility_name: order.chosen_facility_name || null,
+                reference_number: order.reference_number || null,
+                patient_notes: order.patient_notes || null
               })
             })
           }
@@ -496,6 +500,64 @@ function PatientDetailModal({
       alert('Could not save lab order: ' + err.message)
     } finally {
       setAddingLabOrder(false)
+    }
+  }
+
+  const handleUpdateLabCoordination = async (orderId: string, updateData: {
+    status: string
+    facilityName: string
+    referenceNumber: string
+    notes: string
+  }) => {
+    try {
+      const supabase = createClient()
+      const targetRx = localPrescriptions.find(rx => {
+        const notes = rx.doctor_notes || ''
+        return notes.includes(orderId) || notes.includes('[LAB_ORDERS:')
+      })
+
+      if (!targetRx) return
+
+      let orders: any[] = []
+      try {
+        const match = targetRx.doctor_notes.match(/\[LAB_ORDERS:\s*([\s\S]*?)\]/)
+        if (match) orders = JSON.parse(match[1])
+      } catch {}
+
+      const updatedOrders = orders.map((o: any) => {
+        if (o.id === orderId) {
+          const updates = o.coordination_updates || []
+          updates.push({
+            status: updateData.status,
+            timestamp: new Date().toISOString(),
+            note: updateData.notes,
+            facilityName: updateData.facilityName
+          })
+          return {
+            ...o,
+            status: updateData.status,
+            chosen_facility_name: updateData.facilityName,
+            reference_number: updateData.referenceNumber,
+            patient_notes: updateData.notes,
+            coordination_updates: updates
+          }
+        }
+        return o
+      })
+
+      const cleanNotes = targetRx.doctor_notes.replace(/\[LAB_ORDERS:\s*[\s\S]*?\]/, '').trim()
+      const newNotes = `${cleanNotes ? cleanNotes + '\n' : ''}[LAB_ORDERS: ${JSON.stringify(updatedOrders)}]`
+
+      const { error } = await supabase
+        .from('prescriptions')
+        .update({ doctor_notes: newNotes })
+        .eq('id', targetRx.id)
+
+      if (error) throw error
+
+      setLocalPrescriptions(prev => prev.map(rx => rx.id === targetRx.id ? { ...rx, doctor_notes: newNotes } : rx))
+    } catch (err) {
+      console.error('Error updating lab coordination in doctor view:', err)
     }
   }
 
@@ -1338,7 +1400,7 @@ function PatientDetailModal({
                                 </span>
                                 <h4 className="font-black text-gray-900 dark:text-white text-sm">{order.test_name}</h4>
                               </div>
-                              <div className="flex items-center gap-2 mt-1">
+                              <div className="flex items-center gap-2 mt-1 flex-wrap">
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-100 dark:bg-cyan-900/40 text-cyan-800 dark:text-cyan-300 uppercase tracking-wider">
                                   {order.category}
                                 </span>
@@ -1347,6 +1409,23 @@ function PatientDetailModal({
                                     🚨 Urgent / عاجل
                                   </span>
                                 )}
+                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                                  order.status === 'completed'
+                                    ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                                    : order.status === 'sample_collected'
+                                      ? 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-700'
+                                      : order.status === 'scheduled'
+                                        ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700'
+                                        : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
+                                }`}>
+                                  {order.status === 'completed'
+                                    ? '✅ Results Ready'
+                                    : order.status === 'sample_collected'
+                                      ? '🧪 Sample Collected'
+                                      : order.status === 'scheduled'
+                                        ? '📅 Test Scheduled'
+                                        : '⏳ Pending Action'}
+                                </span>
                               </div>
                             </div>
 
@@ -1359,6 +1438,31 @@ function PatientDetailModal({
                             <div className="p-2.5 bg-gray-50 dark:bg-gray-900/60 rounded-xl text-xs text-gray-700 dark:text-gray-300 font-medium" dir="auto">
                               <span className="text-[10px] font-bold text-gray-400 uppercase block mb-0.5">Preparation / Instructions:</span>
                               {order.instructions}
+                            </div>
+                          )}
+
+                          {/* Patient Selected Obour Facility & Coordination Badge */}
+                          {order.chosen_facility_name && (
+                            <div className="p-2.5 rounded-xl bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-blue-500/10 border border-indigo-400/30 space-y-1">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-black text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+                                  <span>📍</span>
+                                  <span>{order.chosen_facility_name}</span>
+                                </span>
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300">
+                                  مدينة العبور
+                                </span>
+                              </div>
+                              {order.reference_number && (
+                                <p className="text-[11px] text-gray-600 dark:text-gray-300 font-mono">
+                                  🧾 Ref/Invoice #: <strong>{order.reference_number}</strong>
+                                </p>
+                              )}
+                              {order.patient_notes && (
+                                <p className="text-[11px] text-gray-500 dark:text-gray-400 italic" dir="auto">
+                                  💬 "{order.patient_notes}"
+                                </p>
+                              )}
                             </div>
                           )}
 
@@ -1697,6 +1801,7 @@ function PatientDetailModal({
           order={viewingLabModalOrder}
           patientName={patient.full_name}
           onClose={() => setViewingLabModalOrder(null)}
+          onUpdateCoordination={handleUpdateLabCoordination}
         />
       )}
     </div>

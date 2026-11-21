@@ -33,6 +33,7 @@ export default function Sidebar({ fullName, role, avatarUrl }: { fullName: strin
           { id: 'history', name: 'Visit History', icon: '📜' },
           { id: 'stats', name: 'Reports & Stats', icon: '📈' },
           { id: 'meds', name: 'Medications', icon: '💊' },
+          { id: 'obour_wiki', name: locale === 'ar' ? 'دليل وموسوعة العبور الطبية' : 'Obour Medical Wiki', icon: '🏙️' },
         ]
       case 'nurse':
         return [
@@ -40,6 +41,7 @@ export default function Sidebar({ fullName, role, avatarUrl }: { fullName: strin
           { id: 'queue', name: 'Queue', icon: '📋' },
           { id: 'requests', name: 'Requests', icon: '📥' },
           { id: 'patients', name: 'Patients', icon: '👥' },
+          { id: 'obour_wiki', name: locale === 'ar' ? 'دليل وموسوعة العبور الطبية' : 'Obour Medical Wiki', icon: '🏙️' },
         ]
       case 'patient':
         return [
@@ -49,6 +51,7 @@ export default function Sidebar({ fullName, role, avatarUrl }: { fullName: strin
           { id: 'family', name: 'Family Members', icon: '👨‍👩‍👧' },
           { id: 'history', name: 'Visit History', icon: '📜' },
           { id: 'prescriptions', name: 'Prescriptions', icon: '💊' },
+          { id: 'obour_wiki', name: locale === 'ar' ? 'دليل وموسوعة العبور الطبية' : 'Obour Medical Wiki', icon: '🏙️' },
         ]
       default:
         return []

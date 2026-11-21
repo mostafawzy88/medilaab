@@ -15,6 +15,7 @@ import NotificationPermissionBanner from './NotificationPermissionBanner'
 import PharmacyForwardModal from './PharmacyForwardModal'
 import DoctorReviewModal from './DoctorReviewModal'
 import LabRadiologyModal, { LabOrder, PARTNER_LABS } from './LabRadiologyModal'
+import ObourMedicalWiki from './ObourMedicalWiki'
 import { sendTurnAlertNotification } from '@/utils/notifications'
 import { getWhatsAppLink } from '@/utils/whatsapp'
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
@@ -266,6 +267,64 @@ export default function PatientDashboard({
     })
     return list
   }, [prescriptions])
+
+  const handlePatientLabCoordinationUpdate = async (orderId: string, updateData: {
+    status: string
+    facilityName: string
+    referenceNumber: string
+    notes: string
+  }) => {
+    try {
+      const supabase = createClient()
+      const targetRx = prescriptions.find((rx: any) => {
+        const notes = rx.doctor_notes || ''
+        return notes.includes(orderId) || notes.includes('[LAB_ORDERS:')
+      })
+
+      if (!targetRx) return
+
+      let orders: any[] = []
+      try {
+        const match = targetRx.doctor_notes.match(/\[LAB_ORDERS:\s*([\s\S]*?)\]/)
+        if (match) orders = JSON.parse(match[1])
+      } catch {}
+
+      const updatedOrders = orders.map((o: any) => {
+        if (o.id === orderId) {
+          const updates = o.coordination_updates || []
+          updates.push({
+            status: updateData.status,
+            timestamp: new Date().toISOString(),
+            note: updateData.notes,
+            facilityName: updateData.facilityName
+          })
+          return {
+            ...o,
+            status: updateData.status,
+            chosen_facility_name: updateData.facilityName,
+            reference_number: updateData.referenceNumber,
+            patient_notes: updateData.notes,
+            coordination_updates: updates
+          }
+        }
+        return o
+      })
+
+      const cleanNotes = targetRx.doctor_notes.replace(/\[LAB_ORDERS:\s*[\s\S]*?\]/, '').trim()
+      const newNotes = `${cleanNotes ? cleanNotes + '\n' : ''}[LAB_ORDERS: ${JSON.stringify(updatedOrders)}]`
+
+      const { error } = await supabase
+        .from('prescriptions')
+        .update({ doctor_notes: newNotes })
+        .eq('id', targetRx.id)
+
+      if (error) throw error
+
+      setPrescriptions((prev: any[]) => prev.map(rx => rx.id === targetRx.id ? { ...rx, doctor_notes: newNotes } : rx))
+    } catch (err) {
+      console.error('Error updating lab coordination from patient:', err)
+    }
+  }
 
   useEffect(() => {
     const getPatientAuth = async () => {
@@ -2106,9 +2165,28 @@ export default function PatientDashboard({
                       <div className="space-y-1.5">
                         <div className="flex items-start justify-between gap-2">
                           <h4 className="font-black text-sm text-gray-900 dark:text-white">{lo.test_name}</h4>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-100 dark:bg-cyan-900/40 text-cyan-800 dark:text-cyan-300 uppercase">
-                            {lo.category}
-                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-100 dark:bg-cyan-900/40 text-cyan-800 dark:text-cyan-300 uppercase">
+                              {lo.category}
+                            </span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                              lo.status === 'completed'
+                                ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
+                                : lo.status === 'sample_collected'
+                                  ? 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300'
+                                  : lo.status === 'scheduled'
+                                    ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
+                                    : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
+                            }`}>
+                              {lo.status === 'completed'
+                                ? (locale === 'ar' ? '✅ النتائج جاهزة' : '✅ Results Ready')
+                                : lo.status === 'sample_collected'
+                                  ? (locale === 'ar' ? '🧪 تم سحب العينة' : '🧪 Sample Collected')
+                                  : lo.status === 'scheduled'
+                                    ? (locale === 'ar' ? '📅 تم تحديد الموعد' : '📅 Scheduled')
+                                    : (locale === 'ar' ? '⏳ بانتظار الإجراء' : '⏳ Pending')}
+                            </span>
+                          </div>
                         </div>
                         {lo.instructions && (
                           <p className="text-xs text-gray-600 dark:text-gray-300 font-medium" dir="auto">
@@ -2116,10 +2194,23 @@ export default function PatientDashboard({
                             {lo.instructions}
                           </p>
                         )}
-                        <p className="text-[11px] text-cyan-700 dark:text-cyan-400">
-                          {locale === 'ar' ? 'المعمل المقترح: ' : 'Recommended Lab: '}
-                          <strong>{partner.nameEn}</strong> ({partner.hotline})
-                        </p>
+                        {lo.chosen_facility_name ? (
+                          <div className="p-2 rounded-xl bg-indigo-500/10 border border-indigo-400/20 text-xs">
+                            <p className="font-black text-indigo-700 dark:text-indigo-300">
+                              📍 {lo.chosen_facility_name}
+                            </p>
+                            {lo.reference_number && (
+                              <p className="text-[10px] text-gray-500 font-mono mt-0.5">
+                                Ref #: {lo.reference_number}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-cyan-700 dark:text-cyan-400">
+                            {locale === 'ar' ? 'المعمل المقترح: ' : 'Recommended Lab: '}
+                            <strong>{partner.nameEn}</strong> ({partner.hotline})
+                          </p>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
@@ -2136,6 +2227,40 @@ export default function PatientDashboard({
                   )
                 })}
               </div>
+            </div>
+          )}
+
+          {/* Section: Obour City Medical Directory Banner (when no pending labs) */}
+          {patientLabOrders.length === 0 && (
+            <div className="bg-gradient-to-r from-blue-900/40 via-indigo-900/40 to-teal-900/30 border border-blue-500/30 rounded-3xl p-5 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-2xl shrink-0 border border-cyan-400/30">
+                  🏙️
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase tracking-wider text-cyan-400">
+                      {locale === 'ar' ? 'موسوعة ودليل مدينة العبور الطبية' : 'Obour City Medical Wikipedia'}
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold">
+                      {locale === 'ar' ? 'معامل وأشعة وصيدليات 24 ساعة' : 'Labs, Scans & 24/7 Pharmacies'}
+                    </span>
+                  </div>
+                  <h4 className="font-bold text-sm text-white mt-0.5">
+                    {locale === 'ar'
+                      ? 'دليل جغرافي شامل وموثق لمعامل التحاليل، مراكز الأشعة، والمستشفيات في العبور'
+                      : 'Comprehensive verified directory of labs, scans, and emergency hospitals in Obour City'}
+                  </h4>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => router.push(`/${locale}/dashboard?tab=obour_wiki`)}
+                className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-black rounded-xl text-xs shadow-md shadow-cyan-500/20 transition-all flex items-center gap-2 shrink-0"
+              >
+                <span>🔍</span>
+                <span>{locale === 'ar' ? 'تصفح الدليل والموسوعة' : 'Explore Obour Directory'}</span>
+              </button>
             </div>
           )}
 
@@ -2673,6 +2798,29 @@ export default function PatientDashboard({
         <PatientHistoryTab patientName={patientName} />
       )}
 
+      {/* Obour City Medical Directory & Wikipedia Tab */}
+      {activeTab === 'obour_wiki' && (
+        <div className="space-y-6">
+          <ObourMedicalWiki
+            onSelectFacilityForTest={(facility) => {
+              if (patientLabOrders.length > 0) {
+                setPatientViewingLab(patientLabOrders[0])
+              } else {
+                setPatientViewingLab({
+                  id: 'direct_' + Date.now(),
+                  test_name: `فحص طبي / تحليل في ${facility.nameAr}`,
+                  category: facility.category === 'radiology' ? 'radiology' : 'blood',
+                  ordered_at: new Date().toISOString(),
+                  priority: 'routine',
+                  preferred_lab: 'obour_partner',
+                  instructions: `زيارة إلى ${facility.nameAr} - ${facility.district}`
+                })
+              }
+            }}
+          />
+        </div>
+      )}
+
       {/* Booking Modal */}
       {showBooking && <BookingModal 
         onClose={() => { setShowBooking(false); setEditAppointmentId(null); }} 
@@ -2736,6 +2884,7 @@ export default function PatientDashboard({
           order={patientViewingLab}
           patientName={patientName}
           onClose={() => setPatientViewingLab(null)}
+          onUpdateCoordination={handlePatientLabCoordinationUpdate}
         />
       )}
     </div>

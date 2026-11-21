@@ -12,6 +12,7 @@ import QueueRemovalModal from './QueueRemovalModal'
 import MedicationManagerModal from './MedicationManagerModal'
 import TriageVitalsModal from './TriageVitalsModal'
 import FollowUpModal from './FollowUpModal'
+import ObourMedicalWiki from './ObourMedicalWiki'
 
   type Appointment = {
   id: string
@@ -250,6 +251,10 @@ export default function NurseDashboard({
             ) : activeTab === 'patients' ? (
               <div className="p-8">
                 <PatientsTab doctorId={supervisorId || ''} />
+              </div>
+            ) : activeTab === 'obour_wiki' ? (
+              <div className="p-4 sm:p-8">
+                <ObourMedicalWiki />
               </div>
             ) : queue.length === 0 ? (
               <div className="p-12 text-center text-gray-500">
