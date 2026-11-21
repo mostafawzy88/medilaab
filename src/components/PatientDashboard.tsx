@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useTranslations, useLocale } from 'next-intl'
 import { useSearchParams, useRouter } from 'next/navigation'
@@ -14,6 +14,7 @@ import PrescriptionCupsTimeline from './PrescriptionCupsTimeline'
 import NotificationPermissionBanner from './NotificationPermissionBanner'
 import PharmacyForwardModal from './PharmacyForwardModal'
 import DoctorReviewModal from './DoctorReviewModal'
+import LabRadiologyModal, { LabOrder, PARTNER_LABS } from './LabRadiologyModal'
 import { sendTurnAlertNotification } from '@/utils/notifications'
 import { getWhatsAppLink } from '@/utils/whatsapp'
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
@@ -238,6 +239,33 @@ export default function PatientDashboard({
 
   // Direct Pill check-in state on Overview
   const [overviewTakenMeds, setOverviewTakenMeds] = useState<Record<string, string>>({})
+
+  // Diagnostic Lab & Radiology state
+  const [patientViewingLab, setPatientViewingLab] = useState<LabOrder | null>(null)
+
+  // Extract all lab orders from patient's prescriptions
+  const patientLabOrders: Array<LabOrder & { rxId: string; rxDate: string }> = useMemo(() => {
+    const list: any[] = []
+    prescriptions.forEach((rx: any) => {
+      const notes = rx.doctor_notes || ''
+      const match = notes.match(/\[LAB_ORDERS:\s*([\s\S]*?)\]/)
+      if (match) {
+        try {
+          const parsed = JSON.parse(match[1])
+          if (Array.isArray(parsed)) {
+            parsed.forEach((order: any) => {
+              list.push({
+                ...order,
+                rxId: rx.id,
+                rxDate: rx.created_at
+              })
+            })
+          }
+        } catch {}
+      }
+    })
+    return list
+  }, [prescriptions])
 
   useEffect(() => {
     const getPatientAuth = async () => {
@@ -2036,6 +2064,81 @@ export default function PatientDashboard({
             </div>
           )}
 
+          {/* Section: Pending Diagnostic Lab & Radiology Tests */}
+          {patientLabOrders.length > 0 && (
+            <div className="bg-gradient-to-r from-cyan-500/10 via-teal-500/10 to-blue-500/10 border-2 border-cyan-400/30 rounded-3xl p-6 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-2 rounded-xl bg-cyan-500/20 text-cyan-300 text-lg">🧪</span>
+                  <div>
+                    <h3 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2">
+                      <span>{locale === 'ar' ? 'فحوصاتك الطبية والأشعة المطلوبة' : 'Required Lab Tests & Radiology Scans'}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-100 dark:bg-cyan-900/60 text-cyan-800 dark:text-cyan-300 font-bold uppercase">
+                        {patientLabOrders.length} {locale === 'ar' ? 'فحص' : 'Tests'}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {locale === 'ar' 
+                        ? 'حجز مباشر عبر واتساب لمعامل المختبر، البرج، ألفا سكان، وكايرو سكان مع سحب عينات منزلي'
+                        : 'Book tests via WhatsApp with Al Mokhtabar, Al Borg, Alfa Scan & Cairo Scan with home sample visits'}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setPatientViewingLab(patientLabOrders[0])}
+                  className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-700 hover:to-teal-700 text-white rounded-xl text-xs font-black shadow-md shadow-cyan-500/20 transition-all flex items-center gap-1.5 self-start sm:self-auto"
+                >
+                  <span>🏥</span>
+                  <span>{locale === 'ar' ? 'دليل المعامل المعتمدة' : 'Accredited Labs Guide'}</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {patientLabOrders.map((lo, idx) => {
+                  const partner = PARTNER_LABS.find(p => p.id === lo.preferred_lab) || PARTNER_LABS[0]
+                  return (
+                    <div
+                      key={idx}
+                      className="p-4 bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm space-y-3 flex flex-col justify-between"
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-black text-sm text-gray-900 dark:text-white">{lo.test_name}</h4>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-100 dark:bg-cyan-900/40 text-cyan-800 dark:text-cyan-300 uppercase">
+                            {lo.category}
+                          </span>
+                        </div>
+                        {lo.instructions && (
+                          <p className="text-xs text-gray-600 dark:text-gray-300 font-medium" dir="auto">
+                            <span className="font-bold text-gray-400">{locale === 'ar' ? 'تعليمات الفحص: ' : 'Prep: '}</span>
+                            {lo.instructions}
+                          </p>
+                        )}
+                        <p className="text-[11px] text-cyan-700 dark:text-cyan-400">
+                          {locale === 'ar' ? 'المعمل المقترح: ' : 'Recommended Lab: '}
+                          <strong>{partner.nameEn}</strong> ({partner.hotline})
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                        <button
+                          type="button"
+                          onClick={() => setPatientViewingLab(lo)}
+                          className="flex-1 py-2 bg-gradient-to-r from-cyan-600 to-teal-600 hover:brightness-110 text-white rounded-xl text-xs font-bold transition-all text-center flex items-center justify-center gap-1.5 shadow-sm"
+                        >
+                          <span>💬</span>
+                          <span>{locale === 'ar' ? 'حجز المعمل عبر واتساب' : 'Book via WhatsApp'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Section: Recent Prescription Highlight */}
           {prescriptions.length > 0 && (
             <div className="bg-white dark:bg-gray-900 rounded-3xl p-5 border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -2624,6 +2727,15 @@ export default function PatientDashboard({
               setPendingCsatApt(null)
             }
           }}
+        />
+      )}
+
+      {/* Lab & Radiology Partner Modal */}
+      {patientViewingLab && (
+        <LabRadiologyModal
+          order={patientViewingLab}
+          patientName={patientName}
+          onClose={() => setPatientViewingLab(null)}
         />
       )}
     </div>

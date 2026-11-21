@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import PrescriptionViewerModal from './PrescriptionViewerModal'
 import PrescriptionModal, { getFormIcon, getFormLabel, inferFormFromName, parseMedicationFormAndDosage, MedicationFormType } from './PrescriptionModal'
+import LabRadiologyModal, { LabOrder, POPULAR_LAB_TESTS, PARTNER_LABS } from './LabRadiologyModal'
 import { getWhatsAppLink } from '@/utils/whatsapp'
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
 
@@ -80,11 +81,30 @@ function PatientDetailModal({
   const [doctorNote, setDoctorNote] = useState(patient.doctor_note || '')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [activeTab, setActiveTab] = useState<'overview' | 'medications' | 'prescriptions' | 'visits'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'medications' | 'labs' | 'prescriptions' | 'visits'>('overview')
   const [viewingPrescription, setViewingPrescription] = useState<any | null>(null)
   const [localPrescriptions, setLocalPrescriptions] = useState<any[]>(patient.prescriptions || [])
   const [medCategoryFilter, setMedCategoryFilter] = useState<'all' | MedicationFormType>('all')
   const [showAddMedModal, setShowAddMedModal] = useState(false)
+  const [copiedSummary, setCopiedSummary] = useState(false)
+
+  // Medication Editing State
+  const [editingMed, setEditingMed] = useState<any | null>(null)
+  const [editMedName, setEditMedName] = useState('')
+  const [editMedDosage, setEditMedDosage] = useState('')
+  const [editMedForm, setEditMedForm] = useState<MedicationFormType>('pill')
+  const [editMedInstructions, setEditMedInstructions] = useState('')
+  const [savingEditMed, setSavingEditMed] = useState(false)
+
+  // Lab & Radiology Orders State
+  const [showAddLabModal, setShowAddLabModal] = useState(false)
+  const [viewingLabModalOrder, setViewingLabModalOrder] = useState<LabOrder | null>(null)
+  const [newLabTestName, setNewLabTestName] = useState('')
+  const [newLabCategory, setNewLabCategory] = useState<'blood' | 'radiology' | 'cardiac' | 'urine_stool' | 'other'>('blood')
+  const [newLabInstructions, setNewLabInstructions] = useState('')
+  const [newLabPriority, setNewLabPriority] = useState<'routine' | 'urgent'>('routine')
+  const [newLabPreferred, setNewLabPreferred] = useState('almokhtabar')
+  const [addingLabOrder, setAddingLabOrder] = useState(false)
 
   // Add Medication State
   const [newMedName, setNewMedName] = useState('')
@@ -226,6 +246,259 @@ function PatientDetailModal({
     return null
   }, [patient.appointments])
 
+  // Extract all lab orders from prescriptions (encoded in doctor_notes as [LAB_ORDERS: ...])
+  const allLabOrders = useMemo(() => {
+    const list: LabOrder[] = []
+    localPrescriptions.forEach(rx => {
+      const notes = rx.doctor_notes || ''
+      const match = notes.match(/\[LAB_ORDERS:\s*([\s\S]*?)\]/)
+      if (match) {
+        try {
+          const parsed = JSON.parse(match[1])
+          if (Array.isArray(parsed)) {
+            parsed.forEach((order: any) => {
+              list.push({
+                ...order,
+                id: order.id || `lab-${rx.id}`,
+                test_name: order.test_name || order.testName || 'Diagnostic Test',
+                category: order.category || 'blood',
+                instructions: order.instructions || '',
+                priority: order.priority || 'routine',
+                preferred_lab: order.preferred_lab || order.preferredLab || 'almokhtabar',
+                ordered_at: order.ordered_at || order.date || rx.created_at,
+                doctor_name: order.doctor_name || rx.doctor_name || 'Dr. Attending',
+                status: order.status || 'pending'
+              })
+            })
+          }
+        } catch (e) {
+          console.warn('Could not parse lab orders JSON:', e)
+        }
+      }
+    })
+    return list
+  }, [localPrescriptions])
+
+  // Collect all symptoms recorded for this patient across all visits & prescriptions
+  const patientSymptomKeywords = useMemo(() => {
+    const symptomsSet = new Set<string>()
+    localPrescriptions.forEach(rx => {
+      if (rx.symptoms) {
+        rx.symptoms.split(/[\s,،؛.\n]+/).forEach((word: string) => {
+          const clean = word.replace(/[#@]/g, '').trim().toLowerCase()
+          if (clean.length >= 2) symptomsSet.add(clean)
+        })
+      }
+      if (rx.diagnosis) {
+        rx.diagnosis.split(/[\s,،؛.\n]+/).forEach((word: string) => {
+          const clean = word.replace(/[#@]/g, '').trim().toLowerCase()
+          if (clean.length >= 2) symptomsSet.add(clean)
+        })
+      }
+    })
+    if (patient.appointments) {
+      patient.appointments.forEach((apt: any) => {
+        const patientNote = apt.notes ? (apt.notes.match(/\[PATIENT_NOTE:\s*([\s\S]*?)\]/)?.[1] || (apt.notes.includes('[FOR:') ? '' : apt.notes)) : ''
+        if (patientNote) {
+          patientNote.split(/[\s,،؛.\n]+/).forEach((word: string) => {
+            const clean = word.replace(/[#@]/g, '').trim().toLowerCase()
+            if (clean.length >= 2) symptomsSet.add(clean)
+          })
+        }
+      })
+    }
+    return Array.from(symptomsSet)
+  }, [localPrescriptions, patient.appointments])
+
+  // Formulary suggestions based on patient symptoms
+  const symptomBasedSuggestions = useMemo(() => {
+    if (doctorFavs.length === 0) return []
+    if (patientSymptomKeywords.length === 0) {
+      return doctorFavs.slice(0, 4)
+    }
+    const matched = doctorFavs.filter(fav => {
+      const favSymptom = (fav.common_symptoms || '').toLowerCase()
+      const favName = fav.name.toLowerCase()
+      return patientSymptomKeywords.some(keyword => 
+        favSymptom.includes(keyword) || favName.includes(keyword) || keyword.includes(favSymptom)
+      )
+    })
+    return matched.length > 0 ? matched : doctorFavs.slice(0, 4)
+  }, [doctorFavs, patientSymptomKeywords])
+
+  const handleCopyMedSummary = () => {
+    if (allMedications.length === 0) return
+    const text = [
+      `📋 Active Medications Clinical Summary for ${patient.full_name}:`,
+      `Date: ${new Date().toLocaleDateString()}`,
+      `Total Active Items: ${allMedications.length}`,
+      '----------------------------------------',
+      ...allMedications.map((m, i) => `${i + 1}. ${m.name} (${m.dosage || 'Standard'}) - [${m.form.toUpperCase()}] ${m.instructions ? `• ${m.instructions}` : ''} (Indication: ${m.diagnosis})`),
+      '----------------------------------------',
+      'Generated via MediLab Clinic Portal'
+    ].join('\n')
+    navigator.clipboard.writeText(text)
+    setCopiedSummary(true)
+    setTimeout(() => setCopiedSummary(false), 2500)
+  }
+
+  const handleOpenEditMed = (med: any) => {
+    setEditingMed(med)
+    setEditMedName(med.name)
+    setEditMedDosage(med.dosage || '')
+    setEditMedForm(med.form || 'pill')
+    setEditMedInstructions(med.instructions || '')
+  }
+
+  const handleSaveMedEdit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingMed || !editMedName.trim()) return
+    setSavingEditMed(true)
+    try {
+      const supabase = createClient()
+      const targetRx = localPrescriptions.find(rx => rx.id === editingMed.rxId)
+      if (!targetRx || !Array.isArray(targetRx.medications)) {
+        alert('Could not find original prescription')
+        return
+      }
+
+      const updatedMeds = targetRx.medications.map((m: any, idx: number) => {
+        if (`${targetRx.id}-${idx}` === editingMed.id || m.name === editingMed.name) {
+          return {
+            ...m,
+            name: editMedName.trim(),
+            dosage: editMedDosage.trim(),
+            form: editMedForm,
+            instructions: editMedInstructions.trim()
+          }
+        }
+        return m
+      })
+
+      const { error } = await supabase
+        .from('prescriptions')
+        .update({ medications: updatedMeds })
+        .eq('id', targetRx.id)
+
+      if (error) {
+        alert('Could not update medication: ' + error.message)
+        return
+      }
+
+      setLocalPrescriptions(prev => prev.map(rx => rx.id === targetRx.id ? { ...rx, medications: updatedMeds } : rx))
+      setEditingMed(null)
+    } catch (err: any) {
+      console.error(err)
+      alert('Error updating medication: ' + err.message)
+    } finally {
+      setSavingEditMed(false)
+    }
+  }
+
+  const handleDiscontinueMed = async (med: any) => {
+    if (!confirm(`Are you sure you want to discontinue ${med.name}?`)) return
+    try {
+      const supabase = createClient()
+      const targetRx = localPrescriptions.find(rx => rx.id === med.rxId)
+      if (!targetRx || !Array.isArray(targetRx.medications)) return
+
+      const updatedMeds = targetRx.medications.filter((m: any, idx: number) => `${targetRx.id}-${idx}` !== med.id && m.name !== med.name)
+
+      const { error } = await supabase
+        .from('prescriptions')
+        .update({ medications: updatedMeds })
+        .eq('id', targetRx.id)
+
+      if (error) {
+        alert('Could not discontinue medication: ' + error.message)
+        return
+      }
+
+      setLocalPrescriptions(prev => prev.map(rx => rx.id === targetRx.id ? { ...rx, medications: updatedMeds } : rx))
+    } catch (err: any) {
+      console.error(err)
+    }
+  }
+
+  const handleQuickPrescribeSuggestion = (fav: any) => {
+    setNewMedName(fav.name)
+    setNewMedDosage(fav.default_dosage || '')
+    setNewMedForm(fav.form || inferFormFromName(fav.name))
+    setNewMedDiagnosis(fav.common_symptoms ? `#${fav.common_symptoms}` : 'Formulary Prescription')
+    setShowAddMedModal(true)
+  }
+
+  const handleAddLabOrder = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newLabTestName.trim()) return
+    setAddingLabOrder(true)
+    try {
+      const supabase = createClient()
+      const newOrder: LabOrder = {
+        id: `lab-${Date.now()}`,
+        test_name: newLabTestName.trim(),
+        category: newLabCategory,
+        instructions: newLabInstructions.trim() || 'Please follow standard test fasting & laboratory preparation guidelines.',
+        priority: newLabPriority,
+        preferred_lab: newLabPreferred,
+        ordered_at: new Date().toISOString(),
+        status: 'pending',
+        doctor_name: 'Dr. Attending'
+      }
+
+      let targetRx = localPrescriptions.find(rx => rx.doctor_notes?.includes('[LAB_ORDERS:'))
+      
+      if (targetRx) {
+        let existingOrders: LabOrder[] = []
+        try {
+          const match = targetRx.doctor_notes.match(/\[LAB_ORDERS:\s*([\s\S]*?)\]/)
+          if (match) existingOrders = JSON.parse(match[1])
+        } catch {}
+        const updatedOrders = [newOrder, ...existingOrders]
+        const cleanNotes = targetRx.doctor_notes.replace(/\[LAB_ORDERS:\s*[\s\S]*?\]/, '').trim()
+        const newNotes = `${cleanNotes ? cleanNotes + '\n' : ''}[LAB_ORDERS: ${JSON.stringify(updatedOrders)}]`
+
+        const { error } = await supabase
+          .from('prescriptions')
+          .update({ doctor_notes: newNotes })
+          .eq('id', targetRx.id)
+
+        if (error) throw error
+
+        setLocalPrescriptions(prev => prev.map(rx => rx.id === targetRx!.id ? { ...rx, doctor_notes: newNotes } : rx))
+      } else {
+        const newNotes = `[LAB_ORDERS: ${JSON.stringify([newOrder])}]`
+        const { data: newRx, error } = await supabase
+          .from('prescriptions')
+          .insert({
+            patient_id: patient.is_manual ? null : patient.id,
+            manual_patient_id: patient.is_manual ? patient.id : null,
+            doctor_id: doctorId,
+            diagnosis: `Diagnostic Order: ${newLabTestName.trim()}`,
+            symptoms: '',
+            medications: [],
+            doctor_notes: newNotes
+          })
+          .select()
+          .single()
+
+        if (error) throw error
+        if (newRx) {
+          setLocalPrescriptions(prev => [newRx, ...prev])
+        }
+      }
+
+      setNewLabTestName('')
+      setNewLabInstructions('')
+      setShowAddLabModal(false)
+    } catch (err: any) {
+      console.error(err)
+      alert('Could not save lab order: ' + err.message)
+    } finally {
+      setAddingLabOrder(false)
+    }
+  }
+
   const handleDirectAddMedication = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newMedName.trim()) return
@@ -355,22 +628,26 @@ function PatientDetailModal({
         </div>
 
         {/* Clinical Stats Row */}
-        <div className="grid grid-cols-4 gap-2 sm:gap-4 px-6 py-3.5 border-b border-gray-100 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/40 flex-shrink-0 text-center">
+        <div className="grid grid-cols-5 gap-2 px-6 py-3 border-b border-gray-100 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/40 flex-shrink-0 text-center">
           <div>
-            <p className="text-xl sm:text-2xl font-black text-blue-600">{patient.appointments?.length || 0}</p>
-            <p className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider">Total Visits</p>
+            <p className="text-lg sm:text-xl font-black text-blue-600">{patient.appointments?.length || 0}</p>
+            <p className="text-[9px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-wider">Visits</p>
           </div>
           <div className="border-x border-gray-200 dark:border-gray-700">
-            <p className="text-xl sm:text-2xl font-black text-emerald-600">{totalFees.toLocaleString()} <span className="text-xs">EGP</span></p>
-            <p className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider">Total Fees</p>
+            <p className="text-lg sm:text-xl font-black text-emerald-600">{totalFees.toLocaleString()} <span className="text-[10px]">EGP</span></p>
+            <p className="text-[9px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-wider">Total Fees</p>
           </div>
           <div>
-            <p className="text-xl sm:text-2xl font-black text-purple-600">{localPrescriptions.length}</p>
-            <p className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider">Prescriptions</p>
+            <p className="text-lg sm:text-xl font-black text-purple-600">{localPrescriptions.length}</p>
+            <p className="text-[9px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-wider">Prescriptions</p>
           </div>
-          <div className="border-l border-gray-200 dark:border-gray-700">
-            <p className="text-xl sm:text-2xl font-black text-teal-600">{allMedications.length}</p>
-            <p className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider">Medications</p>
+          <div className="border-x border-gray-200 dark:border-gray-700">
+            <p className="text-lg sm:text-xl font-black text-teal-600">{allMedications.length}</p>
+            <p className="text-[9px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-wider">Medications</p>
+          </div>
+          <div>
+            <p className="text-lg sm:text-xl font-black text-cyan-600">{allLabOrders.length}</p>
+            <p className="text-[9px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-wider">Labs & Scans</p>
           </div>
         </div>
 
@@ -379,6 +656,7 @@ function PatientDetailModal({
           {[
             { id: 'overview', label: 'Overview & Vitals', icon: '🩺' },
             { id: 'medications', label: `Medications (${allMedications.length})`, icon: '💊' },
+            { id: 'labs', label: `Labs & Scans (${allLabOrders.length})`, icon: '🧪' },
             { id: 'prescriptions', label: `Prescriptions (${localPrescriptions.length})`, icon: '📋' },
             { id: 'visits', label: `Visits (${patient.appointments?.length || 0})`, icon: '📅' },
           ].map(tab => (
@@ -592,6 +870,74 @@ function PatientDetailModal({
                 </button>
               </div>
 
+              {/* Active Medications Clinical Summary & 1-Click Copy */}
+              {allMedications.length > 0 && (
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-teal-500/10 border border-blue-500/20 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-xl">📋</span>
+                      <div>
+                        <h4 className="font-black text-xs uppercase tracking-wider text-blue-900 dark:text-blue-200">
+                          Active Clinical Regimen Summary ({allMedications.length} Prescribed Medications)
+                        </h4>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                          Overview of all active prescriptions, dosages, and instructions
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCopyMedSummary}
+                      className="px-3.5 py-1.5 bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-700 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-sm"
+                    >
+                      <span>{copiedSummary ? '✓ Copied to Clipboard!' : '📋 Copy Clinical Summary'}</span>
+                    </button>
+                  </div>
+
+                  {/* Form breakdown chips */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-blue-200/40 dark:border-blue-800/40">
+                    {pillsCount > 0 && <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100/70 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300">💊 {pillsCount} Pills</span>}
+                    {drinkingCount > 0 && <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100/70 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">🧴 {drinkingCount} Syrups</span>}
+                    {creamCount > 0 && <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100/70 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">🧴 {creamCount} Creams</span>}
+                    {injectionCount > 0 && <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-100/70 dark:bg-rose-900/40 text-rose-800 dark:text-rose-300">💉 {injectionCount} Injections</span>}
+                    {dropsCount > 0 && <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-cyan-100/70 dark:bg-cyan-900/40 text-cyan-800 dark:text-cyan-300">💧 {dropsCount} Drops</span>}
+                    {sprayCount > 0 && <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-100/70 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300">💨 {sprayCount} Sprays</span>}
+                  </div>
+                </div>
+              )}
+
+              {/* Smart Formulary Suggestions based on Patient Symptoms */}
+              {symptomBasedSuggestions.length > 0 && (
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">💡</span>
+                      <h4 className="font-black text-xs uppercase tracking-wider text-amber-900 dark:text-amber-300">
+                        Formulary Suggestions {patientSymptomKeywords.length > 0 ? `(Matching Symptoms: ${patientSymptomKeywords.slice(0, 3).map(s => `#${s}`).join(', ')})` : '(Frequent Medications)'}
+                      </h4>
+                    </div>
+                    <span className="text-[10px] text-amber-700 dark:text-amber-400 font-bold">1-Click Prescribe</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {symptomBasedSuggestions.map(fav => (
+                      <button
+                        key={fav.id}
+                        type="button"
+                        onClick={() => handleQuickPrescribeSuggestion(fav)}
+                        className="px-3 py-1.5 bg-white dark:bg-gray-800 hover:bg-amber-500 hover:text-white dark:hover:bg-amber-500 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm group"
+                      >
+                        <span>{getFormIcon(fav.form)}</span>
+                        <span className="text-gray-900 dark:text-gray-100 group-hover:text-white">{fav.name}</span>
+                        {fav.default_dosage && (
+                          <span className="text-[10px] text-gray-400 group-hover:text-amber-100 font-normal">({fav.default_dosage})</span>
+                        )}
+                        <span className="text-[10px] font-black text-amber-600 group-hover:text-white ml-0.5">+ Prescribe</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Category Filter Chips */}
               <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
                 {[
@@ -657,13 +1003,32 @@ function PatientDetailModal({
                             </div>
                           </div>
                         </div>
-                        <button
-                          onClick={() => setViewingPrescription(med.rawRx)}
-                          className="px-2.5 py-1 bg-gray-100 hover:bg-blue-50 dark:bg-gray-700 dark:hover:bg-blue-900/40 text-gray-600 dark:text-gray-300 hover:text-blue-600 text-[10px] font-bold rounded-lg transition-colors"
-                          title="View Source Prescription"
-                        >
-                          Rx View
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditMed(med)}
+                            className="px-2 py-1 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1"
+                            title="Edit Medication details, form, or dosage"
+                          >
+                            <span>✏️</span>
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDiscontinueMed(med)}
+                            className="p-1 hover:bg-rose-50 dark:hover:bg-rose-900/30 text-gray-400 hover:text-rose-600 rounded-lg text-[10px] transition-colors"
+                            title="Discontinue medication"
+                          >
+                            🗑️
+                          </button>
+                          <button
+                            onClick={() => setViewingPrescription(med.rawRx)}
+                            className="px-2 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-[10px] font-bold rounded-lg transition-colors"
+                            title="View Source Prescription"
+                          >
+                            Rx View
+                          </button>
+                        </div>
                       </div>
 
                       {med.instructions && (
@@ -811,6 +1176,360 @@ function PatientDetailModal({
                           className="px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black rounded-xl text-xs shadow-md transition-all disabled:opacity-50"
                         >
                           {addingMed ? 'Adding...' : 'Save Medication'}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {/* Edit Medication Modal */}
+              {editingMed && (
+                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+                  <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-md border border-gray-100 dark:border-gray-800 p-6 space-y-4">
+                    <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
+                      <div>
+                        <h3 className="font-black text-base text-gray-900 dark:text-white flex items-center gap-2">
+                          <span>✏️</span>
+                          <span>Edit Medication ({editingMed.name})</span>
+                        </h3>
+                        <p className="text-xs text-gray-400">Update form, dosage, or intake instructions</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditingMed(null)}
+                        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full text-gray-400"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleSaveMedEdit} className="space-y-3.5">
+                      <div>
+                        <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-1">Medication Name</label>
+                        <input
+                          required
+                          value={editMedName}
+                          onChange={e => setEditMedName(e.target.value)}
+                          className="w-full rounded-xl px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-bold"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-1">Form / Type</label>
+                          <select
+                            value={editMedForm}
+                            onChange={e => setEditMedForm(e.target.value as any)}
+                            className="w-full rounded-xl px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-xs font-bold"
+                          >
+                            <option value="pill">💊 Pill / Capsule</option>
+                            <option value="drinking">🧴 Syrup / Drinking</option>
+                            <option value="cream">🧴 Cream / Ointment</option>
+                            <option value="injection">💉 Injection</option>
+                            <option value="drops">💧 Drops</option>
+                            <option value="spray">💨 Spray / Inhaler</option>
+                            <option value="other">🩺 Other</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-1">Dosage</label>
+                          <input
+                            value={editMedDosage}
+                            onChange={e => setEditMedDosage(e.target.value)}
+                            placeholder="e.g. 500mg, 10ml"
+                            className="w-full rounded-xl px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-1">Intake Instructions</label>
+                        <textarea
+                          value={editMedInstructions}
+                          onChange={e => setEditMedInstructions(e.target.value)}
+                          dir="auto"
+                          rows={2}
+                          placeholder="e.g. قرص كل ٨ ساعات بعد الأكل"
+                          className="w-full rounded-xl p-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-xs resize-none"
+                        />
+                      </div>
+
+                      <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                        <button
+                          type="button"
+                          onClick={() => setEditingMed(null)}
+                          className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-bold rounded-xl text-xs"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={savingEditMed}
+                          className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all disabled:opacity-50"
+                        >
+                          {savingEditMed ? 'Saving...' : 'Save Updates'}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─────────────────────────────────────────────────────────────
+              TAB: LABS & RADIOLOGY DIAGNOSTIC ORDERS
+             ───────────────────────────────────────────────────────────── */}
+          {activeTab === 'labs' && (
+            <div className="space-y-5 animate-in fade-in">
+              {/* Header */}
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-cyan-500/10 via-teal-500/10 to-blue-500/10 p-4 rounded-2xl border border-cyan-500/20">
+                <div>
+                  <h3 className="font-black text-sm text-gray-900 dark:text-white flex items-center gap-2">
+                    <span>🧪</span>
+                    <span>Laboratory Tests & Radiology Scans</span>
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    Order clinical tests, scans, and direct patient to Egyptian diagnostic partners (المختبر، البرج، ألفا سكان، كايرو سكان، نايل سكان)
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddLabModal(true)}
+                  className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white font-black rounded-xl text-xs shadow-md shadow-cyan-500/20 transition-all flex items-center gap-1.5"
+                >
+                  <span>+</span>
+                  <span>Order Lab / X-Ray Test</span>
+                </button>
+              </div>
+
+              {/* Labs List */}
+              {allLabOrders.length === 0 ? (
+                <div className="text-center py-12 bg-gray-50/50 dark:bg-gray-800/30 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700 space-y-3">
+                  <span className="text-4xl block">🧪</span>
+                  <p className="text-gray-500 font-bold text-sm">No diagnostic tests or scans ordered yet for this patient.</p>
+                  <p className="text-xs text-gray-400 max-w-md mx-auto">
+                    Prescribe blood analysis (CBC, Glucose, Liver/Kidney), Chest X-Ray, Abdominal Ultrasound/Sonar, CT, MRI, or Cardiac Echo.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddLabModal(true)}
+                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white font-bold rounded-xl text-xs shadow-md shadow-cyan-500/20 transition-all"
+                  >
+                    + Order First Test / Scan
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {allLabOrders.map((order) => {
+                    const partner = PARTNER_LABS.find(p => p.id === order.preferred_lab) || PARTNER_LABS[0]
+                    return (
+                      <div
+                        key={order.id}
+                        className="p-4 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700/80 shadow-sm space-y-3 hover:border-cyan-500/40 transition-all flex flex-col justify-between"
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-lg">
+                                  {order.category === 'radiology' ? '🩻' : order.category === 'cardiac' ? '🫀' : order.category === 'urine_stool' ? '🔬' : '🩸'}
+                                </span>
+                                <h4 className="font-black text-gray-900 dark:text-white text-sm">{order.test_name}</h4>
+                              </div>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-100 dark:bg-cyan-900/40 text-cyan-800 dark:text-cyan-300 uppercase tracking-wider">
+                                  {order.category}
+                                </span>
+                                {order.priority === 'urgent' && (
+                                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 uppercase animate-pulse">
+                                    🚨 Urgent / عاجل
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <span className="text-[10px] text-gray-400 bg-gray-50 dark:bg-gray-900 px-2 py-1 rounded-lg">
+                              {new Date(order.ordered_at).toLocaleDateString()}
+                            </span>
+                          </div>
+
+                          {order.instructions && (
+                            <div className="p-2.5 bg-gray-50 dark:bg-gray-900/60 rounded-xl text-xs text-gray-700 dark:text-gray-300 font-medium" dir="auto">
+                              <span className="text-[10px] font-bold text-gray-400 uppercase block mb-0.5">Preparation / Instructions:</span>
+                              {order.instructions}
+                            </div>
+                          )}
+
+                          {/* Diagnostic Partner recommendation */}
+                          <div className="p-2.5 rounded-xl bg-cyan-50/60 dark:bg-cyan-950/20 border border-cyan-100 dark:border-cyan-900/30 flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                              <span className="text-base">{partner.logo}</span>
+                              <div>
+                                <p className="font-bold text-gray-800 dark:text-gray-200 text-[11px]">{partner.nameEn}</p>
+                                <p className="text-[9px] text-gray-400">Hotline: {partner.hotline}</p>
+                              </div>
+                            </div>
+                            <span className="text-[10px] font-bold text-cyan-600 dark:text-cyan-400">Recommended</span>
+                          </div>
+                        </div>
+
+                        {/* Action to open Lab Booking Modal */}
+                        <button
+                          type="button"
+                          onClick={() => setViewingLabModalOrder(order)}
+                          className="w-full py-2 bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-700 hover:to-teal-700 text-white font-bold rounded-xl text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all mt-2"
+                        >
+                          <span>🏥</span>
+                          <span>Book Nearest Lab / WhatsApp (حجز المعمل)</span>
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Add Lab Modal */}
+              {showAddLabModal && (
+                <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+                  <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-lg border border-gray-100 dark:border-gray-800 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+                    <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
+                      <div>
+                        <h3 className="font-black text-lg text-gray-900 dark:text-white flex items-center gap-2">
+                          <span>🧪</span>
+                          <span>Order Lab Test or Radiology Scan</span>
+                        </h3>
+                        <p className="text-xs text-gray-400">Specify diagnostic requirements and partner routing</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddLabModal(false)}
+                        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full text-gray-400"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleAddLabOrder} className="space-y-4">
+                      {/* Category Selector */}
+                      <div>
+                        <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-1.5">Test Category</label>
+                        <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+                          {[
+                            { id: 'blood', label: 'Blood', icon: '🩸' },
+                            { id: 'radiology', label: 'Imaging', icon: '🩻' },
+                            { id: 'cardiac', label: 'Cardiac', icon: '🫀' },
+                            { id: 'urine_stool', label: 'Urine/Stool', icon: '🔬' },
+                            { id: 'other', label: 'Other', icon: '🩺' },
+                          ].map(cat => (
+                            <button
+                              key={cat.id}
+                              type="button"
+                              onClick={() => setNewLabCategory(cat.id as any)}
+                              className={`p-2 rounded-xl text-xs font-bold text-center flex flex-col items-center gap-1 transition-all ${
+                                newLabCategory === cat.id
+                                  ? 'bg-cyan-600 text-white shadow-md'
+                                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'
+                              }`}
+                            >
+                              <span>{cat.icon}</span>
+                              <span className="text-[10px]">{cat.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Popular Test Quick Chips */}
+                      <div>
+                        <label className="block text-xs font-bold text-gray-400 mb-1">Quick Select Popular Tests:</label>
+                        <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1 bg-gray-50 dark:bg-gray-800/40 rounded-xl">
+                          {POPULAR_LAB_TESTS.filter(t => t.category === newLabCategory || newLabCategory === 'other').map((t, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => {
+                                setNewLabTestName(t.name)
+                                if (t.name.includes('Sugar') || t.name.includes('Lipid')) {
+                                  setNewLabInstructions('صيام من ١٠ إلى ١٢ ساعة قبل التحليل (Fasting 10-12 hrs)')
+                                } else if (t.name.includes('Ultrasound') || t.name.includes('Sonar')) {
+                                  setNewLabInstructions('شرب لتر ماء قبل الفحص مع الامتلاء (Full bladder for pelvic sonar)')
+                                }
+                              }}
+                              className="px-2.5 py-1 bg-white dark:bg-gray-800 hover:bg-cyan-50 dark:hover:bg-cyan-900/30 border border-gray-200 dark:border-gray-700 rounded-lg text-[11px] font-semibold text-gray-700 dark:text-gray-300 transition-colors"
+                            >
+                              {t.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Test Name */}
+                      <div>
+                        <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-1">Test or Scan Name</label>
+                        <input
+                          required
+                          value={newLabTestName}
+                          onChange={e => setNewLabTestName(e.target.value)}
+                          placeholder="e.g. Complete Blood Count (CBC) or Abdominal Ultrasound"
+                          className="w-full rounded-xl px-3.5 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-semibold outline-none focus:ring-2 focus:ring-cyan-500"
+                        />
+                      </div>
+
+                      {/* Instructions */}
+                      <div>
+                        <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-1">Patient Instructions / Preparation</label>
+                        <textarea
+                          value={newLabInstructions}
+                          onChange={e => setNewLabInstructions(e.target.value)}
+                          dir="auto"
+                          rows={2}
+                          placeholder="e.g. صيام ١٢ ساعة مع شرب ماء فقط، أو إحضار الأشعة السابقة"
+                          className="w-full rounded-xl p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-xs resize-none outline-none focus:ring-2 focus:ring-cyan-500"
+                        />
+                      </div>
+
+                      {/* Urgency & Preferred Lab */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-1">Priority</label>
+                          <select
+                            value={newLabPriority}
+                            onChange={e => setNewLabPriority(e.target.value as any)}
+                            className="w-full rounded-xl px-3 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-xs font-bold"
+                          >
+                            <option value="routine">Routine Check</option>
+                            <option value="urgent">🚨 Urgent (عاجل)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-1">Preferred Partner Lab</label>
+                          <select
+                            value={newLabPreferred}
+                            onChange={e => setNewLabPreferred(e.target.value)}
+                            className="w-full rounded-xl px-3 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-xs font-bold"
+                          >
+                            {PARTNER_LABS.map(lab => (
+                              <option key={lab.id} value={lab.id}>{lab.nameEn} ({lab.hotline})</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                        <button
+                          type="button"
+                          onClick={() => setShowAddLabModal(false)}
+                          className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-bold rounded-xl text-xs"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={addingLabOrder}
+                          className="px-5 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white font-black rounded-xl text-xs shadow-md transition-all disabled:opacity-50"
+                        >
+                          {addingLabOrder ? 'Saving...' : 'Save & Order Test'}
                         </button>
                       </div>
                     </form>
@@ -970,6 +1689,14 @@ function PatientDetailModal({
           prescription={viewingPrescription}
           patientName={patient.full_name}
           onClose={() => setViewingPrescription(null)}
+        />
+      )}
+
+      {viewingLabModalOrder && (
+        <LabRadiologyModal
+          order={viewingLabModalOrder}
+          patientName={patient.full_name}
+          onClose={() => setViewingLabModalOrder(null)}
         />
       )}
     </div>

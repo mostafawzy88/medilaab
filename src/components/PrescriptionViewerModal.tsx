@@ -6,6 +6,7 @@ import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import { getFormIcon, inferFormFromName } from './PrescriptionModal'
 import PharmacyForwardModal from './PharmacyForwardModal'
+import LabRadiologyModal, { LabOrder, PARTNER_LABS } from './LabRadiologyModal'
 
 type PrescriptionViewerModalProps = {
   prescription: any
@@ -23,6 +24,37 @@ export default function PrescriptionViewerModal({
   const [showPharmacyModal, setShowPharmacyModal] = useState(false)
   const [takenMeds, setTakenMeds] = useState<Record<string, string>>({})
   const [patientId, setPatientId] = useState<string>('')
+  const [selectedLabOrder, setSelectedLabOrder] = useState<LabOrder | null>(null)
+  const [reminderSet, setReminderSet] = useState(false)
+
+  // Extract any lab / diagnostic orders from doctor_notes
+  const labOrders: LabOrder[] = (() => {
+    const notes = prescription.doctor_notes || ''
+    const match = notes.match(/\[LAB_ORDERS:\s*([\s\S]*?)\]/)
+    if (match) {
+      try {
+        const parsed = JSON.parse(match[1])
+        if (Array.isArray(parsed)) return parsed
+      } catch {}
+    }
+    return []
+  })()
+
+  const handleSetReminder = async () => {
+    if ('Notification' in window) {
+      try {
+        const permission = await Notification.requestPermission()
+        if (permission === 'granted') {
+          new Notification('MediLab Medicine & Lab Reminder 🔔', {
+            body: `Don't forget to take your prescribed medication and complete your required diagnostic tests!`,
+            icon: '/favicon.ico'
+          })
+        }
+      } catch {}
+    }
+    setReminderSet(true)
+    setTimeout(() => setReminderSet(false), 3000)
+  }
 
   useEffect(() => {
     try {
@@ -154,6 +186,24 @@ export default function PrescriptionViewerModal({
           <div>
             ${medicationsHtml}
           </div>
+
+          <!-- DIAGNOSTIC LAB ORDERS -->
+          ${labOrders.length > 0 ? `
+            <div style="margin-top:28px;padding-top:16px;border-top:2px dashed #06b6d4;">
+              <h3 style="font-size:12px;font-weight:800;color:#0891b2;margin:0 0 10px;text-transform:uppercase;letter-spacing:1px;">
+                🧪 Required Diagnostic Tests & Scans / التحاليل والأشعة المطلوبة
+              </h3>
+              ${labOrders.map(lo => `
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:8px 0;border-bottom:1px solid #f3f4f6;">
+                  <div>
+                    <div style="font-size:14px;font-weight:700;color:#111827;">${lo.test_name}</div>
+                    ${lo.instructions ? `<div style="font-size:11px;color:#4b5563;margin-top:2px;">Prep: ${lo.instructions}</div>` : ''}
+                  </div>
+                  <div style="font-size:10px;color:#0891b2;font-weight:700;background:#ecfeff;padding:2px 8px;border-radius:6px;text-transform:uppercase;">${lo.category}</div>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
         </div>
 
         <!-- FOOTER -->
@@ -234,6 +284,24 @@ export default function PrescriptionViewerModal({
         <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md sticky top-0 z-10 flex-wrap gap-2">
           <h2 className="text-sm font-bold text-gray-700 dark:text-gray-300">Prescription Preview</h2>
           <div className="flex gap-2 flex-wrap items-center">
+            {labOrders.length > 0 && (
+              <button
+                onClick={() => setSelectedLabOrder(labOrders[0])}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white rounded-xl font-semibold text-xs sm:text-sm transition-all shadow-md"
+                title="Book nearest lab or radiology scan center via WhatsApp"
+              >
+                <span>🧪</span>
+                <span>Book Lab Tests ({labOrders.length})</span>
+              </button>
+            )}
+            <button
+              onClick={handleSetReminder}
+              className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700/60 rounded-xl font-semibold text-xs sm:text-sm transition-all shadow-sm"
+              title="Set notification reminder to buy medicines and complete tests"
+            >
+              <span>🔔</span>
+              <span>{reminderSet ? '✓ Reminder Scheduled!' : 'Remind Me'}</span>
+            </button>
             <button
               onClick={() => setShowPharmacyModal(true)}
               className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-semibold text-xs sm:text-sm transition-all shadow-md"
@@ -353,6 +421,66 @@ export default function PrescriptionViewerModal({
               })}
             </div>
 
+            {/* Diagnostic Tests & Radiology Scans */}
+            {labOrders.length > 0 && (
+              <div className="mt-6 pt-5 border-t-2 border-dashed border-cyan-300 dark:border-cyan-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🧪</span>
+                    <h3 className="font-black text-xs uppercase tracking-wider text-cyan-900 dark:text-cyan-300">
+                      Required Tests & Radiology Scans (التحاليل والأشعة المطلوبة)
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedLabOrder(labOrders[0])}
+                    className="px-2.5 py-1 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl text-[11px] font-bold transition-all shadow-sm flex items-center gap-1"
+                  >
+                    <span>🏥</span>
+                    <span>Book Nearest Lab (حجز المعمل)</span>
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {labOrders.map((lo, idx) => {
+                    const partner = PARTNER_LABS.find(p => p.id === lo.preferred_lab) || PARTNER_LABS[0]
+                    return (
+                      <div key={idx} className="p-3 bg-cyan-50/50 dark:bg-cyan-950/20 rounded-2xl border border-cyan-200/60 dark:border-cyan-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-xs sm:text-sm text-gray-900 dark:text-white">{lo.test_name}</span>
+                            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-cyan-100 dark:bg-cyan-900/60 text-cyan-800 dark:text-cyan-300 uppercase">
+                              {lo.category}
+                            </span>
+                            {lo.priority === 'urgent' && (
+                              <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300 uppercase animate-pulse">
+                                🚨 Urgent
+                              </span>
+                            )}
+                          </div>
+                          {lo.instructions && (
+                            <p className="text-xs text-gray-600 dark:text-gray-300 mt-1" dir="auto">
+                              <span className="font-bold text-gray-400">Preparation: </span>{lo.instructions}
+                            </p>
+                          )}
+                          <p className="text-[10px] text-cyan-700 dark:text-cyan-400 mt-0.5">
+                            Recommended: <strong>{partner.nameEn}</strong> (Hotline: {partner.hotline})
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedLabOrder(lo)}
+                          className="px-3 py-1.5 bg-gradient-to-r from-cyan-600 to-teal-600 hover:brightness-110 text-white rounded-xl text-xs font-bold transition-all shrink-0 text-center"
+                        >
+                          Book via WhatsApp
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Footer */}
             <div className="mt-auto border-t border-gray-100 pt-5 text-center">
               <p className="text-[8px] font-bold uppercase tracking-widest text-gray-400">MediLab Clinic Management System</p>
@@ -369,6 +497,14 @@ export default function PrescriptionViewerModal({
           patientName={patientName}
           onClose={() => setShowPharmacyModal(false)}
           onDownloadPdf={handleDownloadPdf}
+        />
+      )}
+
+      {selectedLabOrder && (
+        <LabRadiologyModal
+          order={selectedLabOrder}
+          patientName={patientName}
+          onClose={() => setSelectedLabOrder(null)}
         />
       )}
     </div>

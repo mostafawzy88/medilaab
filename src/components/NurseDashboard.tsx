@@ -228,8 +228,13 @@ export default function NurseDashboard({
               <span>➕</span>
               <span>{locale === 'ar' ? 'إضافة مريض / حجز موعد جديد' : '+ Add Patient / New Visit'}</span>
             </button>
-            <div className="text-sm font-bold text-gray-500 bg-white dark:bg-gray-800 px-4 py-1.5 rounded-full border border-gray-200 dark:border-gray-700">
-              {queue.length} {locale === 'ar' ? 'اليوم' : 'Active Today'}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs font-black text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-1.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                {queue.filter(a => a.status !== 'completed' && a.status !== 'cancelled').length} {locale === 'ar' ? 'بالانتظار' : 'Waiting'}
+              </span>
+              <span className="text-xs font-bold text-gray-500 bg-gray-100 dark:bg-gray-800 px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-700">
+                {queue.filter(a => a.status === 'completed').length} {locale === 'ar' ? 'مكتمل' : 'Completed'}
+              </span>
             </div>
           </div>
         </div>
@@ -265,16 +270,26 @@ export default function NurseDashboard({
                     const prioritizedQueue = [...queue].sort((a, b) => {
                       if (a.status === 'in_progress' && b.status !== 'in_progress') return -1;
                       if (b.status === 'in_progress' && a.status !== 'in_progress') return 1;
-                      return 0;
+                      const aClosed = a.status === 'completed' || a.status === 'cancelled';
+                      const bClosed = b.status === 'completed' || b.status === 'cancelled';
+                      if (!aClosed && bClosed) return -1;
+                      if (aClosed && !bClosed) return 1;
+                      return (a.queue_position || 999) - (b.queue_position || 999);
                     });
                     return prioritizedQueue.map((apt) => {
                       const isInProgress = apt.status === 'in_progress';
+                      const isCompleted = apt.status === 'completed';
+                      const isCancelled = apt.status === 'cancelled';
+                      const isClosed = isCompleted || isCancelled;
+
                       return (
                       <tr
                         key={apt.id}
                         className={`transition-all ${
                           isInProgress
                             ? 'bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-transparent dark:from-emerald-950/60 dark:via-teal-950/40 dark:to-transparent border-l-4 border-l-emerald-500 shadow-md ring-1 ring-emerald-500/30'
+                            : isClosed
+                            ? 'opacity-40 grayscale-[35%] bg-slate-50/50 dark:bg-slate-900/30 border-l-4 border-l-slate-400 dark:border-l-slate-700 hover:opacity-75 transition-opacity'
                             : 'hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors group border-l-4 border-l-transparent'
                         }`}
                       >
@@ -285,6 +300,8 @@ export default function NurseDashboard({
                             className={`px-2.5 py-1 rounded-lg font-black text-xs border flex items-center gap-1 transition-all hover:scale-105 ${
                               isInProgress
                                 ? 'bg-emerald-500 text-white border-emerald-400 shadow-sm animate-pulse'
+                                : isClosed
+                                ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-700'
                                 : 'bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800'
                             }`}
                             title={locale === 'ar' ? 'تعديل رقم الدور أو العلامات الحيوية' : 'Edit Queue # & Triage Vitals'}
@@ -337,13 +354,23 @@ export default function NurseDashboard({
                               )}
                             </div>
 
-                            {/* Arrived status */}
-                            {apt.notes?.includes('[ARRIVED:') && (
+                            {/* Arrived vs Completed Status */}
+                            {isCompleted ? (
+                              <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 flex items-center gap-1 mt-0.5">
+                                <span className="text-emerald-500 font-black">✓</span>
+                                <span>{locale === 'ar' ? 'انتهى الكشف وغادر العيادة' : 'Consultation Finished & Left'}</span>
+                              </span>
+                            ) : isCancelled ? (
+                              <span className="text-[10px] font-bold text-rose-400 flex items-center gap-1 mt-0.5">
+                                <span>✕</span>
+                                <span>{locale === 'ar' ? 'ملغي / غادر الطابور' : 'Cancelled / Left Queue'}</span>
+                              </span>
+                            ) : apt.notes?.includes('[ARRIVED:') ? (
                               <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mt-0.5">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                {locale === 'ar' ? 'في غرفة الانتظار' : 'In Waiting Room'}
+                                <span>{locale === 'ar' ? 'في غرفة الانتظار' : 'In Waiting Room'}</span>
                               </span>
-                            )}
+                            ) : null}
 
                             {/* Vitals summary if recorded */}
                             {(() => {
