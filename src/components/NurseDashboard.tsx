@@ -303,6 +303,14 @@ export default function NurseDashboard({
                               })()}
                             </div>
 
+                            {/* Scheduled appointment time in 12-hour AM/PM */}
+                            <div className="text-xs text-gray-400 font-medium mt-0.5 flex items-center gap-1.5">
+                              <span>🕒 {new Date(apt.scheduled_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}</span>
+                              {apt.appointment_type && (
+                                <span className="capitalize">• {apt.appointment_type.replace(/_/g, ' ')}</span>
+                              )}
+                            </div>
+
                             {/* Arrived status */}
                             {apt.notes?.includes('[ARRIVED:') && (
                               <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mt-0.5">

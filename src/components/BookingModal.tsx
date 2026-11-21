@@ -28,6 +28,13 @@ type BookingModalProps = {
 
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 
+function toLocalDateISOString(d: Date = new Date()): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 function format12Hour(timeStr?: string | null): string {
   if (!timeStr) return ''
   const [hStr, mStr] = timeStr.split(':')
@@ -35,7 +42,7 @@ function format12Hour(timeStr?: string | null): string {
   if (isNaN(h)) return timeStr
   const period = h >= 12 ? 'PM' : 'AM'
   const hour12 = h % 12 === 0 ? 12 : h % 12
-  return `${hour12}:${mStr || '00'} ${period}`
+  return `${hour12}:${(mStr || '00').padStart(2, '0')} ${period}`
 }
 
 export default function BookingModal({ onClose, onSuccess, initialDoctor, editAppointmentId, isStaff }: BookingModalProps) {
@@ -44,7 +51,7 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
   const [step, setStep] = useState(isStaff && !editAppointmentId ? 0 : 1)
   const [doctors, setDoctors] = useState<Doctor[]>([])
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>('')
-  const [selectedDate, setSelectedDate] = useState<string>('')
+  const [selectedDate, setSelectedDate] = useState<string>(toLocalDateISOString())
   const [selectedTime, setSelectedTime] = useState<string>('')
   const [appointmentType, setAppointmentType] = useState<'clinic_normal' | 'clinic_urgent' | 'home_visit'>('clinic_normal')
   const [isFollowUp, setIsFollowUp] = useState<boolean>(false)
@@ -60,6 +67,15 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
   const [customMemberName, setCustomMemberName] = useState<string>('')
   const [customMemberRel, setCustomMemberRel] = useState<string>('Son')
   const [patientNotes, setPatientNotes] = useState<string>('')
+  const [liveDoctorInfo, setLiveDoctorInfo] = useState<{
+    status: 'available' | 'busy' | 'unavailable'
+    queueCount: number
+    isInConsultation: boolean
+  }>({
+    status: 'available',
+    queueCount: 0,
+    isInConsultation: false,
+  })
 
   // Staff-specific state
   const [patientSearch, setPatientSearch] = useState('')
@@ -74,7 +90,7 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
       const supabase = createClient()
       const { data } = await supabase
         .from('profiles')
-        .select('id, full_name, specialization, instapay_address, fees_normal, fees_urgent, fees_home_visit, auto_confirm_appointments, working_hours')
+        .select('id, full_name, specialization, instapay_address, fees_normal, fees_urgent, fees_home_visit, auto_confirm_appointments, working_hours, availability_status')
         .eq('role', 'doctor')
         .eq('is_authorized', true)
       
@@ -90,6 +106,44 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
     }
     fetchDoctors()
   }, [initialDoctor?.id, isStaff, editAppointmentId])
+
+  // Fetch live doctor status and queue before booking
+  useEffect(() => {
+    if (!selectedDoctorId) return
+    const fetchLiveInfo = async () => {
+      const supabase = createClient()
+      const { data: docProfile } = await supabase
+        .from('profiles')
+        .select('availability_status')
+        .eq('id', selectedDoctorId)
+        .single()
+
+      const startOfToday = new Date()
+      startOfToday.setHours(0, 0, 0, 0)
+      const endOfToday = new Date()
+      endOfToday.setHours(23, 59, 59, 999)
+
+      const { data: queueData } = await supabase
+        .from('appointments')
+        .select('id, status')
+        .eq('doctor_id', selectedDoctorId)
+        .neq('appointment_type', 'home_visit')
+        .in('status', ['scheduled', 'in_progress'])
+        .gte('scheduled_time', startOfToday.toISOString())
+        .lte('scheduled_time', endOfToday.toISOString())
+
+      const inConsultation = (queueData || []).some(a => a.status === 'in_progress')
+      const count = (queueData || []).filter(a => a.status === 'scheduled').length
+      const docStatus = (docProfile?.availability_status as any) || (inConsultation ? 'busy' : 'available')
+
+      setLiveDoctorInfo({
+        status: docStatus,
+        queueCount: count,
+        isInConsultation: inConsultation,
+      })
+    }
+    fetchLiveInfo()
+  }, [selectedDoctorId])
 
   // Fetch family members for the patient
   useEffect(() => {
@@ -243,47 +297,52 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
     if (appointmentType === 'home_visit') currentFee = selectedDoctor.fees_home_visit || 1000
   }
 
-  // Generate next 30 days
+  // Generate next 30 days using local timezone
   const getNext30Days = () => {
     const days = []
     for (let i = 0; i < 30; i++) {
       const d = new Date()
       d.setDate(d.getDate() + i)
+      const val = toLocalDateISOString(d)
       days.push({
         dateObj: d,
-        value: d.toISOString().split('T')[0],
-        dayName: i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'short' }),
+        value: val,
+        dayName: i === 0 ? (locale === 'ar' ? 'اليوم' : 'Today') : i === 1 ? (locale === 'ar' ? 'غداً' : 'Tomorrow') : d.toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US', { weekday: 'short' }),
         dayNum: d.getDate(),
-        month: d.toLocaleDateString('en-US', { month: 'short' })
+        month: d.toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US', { month: 'short' })
       })
     }
     return days
   }
 
-  // Generate 30-min slots based on doctor's working hours
+  // Generate 15-min slots based on doctor's working hours
   const getAvailableTimeSlots = () => {
     if (!selectedDoctor || !selectedDate) return []
-    const dateObj = new Date(selectedDate)
+    const [y, mon, d] = selectedDate.split('-').map(Number)
+    const dateObj = new Date(y, (mon || 1) - 1, d || 1)
     const dayKey = DAYS[dateObj.getDay()]
     const hours = typeof selectedDoctor.working_hours === 'string' ? JSON.parse(selectedDoctor.working_hours) : (selectedDoctor.working_hours || {})
     const dayHours = hours[dayKey]
     
     if (!dayHours || dayHours === 'Closed') return []
 
-    const [start, end] = dayHours.split('-')
+    const [start, end] = dayHours.split('-').map((s: string) => s.trim())
     if (!start || !end) return []
 
     const slots = []
-    let [h, m] = start.split(':').map(Number)
-    const [eh, em] = end.split(':').map(Number)
+    let [h, m] = start.split(':').map((v: string) => parseInt(v.trim(), 10) || 0)
+    const [eh, em] = end.split(':').map((v: string) => parseInt(v.trim(), 10) || 0)
+
+    const now = new Date()
+    const todayStr = toLocalDateISOString(now)
+    const isToday = selectedDate === todayStr
 
     while (h < eh || (h === eh && m < em)) {
       const timeStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`
       
       // Skip past times if today
-      const now = new Date()
-      const isToday = selectedDate === now.toISOString().split('T')[0]
-      const isPast = isToday && (h < now.getHours() || (h === now.getHours() && m <= now.getMinutes()))
+      // e.g. at 6:14 AM: 6:00 is past (0 < 14), 6:15 is NOT past (15 < 14 is false)!
+      const isPast = isToday && (h < now.getHours() || (h === now.getHours() && m < now.getMinutes()))
 
       if (!isPast) {
         slots.push({
@@ -292,10 +351,10 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
         })
       }
 
-      m += 30
+      m += 15
       if (m >= 60) {
-        h++
-        m -= 60
+        h += Math.floor(m / 60)
+        m = m % 60
       }
     }
     return slots
@@ -339,8 +398,8 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
 
     // Construct full DateTime
     const [h, m] = selectedTime.split(':').map(Number)
-    const finalDate = new Date(selectedDate)
-    finalDate.setHours(h, m, 0, 0)
+    const [year, month, day] = selectedDate.split('-').map(Number)
+    const finalDate = new Date(year, (month || 1) - 1, day || 1, h, m, 0, 0)
     
     const autoConfirm = selectedDoctor.auto_confirm_appointments === true
     let newStatus = autoConfirm ? 'scheduled' : 'waiting'
@@ -349,13 +408,48 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
       newStatus = 'proposed'
     }
 
+    // Handle Family Member: Auto-save new dependent to patient_family_members table!
+    let finalFamilyMemberId = selectedFamilyMemberId || null
     let famMemberName: string | null = null
+
     if (bookingFor === 'family') {
       if (selectedFamilyMemberId) {
         const fam = familyMembers.find(f => f.id === selectedFamilyMemberId)
         famMemberName = fam ? `${fam.full_name} (${fam.relationship})` : null
       } else if (customMemberName.trim()) {
-        famMemberName = `${customMemberName.trim()} (${customMemberRel})`
+        const memberFullName = customMemberName.trim()
+        const memberRel = customMemberRel || 'Other'
+        famMemberName = `${memberFullName} (${memberRel})`
+
+        const targetUid = targetPatientId || user.id
+        if (targetUid) {
+          // Check if this member is already in patient_family_members
+          const { data: existingFam } = await supabase
+            .from('patient_family_members')
+            .select('id, full_name, relationship')
+            .eq('patient_id', targetUid)
+            .ilike('full_name', memberFullName)
+            .maybeSingle()
+
+          if (existingFam) {
+            finalFamilyMemberId = existingFam.id
+          } else {
+            const { data: newFam, error: famErr } = await supabase
+              .from('patient_family_members')
+              .insert({
+                patient_id: targetUid,
+                full_name: memberFullName,
+                relationship: memberRel
+              })
+              .select('id, full_name, relationship')
+              .single()
+
+            if (!famErr && newFam) {
+              finalFamilyMemberId = newFam.id
+              setFamilyMembers(prev => [newFam, ...prev])
+            }
+          }
+        }
       }
     }
 
@@ -383,7 +477,7 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
         fees: currentFee,
         status: newStatus,
         notes: combinedNotes || null,
-        family_member_id: selectedFamilyMemberId || null,
+        family_member_id: finalFamilyMemberId,
         family_member_name: famMemberName
       }
       let { error: updateError } = await supabase.from('appointments').update(updatePayload).eq('id', editAppointmentId)
@@ -400,10 +494,8 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
       let nextPosition = 0
 
       if (!isHomeVisit) {
-        const dayStart = new Date(selectedDate)
-        dayStart.setHours(0, 0, 0, 0)
-        const dayEnd = new Date(selectedDate)
-        dayEnd.setHours(23, 59, 59, 999)
+        const dayStart = new Date(year, (month || 1) - 1, day || 1, 0, 0, 0, 0)
+        const dayEnd = new Date(year, (month || 1) - 1, day || 1, 23, 59, 59, 999)
 
         const { data: existingAppts } = await supabase
           .from('appointments')
@@ -429,7 +521,7 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
         status: newStatus,
         payment_status: isFollowUp ? 'paid' : (paymentChoice === 'prepay' ? 'pending' : 'pending'),
         notes: combinedNotes || null,
-        family_member_id: selectedFamilyMemberId || null,
+        family_member_id: finalFamilyMemberId,
         family_member_name: famMemberName
       }
 
@@ -817,6 +909,67 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
               {step === 2 && (
                 <div className="space-y-6 animate-in slide-in-from-right-4">
                   
+                  {/* Live Doctor Status & Estimated Wait Time (Before Booking) */}
+                  {selectedDoctor && (
+                    <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-500/10 via-teal-500/10 to-transparent border border-blue-200/60 dark:border-blue-800/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <div className="w-11 h-11 rounded-2xl bg-white dark:bg-gray-800 shadow-sm border border-blue-100 dark:border-blue-900/50 flex items-center justify-center text-xl shrink-0">
+                          🩺
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-black text-sm text-gray-900 dark:text-white">
+                              Dr. {selectedDoctor.full_name}
+                            </span>
+                            {/* Live Status Pill */}
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black flex items-center gap-1.5 ${
+                              liveDoctorInfo.status === 'available'
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                                : liveDoctorInfo.status === 'busy'
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
+                                  : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 dark:border-rose-800'
+                            }`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${
+                                liveDoctorInfo.status === 'available' ? 'bg-emerald-500 animate-pulse' : liveDoctorInfo.status === 'busy' ? 'bg-amber-500 animate-pulse' : 'bg-rose-500'
+                              }`} />
+                              <span>
+                                {liveDoctorInfo.status === 'available'
+                                  ? (locale === 'ar' ? 'متاح وجاهز الآن' : 'Free & Ready Now')
+                                  : liveDoctorInfo.status === 'busy'
+                                    ? (locale === 'ar' ? 'مع مريض حالياً' : 'In Consultation')
+                                    : (locale === 'ar' ? 'استراحة مؤقتة' : 'On Break')}
+                              </span>
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                            {selectedDoctor.specialization || 'Medical Specialist'} • 💰 {currentFee} EGP
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Live Wait Time Indicator */}
+                      <div className="flex items-center gap-2.5 bg-white/90 dark:bg-gray-800/90 px-3.5 py-2 rounded-xl border border-blue-100 dark:border-blue-900/40 text-xs shadow-sm">
+                        <span className="text-lg">⏱️</span>
+                        <div>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase leading-none">
+                            {locale === 'ar' ? 'وقت الانتظار المتوقع' : 'Estimated Wait Time'}
+                          </p>
+                          <p className="text-xs font-black text-blue-600 dark:text-blue-400 mt-0.5">
+                            {selectedDate === toLocalDateISOString() ? (
+                              liveDoctorInfo.status === 'available' && liveDoctorInfo.queueCount === 0 && !liveDoctorInfo.isInConsultation
+                                ? (locale === 'ar' ? '⚡ فوري (~0 دقيقة) - الطبيب متاح' : '⚡ Immediate (~0 mins) - Dr. Free Now')
+                                : (locale === 'ar' 
+                                    ? `~${Math.max(15, (liveDoctorInfo.queueCount + (liveDoctorInfo.isInConsultation ? 1 : 0)) * 15)} دقيقة (${liveDoctorInfo.queueCount + (liveDoctorInfo.isInConsultation ? 1 : 0)} في الانتظار)`
+                                    : `~${Math.max(15, (liveDoctorInfo.queueCount + (liveDoctorInfo.isInConsultation ? 1 : 0)) * 15)} mins (${liveDoctorInfo.queueCount + (liveDoctorInfo.isInConsultation ? 1 : 0)} ahead)`)
+                            ) : (
+                              locale === 'ar' ? 'موعد مجدول بالوقت المحدد' : 'Scheduled turn at chosen time'
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
                   {/* Horizontal Date Picker */}
                   <div className="space-y-3">
                     <div className="flex justify-between items-center">
@@ -845,7 +998,9 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
                   {selectedDate && (
                     <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
                        <div className="flex justify-between items-center border-t border-gray-100 dark:border-gray-800 pt-6">
-                        <label className="text-xs font-black uppercase tracking-widest text-gray-500">Available Time Slots</label>
+                        <label className="text-xs font-black uppercase tracking-widest text-gray-500">
+                          {locale === 'ar' ? 'المواعيد المتاحة (فترات كل 15 دقيقة)' : 'Available Time Slots (15-min intervals)'}
+                        </label>
                       </div>
                       
                       {loadingSlots ? (
@@ -858,14 +1013,14 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
                              <p className="text-xs text-gray-500 mt-1">Please select another day</p>
                            </div>
                         ) : (
-                          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
                             {timeSlots.map(slot => (
                               <button
                                 key={slot.time}
                                 disabled={slot.isBooked}
                                 onClick={() => setSelectedTime(slot.time)}
                                 className={`
-                                  py-3 px-2 rounded-xl border-2 font-black transition-all text-sm
+                                  py-2.5 px-2 rounded-xl border-2 font-black transition-all text-xs
                                   ${slot.isBooked 
                                       ? 'border-gray-100 bg-gray-50 text-gray-300 dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-700 cursor-not-allowed' 
                                       : selectedTime === slot.time 

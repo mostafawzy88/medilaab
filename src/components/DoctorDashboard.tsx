@@ -848,7 +848,7 @@ export default function DoctorDashboard({
                         })()}
 
                         <div className="flex flex-wrap gap-3 mt-2 text-sm text-gray-500 ml-10 items-center">
-                          <span>📅 {new Date(apt.scheduled_time).toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                          <span>📅 {new Date(apt.scheduled_time).toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at {new Date(apt.scheduled_time).toLocaleTimeString(locale === 'ar' ? 'ar-EG' : 'en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}</span>
                           {((apt.notes || '').includes('[FREE_FOLLOW_UP]') || Number(apt.fees) === 0) ? (
                             <span className="font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-300 dark:border-emerald-800 text-xs flex items-center gap-1">
                               <span>🔄</span> {locale === 'ar' ? 'استشارة مجانية (0 ج.م)' : 'Free Follow-up (0 EGP)'}

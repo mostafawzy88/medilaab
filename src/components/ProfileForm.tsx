@@ -730,13 +730,32 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
                         </button>
                         <span className="text-xs text-gray-500 w-12">{isClosed ? 'Closed' : 'Open'}</span>
                         {!isClosed && (
-                          <input
-                            type="text"
-                            value={val}
-                            onChange={e => setDayHours(key, e.target.value)}
-                            placeholder="09:00-17:00"
-                            className="flex-1 bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none ring-2 ring-transparent focus:ring-blue-500 font-mono"
-                          />
+                          <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-2">
+                            <input
+                              type="text"
+                              value={val}
+                              onChange={e => setDayHours(key, e.target.value)}
+                              placeholder="09:00-17:00"
+                              className="w-36 bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none ring-2 ring-transparent focus:ring-blue-500 font-mono"
+                            />
+                            {(() => {
+                              if (!val || val === 'Closed' || !val.includes('-')) return null
+                              const [s, e] = val.split('-').map((str: string) => str.trim())
+                              const f = (t: string) => {
+                                if (!t) return ''
+                                const [h, m] = t.split(':').map(Number)
+                                if (isNaN(h)) return t
+                                const p = h >= 12 ? 'PM' : 'AM'
+                                const h12 = h % 12 === 0 ? 12 : h % 12
+                                return `${h12}:${(m || 0).toString().padStart(2, '0')} ${p}`
+                              }
+                              return (
+                                <span className="text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1 rounded-md border border-blue-200 dark:border-blue-800/40 w-max">
+                                  🕒 {f(s)} – {f(e)}
+                                </span>
+                              )
+                            })()}
+                          </div>
                         )}
                       </div>
                     </div>

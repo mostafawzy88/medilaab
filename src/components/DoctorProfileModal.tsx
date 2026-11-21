@@ -74,6 +74,15 @@ export default function DoctorProfileModal({
   const [showReviewModal, setShowReviewModal] = useState(false)
   const [likingId, setLikingId] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
+  const [liveWaitInfo, setLiveWaitInfo] = useState<{
+    status: 'available' | 'busy' | 'unavailable'
+    queueCount: number
+    isInConsultation: boolean
+  }>({
+    status: 'available',
+    queueCount: 0,
+    isInConsultation: false,
+  })
 
   useEffect(() => {
     fetchDoctorStats()
@@ -156,6 +165,37 @@ export default function DoctorProfileModal({
         .order('created_at', { ascending: false })
 
       if (revData) setReviews(revData as any)
+
+      // 4. Fetch live waiting room queue count & live availability status
+      const startOfToday = new Date()
+      startOfToday.setHours(0, 0, 0, 0)
+      const endOfToday = new Date()
+      endOfToday.setHours(23, 59, 59, 999)
+
+      const { data: todayQueue } = await supabase
+        .from('appointments')
+        .select('id, status')
+        .eq('doctor_id', doctorId)
+        .neq('appointment_type', 'home_visit')
+        .in('status', ['scheduled', 'in_progress'])
+        .gte('scheduled_time', startOfToday.toISOString())
+        .lte('scheduled_time', endOfToday.toISOString())
+
+      const inConsultation = (todayQueue || []).some(a => a.status === 'in_progress')
+      const scheduledCount = (todayQueue || []).filter(a => a.status === 'scheduled').length
+
+      const { data: profDoc } = await supabase
+        .from('profiles')
+        .select('availability_status')
+        .eq('id', doctorId)
+        .single()
+
+      const liveDocStatus = (profDoc?.availability_status as any) || (inConsultation ? 'busy' : 'available')
+      setLiveWaitInfo({
+        status: liveDocStatus,
+        queueCount: scheduledCount,
+        isInConsultation: inConsultation,
+      })
     } catch (err) {
       console.error('Error fetching doctor stats:', err)
     }
@@ -228,6 +268,31 @@ export default function DoctorProfileModal({
               <p className="text-sm font-bold text-white/90 mt-0.5">
                 {profile?.specialization || 'Clinical Doctor'}
               </p>
+
+              {/* Live Status & Wait Time Indicator */}
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <span className={`px-2.5 py-0.5 rounded-full text-xs font-black flex items-center gap-1.5 shadow-sm ${
+                  liveWaitInfo.status === 'available'
+                    ? 'bg-emerald-400 text-emerald-950'
+                    : liveWaitInfo.status === 'busy'
+                      ? 'bg-amber-400 text-amber-950'
+                      : 'bg-rose-400 text-rose-950'
+                }`}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+                  <span>
+                    {liveWaitInfo.status === 'available' ? 'Free & Ready Now' : liveWaitInfo.status === 'busy' ? 'In Consultation' : 'On Break'}
+                  </span>
+                </span>
+
+                <span className="px-2.5 py-0.5 rounded-full bg-white/20 backdrop-blur-sm text-xs font-bold text-white flex items-center gap-1">
+                  <span>⏱️</span>
+                  <span>
+                    {liveWaitInfo.status === 'available' && liveWaitInfo.queueCount === 0 && !liveWaitInfo.isInConsultation
+                      ? 'Wait: ~0 mins (Immediate)'
+                      : `Wait: ~${Math.max(15, (liveWaitInfo.queueCount + (liveWaitInfo.isInConsultation ? 1 : 0)) * 15)} mins (${liveWaitInfo.queueCount + (liveWaitInfo.isInConsultation ? 1 : 0)} ahead)`}
+                  </span>
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -368,11 +433,25 @@ export default function DoctorProfileModal({
                     return DAYS_ORDER.map(dayKey => {
                       const timeStr = hours[dayKey] || 'Closed'
                       const isClosed = timeStr.toLowerCase().includes('closed')
+
+                      const format12Range = (str: string) => {
+                        if (!str || isClosed || !str.includes('-')) return str
+                        const [s, e] = str.split('-').map((v: string) => v.trim())
+                        const f = (t: string) => {
+                          const [h, m] = t.split(':').map(Number)
+                          if (isNaN(h)) return t
+                          const p = h >= 12 ? 'PM' : 'AM'
+                          const h12 = h % 12 === 0 ? 12 : h % 12
+                          return `${h12}:${(m || 0).toString().padStart(2, '0')} ${p}`
+                        }
+                        return `${f(s)} – ${f(e)}`
+                      }
+
                       return (
                         <div key={dayKey} className="flex justify-between items-center py-0.5">
                           <span className="font-bold text-gray-600 dark:text-gray-400">{DAYS_NAMES[dayKey]}:</span>
-                          <span className={`font-mono font-bold ${isClosed ? 'text-gray-400' : 'text-blue-600 dark:text-blue-400'}`}>
-                            {timeStr}
+                          <span className={`font-bold ${isClosed ? 'text-gray-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                            {format12Range(timeStr)}
                           </span>
                         </div>
                       )

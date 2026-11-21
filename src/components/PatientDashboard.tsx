@@ -1443,16 +1443,36 @@ export default function PatientDashboard({
                             </span>
                           </div>
                           <p className="font-bold text-gray-800 dark:text-gray-200">
-                            {new Date(upcomingAppt.scheduled_time!).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                            {new Date(upcomingAppt.scheduled_time!).toLocaleString(locale === 'ar' ? 'ar-EG' : 'en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
                           </p>
                           <p className="text-[11px] text-gray-500">
                             {locale === 'ar' ? 'سيتم تفعيل متابعة الطابور المباشر صباح يوم الكشف.' : 'Live queue tracking activates on the morning of your visit.'}
                           </p>
                         </div>
                       ) : (
-                        <div className="mb-5 p-3 rounded-2xl bg-gray-50 dark:bg-gray-800/40 border border-gray-100 dark:border-gray-800 text-xs flex items-center justify-between text-gray-500">
-                          <span>💰 {locale === 'ar' ? `الكشف: ${doc.fees_normal || 200} ج.م` : `Visit: ${doc.fees_normal || 200} EGP`}</span>
-                          <span>⏱️ {locale === 'ar' ? 'متوسط الكشف: 15 د' : '~15m per visit'}</span>
+                        <div className="mb-5 p-3 rounded-2xl bg-gradient-to-r from-blue-50/80 to-teal-50/80 dark:from-blue-950/30 dark:to-teal-950/30 border border-blue-100 dark:border-blue-900/40 text-xs flex items-center justify-between">
+                          <div>
+                            <span className="text-[10px] font-bold uppercase text-gray-400 block">
+                              {locale === 'ar' ? 'وقت الانتظار المتوقع الآن' : 'Clinic Wait Time Now'}
+                            </span>
+                            <span className="font-black text-blue-600 dark:text-blue-400 text-sm">
+                              {isUnavailable
+                                ? (locale === 'ar' ? '🔴 الطبيب باستراحة' : '🔴 On Break')
+                                : (liveStatus?.queue?.length || 0) === 0 && !isInConsultation
+                                  ? (locale === 'ar' ? '⚡ فوري (~0 دقيقة) - متاح' : '⚡ Immediate (~0 mins)')
+                                  : (locale === 'ar' 
+                                      ? `⏱️ ~${Math.max(15, (liveStatus?.queue?.length || 1) * 15)} دقيقة (${liveStatus?.queue?.length || 1} بالانتظار)` 
+                                      : `⏱️ ~${Math.max(15, (liveStatus?.queue?.length || 1) * 15)} mins (${liveStatus?.queue?.length || 1} in queue)`)}
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[10px] font-bold uppercase text-gray-400 block">
+                              {locale === 'ar' ? 'قيمة الكشف' : 'Consultation Fee'}
+                            </span>
+                            <span className="font-bold text-gray-800 dark:text-gray-200">
+                              {doc.fees_normal || 350} EGP
+                            </span>
+                          </div>
                         </div>
                       )}
                     </div>
