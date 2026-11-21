@@ -20,16 +20,16 @@ export default function Navbar({ fullName, role, avatarUrl }: { fullName: string
         <div className="flex items-center gap-6">
           <Link 
             href={`/${locale}/profile`}
-            className="flex items-center gap-3 px-4 py-2 rounded-full transition-all border border-gray-100 dark:border-[var(--color-ml-navy-light)] hover:bg-gray-50 dark:hover:bg-white/5"
+            className="flex items-center gap-3.5 px-3.5 py-1.5 rounded-full transition-all border border-gray-100 dark:border-[var(--color-ml-navy-light)] hover:bg-gray-50 dark:hover:bg-white/5 shadow-sm"
           >
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white flex items-center justify-center text-xs font-black shadow-sm overflow-hidden shrink-0">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white flex items-center justify-center text-base font-black shadow-md overflow-hidden shrink-0 border-2 border-white/20">
               {avatarUrl ? (
                 <img src={avatarUrl} alt={fullName} className="w-full h-full object-cover" />
               ) : (
                 fullName?.charAt(0)
               )}
             </div>
-            <span className="text-sm font-bold text-gray-700 dark:text-gray-300 hidden sm:inline">{fullName}</span>
+            <span className="text-sm font-bold text-gray-700 dark:text-gray-200 hidden sm:inline">{fullName}</span>
           </Link>
           <div className="h-6 w-px bg-gray-200 dark:bg-[var(--color-ml-navy-light)] hidden sm:block"></div>
           <div className="hidden sm:block">

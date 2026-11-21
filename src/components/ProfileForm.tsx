@@ -5,6 +5,7 @@ import { createClient } from '@/utils/supabase/client'
 import { useTranslations } from 'next-intl'
 import { formatWhatsAppNumber, isValidWhatsAppNumber, getWhatsAppLink } from '@/utils/whatsapp'
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
+import ImageCropModal from './ImageCropModal'
 
 type Profile = {
   id: string
@@ -61,6 +62,7 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
   const [addingCert, setAddingCert] = useState(false)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [detectingGps, setDetectingGps] = useState(false)
+  const [imageToCrop, setImageToCrop] = useState<string | null>(null)
 
   const handleDetectGps = () => {
     if (!navigator.geolocation) {
@@ -129,6 +131,7 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
       fees_urgent: profile.fees_urgent,
       fees_home_visit: profile.fees_home_visit,
       email: profile.email,
+      avatar_url: profile.avatar_url,
     }
 
     if (profile.role === 'doctor') {
@@ -200,20 +203,30 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
     setCertificates((prev: Certificate[]) => prev.filter(c => c.id !== certId))
   }
 
-  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
+    const reader = new FileReader()
+    reader.onload = () => {
+      setImageToCrop(reader.result as string)
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
+  const handleCropComplete = async (croppedBlob: Blob) => {
     setUploadingAvatar(true)
     const supabase = createClient()
-    
-    const fileExt = file.name.split('.').pop()
-    const fileName = `${profile.id}-${Math.random()}.${fileExt}`
+    const fileName = `${profile.id}-${Date.now()}.jpg`
     const filePath = `avatars/${fileName}`
 
     const { error: uploadError } = await supabase.storage
       .from('avatars')
-      .upload(filePath, file)
+      .upload(filePath, croppedBlob, {
+        contentType: 'image/jpeg',
+        upsert: true
+      })
 
     if (uploadError) {
       alert('Error uploading avatar: ' + uploadError.message)
@@ -233,8 +246,10 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
     if (updateError) {
       alert('Error updating profile: ' + updateError.message)
     } else {
-      setProfile({ ...profile, avatar_url: publicUrl } as any)
+      setProfile((prev: any) => ({ ...prev, avatar_url: publicUrl }))
     }
+
+    setImageToCrop(null)
     setUploadingAvatar(false)
   }
 
@@ -270,7 +285,7 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
               )}
             </div>
             <label className="absolute -bottom-2 -right-2 w-8 h-8 bg-white text-blue-600 rounded-full flex items-center justify-center shadow-lg cursor-pointer hover:scale-110 transition-transform">
-              <input type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} disabled={uploadingAvatar} />
+              <input type="file" className="hidden" accept="image/*" onChange={handleFileSelected} disabled={uploadingAvatar} />
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -798,6 +813,14 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
           {saving ? 'Saving...' : t('save')}
         </button>
       </form>
+
+      {imageToCrop && (
+        <ImageCropModal
+          imageSrc={imageToCrop}
+          onClose={() => setImageToCrop(null)}
+          onCropComplete={handleCropComplete}
+        />
+      )}
     </div>
   )
 }

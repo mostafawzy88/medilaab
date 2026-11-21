@@ -570,8 +570,29 @@ export default function DoctorDashboard({
                     <tr key={apt.id} className="hover:bg-gray-50/50">
                       <td className="p-4 font-black text-gray-400">Q{ticketNum}</td>
                       <td className="p-4">
-                        <div className="font-bold text-gray-900 dark:text-white">
-                          {apt.patient?.full_name || apt.manual_patient?.full_name}
+                        <div className="font-bold text-gray-900 dark:text-white flex items-center gap-2 flex-wrap">
+                          <span>{apt.patient?.full_name || apt.manual_patient?.full_name}</span>
+                          {/* Triage Priority Badge */}
+                          {(() => {
+                            const tri = apt.notes?.match(/\[TRIAGE:\s*([a-z]+)\]/i);
+                            if (!tri) return null;
+                            const prio = tri[1].toLowerCase();
+                            if (prio === 'emergency') {
+                              return (
+                                <span className="px-1.5 py-0.5 text-[10px] font-black rounded bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300 border border-red-300 animate-pulse">
+                                  🔴 {locale === 'ar' ? 'طوارئ' : 'Emergency'}
+                                </span>
+                              );
+                            }
+                            if (prio === 'urgent') {
+                              return (
+                                <span className="px-1.5 py-0.5 text-[10px] font-black rounded bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-300">
+                                  🟡 {locale === 'ar' ? 'عاجل' : 'Urgent'}
+                                </span>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                         {/* Family member tag */}
                         {(() => {
@@ -585,6 +606,28 @@ export default function DoctorDashboard({
                             <span className="inline-block mt-0.5 text-[10px] font-black px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
                               👨‍👩‍👧 {locale === 'ar' ? `لصالح: ${fam}` : `For: ${fam}`}
                             </span>
+                          );
+                        })()}
+
+                        {/* Vitals summary if recorded by nurse */}
+                        {(() => {
+                          const v = apt.notes?.match(/\[VITALS:\s*([^\]]+)\]/);
+                          if (!v) return null;
+                          return (
+                            <div className="mt-1 px-2 py-0.5 rounded-md bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800/40 text-[10px] font-semibold text-teal-800 dark:text-teal-200 inline-block">
+                              🩺 {locale === 'ar' ? 'العلامات الحيوية: ' : 'Vitals: '}{v[1]}
+                            </div>
+                          );
+                        })()}
+
+                        {/* Nurse clinical note if recorded */}
+                        {(() => {
+                          const nn = apt.notes?.match(/\[NURSE_NOTE:\s*([^\]]+)\]/);
+                          if (!nn) return null;
+                          return (
+                            <div className="mt-0.5 text-[10px] font-medium text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/30 px-2 py-0.5 rounded border border-purple-200 dark:border-purple-800/40">
+                              👩‍⚕️ {locale === 'ar' ? 'ملاحظة التمريض: ' : 'Nurse Note: '} {nn[1]}
+                            </div>
                           );
                         })()}
 

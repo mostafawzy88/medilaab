@@ -699,6 +699,27 @@ export default function DoctorOverview({
                           <p className="font-bold text-sm text-gray-900 dark:text-white">
                             {apt.patient?.full_name || apt.manual_patient?.full_name}
                           </p>
+                          {/* Triage Priority Badge */}
+                          {(() => {
+                            const tri = apt.notes?.match(/\[TRIAGE:\s*([a-z]+)\]/i);
+                            if (!tri) return null;
+                            const prio = tri[1].toLowerCase();
+                            if (prio === 'emergency') {
+                              return (
+                                <span className="px-1.5 py-0.5 text-[10px] font-black rounded bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300 border border-red-300 animate-pulse">
+                                  🔴 {locale === 'ar' ? 'طوارئ' : 'Emergency'}
+                                </span>
+                              );
+                            }
+                            if (prio === 'urgent') {
+                              return (
+                                <span className="px-1.5 py-0.5 text-[10px] font-black rounded bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-300">
+                                  🟡 {locale === 'ar' ? 'عاجل' : 'Urgent'}
+                                </span>
+                              );
+                            }
+                            return null;
+                          })()}
                           {isArrived && (
                             <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 flex items-center gap-1">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -706,6 +727,26 @@ export default function DoctorOverview({
                             </span>
                           )}
                         </div>
+                        {/* Vitals summary if recorded by nurse */}
+                        {(() => {
+                          const v = apt.notes?.match(/\[VITALS:\s*([^\]]+)\]/);
+                          if (!v) return null;
+                          return (
+                            <div className="mt-1 px-2 py-0.5 rounded-md bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800/40 text-[10px] font-semibold text-teal-800 dark:text-teal-200 inline-block">
+                              🩺 {locale === 'ar' ? 'العلامات الحيوية: ' : 'Vitals: '}{v[1]}
+                            </div>
+                          );
+                        })()}
+                        {/* Nurse clinical note if recorded */}
+                        {(() => {
+                          const nn = apt.notes?.match(/\[NURSE_NOTE:\s*([^\]]+)\]/);
+                          if (!nn) return null;
+                          return (
+                            <div className="mt-0.5 text-[10px] font-medium text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/30 px-2 py-0.5 rounded border border-purple-200 dark:border-purple-800/40">
+                              👩‍⚕️ {locale === 'ar' ? 'ملاحظة التمريض: ' : 'Nurse: '} {nn[1]}
+                            </div>
+                          );
+                        })()}
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                           <p className="text-xs text-gray-400">
                             🕒 {new Date(apt.scheduled_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })} • {(apt.appointment_type || 'clinic_normal').replace(/_/g, ' ')}

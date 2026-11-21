@@ -13,8 +13,15 @@ import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
 import SubscriptionRenewal from '@/components/SubscriptionRenewal';
 
-export default async function DashboardPage({ params }: { params: Promise<{ locale: string }> }) {
+export default async function DashboardPage({ 
+  params,
+  searchParams
+}: { 
+  params: Promise<{ locale: string }>,
+  searchParams?: Promise<{ tab?: string }>
+}) {
   const { locale } = await params;
+  const { tab } = (await searchParams) || {};
   const t = await getTranslations('Dashboard');
   const supabase = await createClient();
 
@@ -173,9 +180,38 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
   // Render variables
   let portalContent = null;
   let portalTitle = '';
+  let portalSubtitle = '';
 
   if (role === 'patient') {
-    portalTitle = t('role_patient');
+    if (tab === 'prescriptions') {
+      portalTitle = locale === 'ar' ? 'الوصفات الطبية والجرعات اليومية' : 'Prescriptions & Daily Medications';
+      portalSubtitle = locale === 'ar' 
+        ? 'جدول الأكواب اليومية الخمسة ومتابعة أدويتك وتعليمات الطبيب.'
+        : 'Your 5 daily dosage cups timeline and prescribed treatment plan.';
+    } else if (tab === 'family') {
+      portalTitle = locale === 'ar' ? 'أفراد العائلة' : 'Family Members';
+      portalSubtitle = locale === 'ar'
+        ? 'إدارة ملفات أفراد أسرتك وحجز الكشوفات ومتابعة علاجهم.'
+        : 'Manage your family members, book consultations, and keep their records organized.';
+    } else if (tab === 'doctors') {
+      portalTitle = locale === 'ar' ? 'أطبائي والبحث عن طبيب' : 'My Doctors & Specialists';
+      portalSubtitle = locale === 'ar'
+        ? 'تصفح نخبة الأطباء، مواعيد عملهم، وحجز كشوفات العيادة أو الزيارات المنزلية.'
+        : 'Browse your doctors, check clinic availability, and schedule visits.';
+    } else if (tab === 'history') {
+      portalTitle = locale === 'ar' ? 'سجل الزيارات والكشوفات' : 'Visit History';
+      portalSubtitle = locale === 'ar'
+        ? 'أرشيف كشوفاتك السابقة، تقارير الأطباء، وتاريخ الدفعات.'
+        : 'Archive of past consultations, doctor notes, and payment records.';
+    } else if (tab === 'bookings') {
+      portalTitle = locale === 'ar' ? 'مواعيدي وحجوزاتي' : 'My Bookings';
+      portalSubtitle = locale === 'ar'
+        ? 'متابعة مواعيدك القادمة، حالة الدفع عبر InstaPay، وتأكيدات العيادة.'
+        : 'Track your upcoming visits, InstaPay payment status, and queue position.';
+    } else {
+      portalTitle = t('role_patient') || (locale === 'ar' ? 'بوابة المريض' : 'Patient Portal');
+      portalSubtitle = t('manage_patient') || (locale === 'ar' ? 'إدارة مواعيدك وكشوفاتك ودفعاتك بكل سهولة.' : 'Manage your appointments and payments seamlessly.');
+    }
     
     // Fetch ALL active/recent appointments for the patient (not just today)
     const { data: appointments } = await supabase
@@ -247,7 +283,34 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
 
     portalContent = <PatientDashboard initialAppointments={appointmentsList} initialDoctors={initialDoctors} />;
   } else if (role === 'doctor') {
-    portalTitle = t('role_doctor');
+    if (tab === 'queue') {
+      portalTitle = locale === 'ar' ? 'طابور انتظار العيادة' : "Clinic Waiting Room Queue";
+      portalSubtitle = locale === 'ar' ? 'مناداة المرضى، متابعة العلامات الحيوية، وحالة الغرفة.' : 'Call next patients, monitor triage vitals, and manage consultation flow.';
+    } else if (tab === 'schedule') {
+      portalTitle = locale === 'ar' ? 'جدول المواعيد والزيارات' : "Clinic & Home Schedule";
+      portalSubtitle = locale === 'ar' ? 'تنظيم كشوفات العيادة والزيارات المنزلية الخارجية.' : 'Organize clinic time slots, house calls, and calendar availability.';
+    } else if (tab === 'requests') {
+      portalTitle = locale === 'ar' ? 'طلبات الحجز الجديدة' : "Booking Requests";
+      portalSubtitle = locale === 'ar' ? 'مراجعة طلبات المرضى، الموافقة عليها أو اقتراح مواعيد بديلة.' : 'Review new appointments, approve, or propose alternative times.';
+    } else if (tab === 'staff') {
+      portalTitle = locale === 'ar' ? 'طاقم تمريض العيادة' : "Clinic Nursing Staff";
+      portalSubtitle = locale === 'ar' ? 'إدارة تصاريح التمريض وصلاحيات إدارة طابور العيادة.' : 'Authorize nurses to triage patients and coordinate waiting room flow.';
+    } else if (tab === 'patients') {
+      portalTitle = locale === 'ar' ? 'سجل المرضى والملفات الطبية' : "Patients Directory";
+      portalSubtitle = locale === 'ar' ? 'البحث عن ملفات المرضى وتاريخ كشوفاتهم وأدويتهم.' : 'Search patient history, clinical records, and past prescriptions.';
+    } else if (tab === 'history') {
+      portalTitle = locale === 'ar' ? 'أرشيف الزيارات السابقة' : "Consultation History";
+      portalSubtitle = locale === 'ar' ? 'سجل الكشوفات المكتملة وتقارير العيادة.' : 'Complete archive of finished visits and clinical notes.';
+    } else if (tab === 'stats') {
+      portalTitle = locale === 'ar' ? 'التقارير والإحصائيات المالية' : "Reports & Analytics";
+      portalSubtitle = locale === 'ar' ? 'إحصائيات الإيرادات، عدد الكشوفات، وأداء العيادة.' : 'Track earnings, visit volume, and operational clinic analytics.';
+    } else if (tab === 'meds') {
+      portalTitle = locale === 'ar' ? 'صيدلية العيادة وإدارة الأدوية' : "Medications & Formulary";
+      portalSubtitle = locale === 'ar' ? 'إدارة الأدوية الشائعة والجرعات للوصفات السريعة.' : 'Quick prescription templates, dosages, and patient medications.';
+    } else {
+      portalTitle = t('role_doctor') || (locale === 'ar' ? 'لوحة تحكم الطبيب' : 'Doctor Dashboard');
+      portalSubtitle = t('manage_doctor') || (locale === 'ar' ? 'إدارة العيادة والمواعيد بكفاءة.' : 'Manage your clinic flow securely.');
+    }
     // Broaden the window to 12 hours ago to avoid midnight UTC issues
     const startOfWindow = new Date();
     startOfWindow.setHours(startOfWindow.getHours() - 12);
@@ -278,9 +341,6 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
 
     portalContent = <DoctorDashboard doctorId={user.id} initialQueue={(queue as any) || []} initialRequests={(pendingRequests as any) || []} />;
   } else if (role === 'nurse') {
-    portalTitle = t('role_nurse');
-    const startOfWindow = new Date();
-    startOfWindow.setHours(startOfWindow.getHours() - 12);
     const supervisorId = profile.supervisor_id || profile.assigned_doctor_id;
 
     // Fetch supervising doctor details for header banner
@@ -289,6 +349,26 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
       .select('id, full_name, specialization, phone_number, clinic_location, avatar_url')
       .eq('id', supervisorId)
       .single();
+
+    if (tab === 'schedule') {
+      portalTitle = locale === 'ar' ? 'جدول مواعيد العيادة' : 'Clinic Schedule';
+      portalSubtitle = supervisorDoctor?.full_name 
+        ? (locale === 'ar' ? `جدول مواعيد عيادة د. ${supervisorDoctor.full_name}` : `Appointment schedule for Dr. ${supervisorDoctor.full_name}`)
+        : 'Manage daily clinic schedule';
+    } else if (tab === 'patients') {
+      portalTitle = locale === 'ar' ? 'سجل المرضى والعلامات الحيوية' : 'Clinic Patients';
+      portalSubtitle = locale === 'ar' ? 'البحث في ملفات مرضى العيادة والفرز الطبي.' : 'Patient directory, past visits, and triage records.';
+    } else {
+      portalTitle = supervisorDoctor?.full_name 
+        ? (locale === 'ar' ? `طابور عيادة د. ${supervisorDoctor.full_name}` : `Dr. ${supervisorDoctor.full_name}'s Clinic Queue`)
+        : (locale === 'ar' ? 'طابور العيادة والفرز' : 'Clinic Queue & Triage');
+      portalSubtitle = locale === 'ar'
+        ? 'تسجيل وصول المرضى، قياس العلامات الحيوية، وإدارة دور الانتظار.'
+        : 'Check in arrivals, record triage vitals, and coordinate queue order.';
+    }
+
+    const startOfWindow = new Date();
+    startOfWindow.setHours(startOfWindow.getHours() - 12);
 
     // STRICT DOCTOR ISOLATION: Nurse ONLY queries their supervising doctor's appointments
     const { data: queue } = await supabase
@@ -313,6 +393,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
     );
   } else {
     portalTitle = t('role_admin');
+    portalSubtitle = t('manage_admin') || 'Manage your clinic flow securely.';
     portalContent = <AdminDashboard />;
   }
 
@@ -329,7 +410,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
           {/* Mobile Navigation Header */}
           <div className="lg:hidden w-full p-4 bg-[var(--color-cp-navy)] text-white rounded-[24px] shadow-lg mb-8 flex justify-between items-center">
              <Link href={`/${locale}/profile`} className="flex items-center gap-3 hover:opacity-80 transition-opacity" title="My Profile">
-               <div className="w-10 h-10 rounded-full bg-[var(--color-cp-purple)] flex items-center justify-center font-black overflow-hidden shrink-0">
+               <div className="w-12 h-12 rounded-full bg-[var(--color-cp-purple)] flex items-center justify-center font-black overflow-hidden shrink-0 border-2 border-white/20">
                  {profile.avatar_url ? (
                    <img src={profile.avatar_url} alt={fullName} className="w-full h-full object-cover" />
                  ) : (
@@ -347,9 +428,9 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
           <div className="mb-10">
             <h1 className="text-3xl font-black text-gray-900 dark:text-white mb-2">{portalTitle}</h1>
             <p className="text-gray-500 dark:text-gray-400">
-              {role === 'patient' 
+              {portalSubtitle || (role === 'patient' 
                 ? t('manage_patient') || 'Manage your appointments and payments seamlessly.' 
-                : t('manage_admin') || 'Manage your clinic flow securely.'}
+                : t('manage_admin') || 'Manage your clinic flow securely.')}
             </p>
           </div>
 

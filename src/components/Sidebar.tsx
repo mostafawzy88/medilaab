@@ -97,7 +97,7 @@ export default function Sidebar({ fullName, role, avatarUrl }: { fullName: strin
             className="flex items-center gap-3 px-4 py-3 bg-white/5 hover:bg-white/10 rounded-xl border border-[var(--color-ml-navy-light)] hover:border-blue-500/40 hover:scale-[1.02] transition-all group cursor-pointer"
             title="View & Edit Profile"
          >
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white flex items-center justify-center text-xs font-black shadow-sm group-hover:scale-105 transition-transform overflow-hidden shrink-0">
+            <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white flex items-center justify-center text-sm font-black shadow-sm group-hover:scale-105 transition-transform overflow-hidden shrink-0 border border-white/20">
               {avatarUrl ? (
                 <img src={avatarUrl} alt={fullName} className="w-full h-full object-cover" />
               ) : (
