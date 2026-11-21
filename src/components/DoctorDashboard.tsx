@@ -12,6 +12,8 @@ import PatientsTab from './PatientsTab'
 import DoctorAnalytics from './DoctorAnalytics'
 import DoctorHistoryTab from './DoctorHistoryTab'
 import DoctorStaffTab from './DoctorStaffTab'
+import QueueRemovalModal from './QueueRemovalModal'
+import MedicationManagerModal from './MedicationManagerModal'
 import { getWhatsAppLink } from '@/utils/whatsapp'
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
 
@@ -65,6 +67,13 @@ export default function DoctorDashboard({
   const [processing, setProcessing] = useState<string | null>(null)
   const [showBooking, setShowBooking] = useState(false)
   const [editingApt, setEditingApt] = useState<any>(null)
+  const [removingApt, setRemovingApt] = useState<Appointment | null>(null)
+  const [medsPatient, setMedsPatient] = useState<{
+    patientId: string | null
+    manualPatientId?: string | null
+    patientName: string
+    appointmentId?: string
+  } | null>(null)
   
   const searchParams = useSearchParams()
   const activeTab = searchParams.get('tab') || 'overview'
@@ -613,9 +622,35 @@ export default function DoctorDashboard({
                             </div>
                           );
                         })()}
+                        {(() => {
+                          const m = apt.notes?.match(/\[REMOVED_FROM_QUEUE:\s*([^\]]+)\]/);
+                          if (!m) return null;
+                          return (
+                            <div className="mt-1 p-1 rounded-md bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 text-[10px] font-bold text-rose-700 dark:text-rose-300 flex items-center gap-1">
+                              <span>🏃</span>
+                              <span>{locale === 'ar' ? 'غادر العيادة:' : 'Left Queue:'} {m[1]}</span>
+                            </div>
+                          );
+                        })()}
                       </td>
-                      <td className="p-4 text-xs font-bold capitalize text-blue-600 dark:text-blue-400">
-                        {(apt.appointment_type || 'clinic_normal').replace(/_/g, ' ')}
+                      <td className="p-4">
+                        {((apt.notes || '').includes('[FREE_FOLLOW_UP]') || Number(apt.fees) === 0) ? (
+                          <div className="flex flex-col gap-0.5 items-start">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                              <span>🔄</span>
+                              <span>{locale === 'ar' ? 'استشارة مجانية (0 ج.م)' : 'Free Follow-up (0 EGP)'}</span>
+                            </span>
+                            <span className="text-[10px] text-gray-400 capitalize">{(apt.appointment_type || 'clinic_normal').replace(/_/g, ' ')}</span>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-0.5 items-start">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                              <span>🏷️</span>
+                              <span>{locale === 'ar' ? `كشف مدفوع (${apt.fees || 200} ج.م)` : `Paid Visit (${apt.fees || 200} EGP)`}</span>
+                            </span>
+                            <span className="text-[10px] text-gray-400 capitalize">{(apt.appointment_type || 'clinic_normal').replace(/_/g, ' ')}</span>
+                          </div>
+                        )}
                       </td>
                       <td className="p-4">
                         {isArrived ? (
@@ -655,6 +690,29 @@ export default function DoctorDashboard({
                               💰 {apt.payment_status === 'paid_by_patient' || !!apt.payment_reference ? 'Verify Paid' : 'Confirm Paid'}
                             </button>
                           )}
+
+                          {/* Meds Manager button */}
+                          <button
+                            onClick={() => setMedsPatient({
+                              patientId: apt.patient_id,
+                              manualPatientId: apt.manual_patient_id,
+                              patientName: apt.patient?.full_name || apt.manual_patient?.full_name || 'Patient',
+                              appointmentId: apt.id
+                            })}
+                            className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:text-indigo-300 font-bold px-2.5 py-1.5 rounded-lg text-xs transition-colors border border-indigo-200 dark:border-indigo-800"
+                            title="Manage active medications"
+                          >
+                            💊 {locale === 'ar' ? 'الأدوية' : 'Meds'}
+                          </button>
+
+                          {/* Left Queue button */}
+                          <button
+                            onClick={() => setRemovingApt(apt)}
+                            className="bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300 font-bold px-2.5 py-1.5 rounded-lg text-xs transition-colors border border-rose-200 dark:border-rose-800"
+                            title="Patient left queue with note"
+                          >
+                            🏃 {locale === 'ar' ? 'غادر' : 'Left'}
+                          </button>
                           {apt.status === 'scheduled' ? (
                             <>
                               {apt.patient_id && (
@@ -746,10 +804,17 @@ export default function DoctorDashboard({
                           );
                         })()}
 
-                        <div className="flex flex-wrap gap-3 mt-2 text-sm text-gray-500 ml-10">
-                          <span>📅 {new Date(apt.scheduled_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
-                          <span className="capitalize">🏥 {(apt.appointment_type || 'clinic_normal').replace(/_/g, ' ')}</span>
-                          <span>💰 {apt.fees || 350} EGP</span>
+                        <div className="flex flex-wrap gap-3 mt-2 text-sm text-gray-500 ml-10 items-center">
+                          <span>📅 {new Date(apt.scheduled_time).toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                          {((apt.notes || '').includes('[FREE_FOLLOW_UP]') || Number(apt.fees) === 0) ? (
+                            <span className="font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-300 dark:border-emerald-800 text-xs flex items-center gap-1">
+                              <span>🔄</span> {locale === 'ar' ? 'استشارة مجانية (0 ج.م)' : 'Free Follow-up (0 EGP)'}
+                            </span>
+                          ) : (
+                            <span className="font-bold text-blue-600 dark:text-blue-400 text-xs flex items-center gap-1">
+                              <span>🏷️</span> {locale === 'ar' ? 'كشف مدفوع' : 'Paid Visit'} ({(apt.appointment_type || 'clinic_normal').replace(/_/g, ' ')}) • 💰 {apt.fees || 350} EGP
+                            </span>
+                          )}
                           {(() => {
                             const isClaimed = apt.payment_status === 'paid_by_patient' || !!apt.payment_reference || (apt.notes || '').includes('[PAID_BY_PATIENT');
                             return (
@@ -1005,6 +1070,39 @@ export default function DoctorDashboard({
           patientName={activePrescription.patient?.full_name || activePrescription.manual_patient?.full_name || 'Patient'}
           onClose={() => setActivePrescription(null)}
           onComplete={() => setActivePrescription(null)}
+        />
+      )}
+
+      {/* Modal: Patient Leaving Queue with Note */}
+      {removingApt && (
+        <QueueRemovalModal
+          appointmentId={removingApt.id}
+          patientName={removingApt.patient?.full_name || removingApt.manual_patient?.full_name || 'Patient'}
+          ticketNum={removingApt.queue_position}
+          currentNotes={removingApt.notes}
+          onClose={() => setRemovingApt(null)}
+          onSuccess={async () => {
+            setRemovingApt(null)
+            const supabase = createClient()
+            await refetchQueue(supabase)
+          }}
+        />
+      )}
+
+      {/* Modal: Add or Cancel/Modify Medications */}
+      {medsPatient && (
+        <MedicationManagerModal
+          patientId={medsPatient.patientId}
+          manualPatientId={medsPatient.manualPatientId}
+          patientName={medsPatient.patientName}
+          doctorId={doctorId}
+          appointmentId={medsPatient.appointmentId}
+          onClose={() => setMedsPatient(null)}
+          onUpdated={async () => {
+            setMedsPatient(null)
+            const supabase = createClient()
+            await refetchQueue(supabase)
+          }}
         />
       )}
     </div>

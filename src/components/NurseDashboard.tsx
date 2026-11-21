@@ -8,6 +8,8 @@ import PrescriptionViewerModal from './PrescriptionViewerModal'
 import ClinicSchedule from './ClinicSchedule'
 import BookingModal from './BookingModal'
 import PatientsTab from './PatientsTab'
+import QueueRemovalModal from './QueueRemovalModal'
+import MedicationManagerModal from './MedicationManagerModal'
 
   type Appointment = {
   id: string
@@ -18,6 +20,7 @@ import PatientsTab from './PatientsTab'
   status: 'scheduled' | 'waiting' | 'in_progress' | 'completed' | 'cancelled' | 'proposed'
   queue_position: number
   appointment_type?: string
+  fees?: number
   notes?: string | null
   patient: { full_name: string } | null
   manual_patient?: { full_name: string } | null
@@ -50,6 +53,21 @@ export default function NurseDashboard({
   const [activePatientName, setActivePatientName] = useState('')
   const [showBooking, setShowBooking] = useState(false)
   const [editingApt, setEditingApt] = useState<Appointment | null>(null)
+  const [removingApt, setRemovingApt] = useState<Appointment | null>(null)
+  const [medsPatient, setMedsPatient] = useState<{
+    patientId: string | null
+    manualPatientId?: string | null
+    patientName: string
+    appointmentId?: string
+  } | null>(null)
+
+  const handleMarkArrived = async (appointmentId: string, currentNotes?: string | null) => {
+    const supabase = createClient()
+    const arrivalTag = `[ARRIVED: ${new Date().toISOString()}]`
+    const updatedNotes = currentNotes ? `${currentNotes} ${arrivalTag}` : arrivalTag
+    await supabase.from('appointments').update({ notes: updatedNotes }).eq('id', appointmentId)
+    refetchQueue(supabase)
+  }
 
   // Realtime subscription strictly for the supervisor's appointments
   useEffect(() => {
@@ -231,20 +249,68 @@ export default function NurseDashboard({
                                 In Waiting Room
                               </span>
                             )}
+                            {(() => {
+                              const m = apt.notes?.match(/\[REMOVED_FROM_QUEUE:\s*([^\]]+)\]/);
+                              if (!m) return null;
+                              return (
+                                <div className="mt-1 p-1 rounded-md bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 text-[10px] font-bold text-rose-700 dark:text-rose-300">
+                                  🏃 {m[1]}
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
                       </td>
                       <td className="p-4">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
-                          ${apt.status === 'in_progress' ? 'bg-blue-100 text-blue-800' : 
-                            apt.status === 'completed' ? 'bg-green-100 text-green-800' :
-                            apt.status === 'scheduled' || apt.status === 'waiting' ? 'bg-yellow-100 text-yellow-800' : 
-                            'bg-gray-100 text-gray-800'}
-                        `}>
-                          {apt.status.replace('_', ' ')}
-                        </span>
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold capitalize
+                            ${apt.status === 'in_progress' ? 'bg-blue-100 text-blue-800' : 
+                              apt.status === 'completed' ? 'bg-green-100 text-green-800' :
+                              apt.status === 'scheduled' || apt.status === 'waiting' ? 'bg-yellow-100 text-yellow-800' : 
+                              'bg-gray-100 text-gray-800'}
+                          `}>
+                            {apt.status.replace('_', ' ')}
+                          </span>
+
+                          {(apt.notes?.includes('[FOLLOW_UP]') || Number(apt.fees) === 0) ? (
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                              🔄 {locale === 'ar' ? 'استشارة مجانية' : 'Free Follow-up'}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                              🏷️ {locale === 'ar' ? 'كشف مدفوع' : 'Paid Visit'}
+                            </span>
+                          )}
+                        </div>
                       </td>
-                      <td className="p-4 text-right space-x-2 space-x-reverse">
+                      <td className="p-4 text-right space-x-1.5 space-x-reverse">
+                        {/* Manage Medications button */}
+                        <button
+                          onClick={() => setMedsPatient({
+                            patientId: apt.patient_id,
+                            manualPatientId: apt.manual_patient_id,
+                            patientName: apt.patient?.full_name || apt.manual_patient?.full_name || 'Patient',
+                            appointmentId: apt.id
+                          })}
+                          className="inline-flex items-center gap-1 bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm"
+                          title="Manage Patient Medications"
+                        >
+                          <span>💊</span>
+                          <span>{locale === 'ar' ? 'الأدوية' : 'Meds'}</span>
+                        </button>
+
+                        {/* Remove from queue button if patient left or cancelled */}
+                        {apt.status !== 'completed' && apt.status !== 'cancelled' && (
+                          <button
+                            onClick={() => setRemovingApt(apt)}
+                            className="inline-flex items-center gap-1 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm"
+                            title="Patient left in a hurry or needs removal with note"
+                          >
+                            <span>🏃</span>
+                            <span>{locale === 'ar' ? 'غادر' : 'Left Queue'}</span>
+                          </button>
+                        )}
+
                         {apt.status === 'completed' ? (
                           <button 
                             onClick={() => handleViewPrescription(apt.id, apt.patient?.full_name || apt.manual_patient?.full_name || 'Patient')}
@@ -254,24 +320,34 @@ export default function NurseDashboard({
                             {t('view_prescription')}
                           </button>
                         ) : (apt.status === 'waiting' || apt.status === 'scheduled') ? (
-                          <div className="flex gap-2 justify-end">
+                          <div className="inline-flex gap-1.5 justify-end">
+                            {/* Mark Arrived in waiting room */}
+                            {!apt.notes?.includes('[ARRIVED:') && apt.status === 'scheduled' && (
+                              <button
+                                onClick={() => handleMarkArrived(apt.id, apt.notes)}
+                                className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all"
+                                title="Mark as arrived in waiting room"
+                              >
+                                ✓ {locale === 'ar' ? 'حضر' : 'Arrived'}
+                              </button>
+                            )}
                             {apt.status === 'waiting' && (
                               <button 
                                 onClick={() => handleApproveReschedule(apt.id)}
-                                className="bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-all hover:scale-105 active:scale-95"
+                                className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:scale-105 active:scale-95"
                               >
                                 Approve
                               </button>
                             )}
                             <button 
                               onClick={() => { setEditingApt(apt); setShowBooking(true); }}
-                              className="bg-blue-50 dark:bg-blue-900/30 text-blue-600 px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-blue-100 transition-all"
+                              className="bg-blue-50 dark:bg-blue-900/30 text-blue-600 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-100 transition-all"
                             >
                               Reschedule
                             </button>
                             <button 
                               onClick={() => handleReject(apt.id)}
-                              className="bg-gray-100 text-gray-500 px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-red-50 hover:text-red-600 transition-all"
+                              className="bg-gray-100 text-gray-500 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-50 hover:text-red-600 transition-all"
                             >
                               Reject
                             </button>
@@ -319,6 +395,39 @@ export default function NurseDashboard({
           initialDoctor={{ id: editingApt.doctor_id } as any}
           editAppointmentId={editingApt.id}
           isStaff={true}
+        />
+      )}
+
+      {/* Modal: Patient Leaving Queue with Note */}
+      {removingApt && (
+        <QueueRemovalModal
+          appointmentId={removingApt.id}
+          patientName={removingApt.patient?.full_name || removingApt.manual_patient?.full_name || 'Patient'}
+          ticketNum={removingApt.queue_position}
+          currentNotes={removingApt.notes}
+          onClose={() => setRemovingApt(null)}
+          onSuccess={async () => {
+            setRemovingApt(null)
+            const supabase = createClient()
+            await refetchQueue(supabase)
+          }}
+        />
+      )}
+
+      {/* Modal: Add or Cancel/Modify Medications */}
+      {medsPatient && (
+        <MedicationManagerModal
+          patientId={medsPatient.patientId}
+          manualPatientId={medsPatient.manualPatientId}
+          patientName={medsPatient.patientName}
+          doctorId={supervisorId || ''}
+          appointmentId={medsPatient.appointmentId}
+          onClose={() => setMedsPatient(null)}
+          onUpdated={async () => {
+            setMedsPatient(null)
+            const supabase = createClient()
+            await refetchQueue(supabase)
+          }}
         />
       )}
     </div>

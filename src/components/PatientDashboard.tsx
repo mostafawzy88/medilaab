@@ -10,6 +10,7 @@ import PrescriptionViewerModal from './PrescriptionViewerModal'
 import DoctorProfileModal from './DoctorProfileModal'
 import FamilyMembersTab from './FamilyMembersTab'
 import PatientHistoryTab from './PatientHistoryTab'
+import PrescriptionCupsTimeline from './PrescriptionCupsTimeline'
 import { getWhatsAppLink } from '@/utils/whatsapp'
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
 
@@ -30,6 +31,121 @@ type AppointmentProps = {
   notes?: string | null
   rejection_reason?: string | null
   reviewer_name?: string | null
+}
+
+export interface SmartSlotSuggestion {
+  isoString: string
+  displayString: string
+  shortTime: string
+  relativeDay: string
+  dayName: string
+  timeStr: string
+}
+
+export function getSmartSuggestedUpcomingDate(
+  originalScheduledTime?: string | null,
+  doctorWorkingHours?: any,
+  locale: string = 'en'
+): SmartSlotSuggestion {
+  const now = new Date()
+  let targetHour = 13 // Default 1:00 PM
+  let targetMinute = 0
+
+  if (originalScheduledTime) {
+    const orig = new Date(originalScheduledTime)
+    if (!isNaN(orig.getTime())) {
+      targetHour = orig.getHours()
+      targetMinute = orig.getMinutes()
+    }
+  }
+
+  // Parse working hours if available
+  let hoursMap: Record<string, string> | null = null
+  if (doctorWorkingHours) {
+    try {
+      hoursMap = typeof doctorWorkingHours === 'string' ? JSON.parse(doctorWorkingHours) : doctorWorkingHours
+    } catch {
+      hoursMap = null
+    }
+  }
+
+  const dayKeys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+  const dayNamesEn = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  const dayNamesAr = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
+
+  // Scan forward up to 14 days to find the earliest open slot
+  for (let offset = 0; offset <= 14; offset++) {
+    const candidate = new Date()
+    candidate.setDate(now.getDate() + offset)
+    candidate.setHours(targetHour, targetMinute, 0, 0)
+
+    // If today, ensure at least 45 minutes notice
+    if (offset === 0 && candidate.getTime() < now.getTime() + 45 * 60 * 1000) {
+      continue
+    }
+
+    const dayIdx = candidate.getDay()
+    const dayKey = dayKeys[dayIdx]
+
+    // Check if doctor is closed on this day
+    if (hoursMap && hoursMap[dayKey]) {
+      const val = String(hoursMap[dayKey]).toLowerCase().trim()
+      if (val === 'closed' || val === 'off' || val === 'مغلق') {
+        continue
+      }
+    }
+
+    const isToday = offset === 0
+    const isTomorrow = offset === 1
+    const timeStr = candidate.toLocaleTimeString(locale === 'ar' ? 'ar-EG' : 'en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    })
+    const shortTime = candidate.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    })
+    const dayName = locale === 'ar' ? dayNamesAr[dayIdx] : dayNamesEn[dayIdx]
+
+    const relativeDay = isToday
+      ? (locale === 'ar' ? 'اليوم' : 'Today')
+      : isTomorrow
+        ? (locale === 'ar' ? 'غداً' : 'Tomorrow')
+        : dayName
+
+    const dateFormatted = candidate.toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US', {
+      month: 'short',
+      day: 'numeric'
+    })
+
+    const displayString = locale === 'ar'
+      ? `${relativeDay}، ${dateFormatted} في تمام الساعة ${timeStr}`
+      : `${relativeDay}, ${dateFormatted} at ${timeStr}`
+
+    return {
+      isoString: candidate.toISOString(),
+      displayString,
+      shortTime: `${relativeDay} ${timeStr}`,
+      relativeDay,
+      dayName,
+      timeStr
+    }
+  }
+
+  // Fallback: tomorrow at targetHour
+  const fallback = new Date()
+  fallback.setDate(now.getDate() + 1)
+  fallback.setHours(targetHour, targetMinute, 0, 0)
+  return {
+    isoString: fallback.toISOString(),
+    displayString: locale === 'ar' ? 'غداً في 1:00 م' : 'Tomorrow at 1:00 PM',
+    shortTime: locale === 'ar' ? 'غداً 1:00 م' : 'Tomorrow 1:00 PM',
+    relativeDay: locale === 'ar' ? 'غداً' : 'Tomorrow',
+    dayName: locale === 'ar' ? 'غداً' : 'Tomorrow',
+    timeStr: '1:00 PM'
+  }
 }
 
 type DoctorInfo = {
@@ -426,6 +542,32 @@ export default function PatientDashboard({
     }
   }
 
+  const handleAcceptSmartProposal = async (apptId: string, newIsoString: string) => {
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('appointments')
+      .update({
+        scheduled_time: newIsoString,
+        status: 'scheduled'
+      })
+      .eq('id', apptId)
+
+    if (error) {
+      alert("Error updating appointment: " + error.message)
+      return
+    }
+
+    setAppointments(prev => prev.map(a => a.id === apptId ? {
+      ...a,
+      scheduled_time: newIsoString,
+      status: 'scheduled'
+    } : a))
+
+    alert(locale === 'ar'
+      ? '✨ تم تأكيد الموعد الذكي المقترح بنجاح!'
+      : '✨ Smart suggested appointment slot confirmed successfully!')
+  }
+
   // Fetch patient medical certifications
   useEffect(() => {
     if (activeTab !== 'certs') return
@@ -536,12 +678,25 @@ export default function PatientDashboard({
                 const isPaid = apt.payment_status === 'paid'
                 const isPaidByPatient = apt.payment_status === 'paid_by_patient' || !!apt.payment_reference || (apt.notes || '').includes('[PAID_BY_PATIENT')
                 const needsPayment = !isPaid && !isPaidByPatient && isApproved
+                const isProposed = apt.status === 'proposed'
+                const isProposedPast = isProposed && !!apt.scheduled_time && (new Date(apt.scheduled_time).getTime() < Date.now())
+                const isFollowUp = (apt.notes || '').includes('[FREE_FOLLOW_UP]') || (apt.notes || '').includes('follow_up') || Number(apt.fees) === 0
 
                 let badgeText = cfg.label
                 let badgeColor = cfg.color
                 let badgeIcon = cfg.icon
 
-                if (isApproved) {
+                if (isProposed) {
+                  if (isProposedPast) {
+                    badgeText = locale === 'ar' ? 'انتهت صلاحية الموعد المقترح' : 'PROPOSED TIME EXPIRED'
+                    badgeColor = 'text-amber-700'
+                    badgeIcon = '⏳'
+                  } else {
+                    badgeText = locale === 'ar' ? 'اقتراح موعد جديد من الطبيب' : 'DOCTOR PROPOSED NEW TIME'
+                    badgeColor = 'text-purple-700'
+                    badgeIcon = '📅'
+                  }
+                } else if (isApproved) {
                   if (isPaid) {
                     badgeText = locale === 'ar' ? 'تم تأكيد الدفع' : 'PAID & CONFIRMED'
                     badgeColor = 'text-emerald-700'
@@ -558,7 +713,7 @@ export default function PatientDashboard({
                 }
                 
                 return (
-                  <div key={apt.id} className={`bg-white dark:bg-gray-900 rounded-2xl p-5 border ${isPending ? 'border-amber-200 dark:border-amber-800' : needsPayment ? 'border-blue-200 dark:border-blue-800' : isPaid ? 'border-emerald-200 dark:border-emerald-800/60' : 'border-gray-100 dark:border-gray-800'} shadow-sm flex flex-col justify-between`}>
+                  <div key={apt.id} className={`bg-white dark:bg-gray-900 rounded-2xl p-5 border ${isProposedPast ? 'border-amber-300 dark:border-amber-700 shadow-amber-500/10' : isProposed ? 'border-purple-300 dark:border-purple-700' : isPending ? 'border-amber-200 dark:border-amber-800' : needsPayment ? 'border-blue-200 dark:border-blue-800' : isPaid ? 'border-emerald-200 dark:border-emerald-800/60' : 'border-gray-100 dark:border-gray-800'} shadow-sm flex flex-col justify-between`}>
                     <div>
                       <div className="flex items-start justify-between gap-4 mb-4">
                         <div className="flex items-center gap-2">
@@ -677,27 +832,147 @@ export default function PatientDashboard({
                         );
                       })()}
                       
-                      {apt.status === 'proposed' && (
-                        <div className="mt-4 p-4 bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-2xl flex flex-col gap-3 animate-in fade-in slide-in-from-top-2">
-                           <p className="text-xs font-bold text-purple-700 dark:text-purple-300 flex items-center gap-2">
-                             <span>📢</span> {tp('proposed_time_msg') || 'The doctor has proposed a new time for your appointment.'}
-                           </p>
-                           <div className="flex gap-2">
-                              <button 
-                                onClick={() => handleProposalAction(apt.id, 'approve')}
-                                className="flex-1 bg-purple-600 text-white font-bold py-2 rounded-xl text-xs shadow-lg shadow-purple-500/30 hover:bg-purple-700 transition-all"
-                              >
-                                {tp('approve_new_time') || 'Approve New Time'}
-                              </button>
-                              <button 
-                                onClick={() => handleProposalAction(apt.id, 'reject')}
-                                className="flex-1 bg-white dark:bg-gray-800 text-red-600 border border-red-200 dark:border-red-900 font-bold py-2 rounded-xl text-xs hover:bg-red-50 transition-all"
-                              >
-                                {tp('reject_cancel') || 'Reject & Cancel'}
-                              </button>
-                           </div>
-                        </div>
-                      )}
+                      {/* Display Queue Removal Note if applicable */}
+                      {(() => {
+                        if (!apt.notes || !apt.notes.includes('[REMOVED_FROM_QUEUE:')) return null;
+                        const match = apt.notes.match(/\[REMOVED_FROM_QUEUE:\s*([^\]]+)\]/);
+                        const nurseNoteMatch = apt.notes.match(/\[NURSE_NOTE:\s*([^\]]+)\]/);
+                        return (
+                          <div className="mt-2.5 p-2.5 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 text-xs">
+                            <p className="font-bold text-[10px] uppercase text-red-600 mb-0.5 flex items-center gap-1">
+                              <span>⚠️</span> {locale === 'ar' ? 'ملاحظة مغادرة العيادة:' : 'Removed from Clinic Queue:'}
+                            </p>
+                            <p className="text-gray-800 dark:text-gray-200 font-semibold">
+                              {match?.[1] || 'Patient left queue'}
+                            </p>
+                            {nurseNoteMatch?.[1] && (
+                              <p className="text-[11px] text-gray-500 italic mt-0.5">
+                                "{nurseNoteMatch[1]}"
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      
+                      {apt.status === 'proposed' && (() => {
+                        const docObj = doctors.find(d => d.id === apt.doctor_id) || allDoctors.find(d => d.id === apt.doctor_id);
+                        const smartSuggestion = getSmartSuggestedUpcomingDate(apt.scheduled_time, docObj?.working_hours, locale);
+
+                        if (isProposedPast) {
+                          return (
+                            <div className="mt-4 p-4 rounded-2xl bg-gradient-to-br from-amber-500/10 via-purple-500/10 to-indigo-500/10 border-2 border-amber-400/60 dark:border-amber-500/40 space-y-3.5 shadow-md animate-in fade-in slide-in-from-top-2">
+                              {/* Header alert */}
+                              <div className="flex items-start gap-2.5">
+                                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center text-lg shrink-0">
+                                  ⏳
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs font-black uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                                      {locale === 'ar' ? 'الموعد المقترح انتهى وقته' : 'Doctor Proposed Date Has Passed'}
+                                    </span>
+                                    <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-200/60 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200 rounded-md">
+                                      {locale === 'ar' ? 'منتهي الصلاحية' : 'Expired'}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 leading-relaxed">
+                                    {locale === 'ar'
+                                      ? `اقترح الطبيب سابقاً موعد (${apt.scheduled_time ? new Date(apt.scheduled_time).toLocaleDateString('ar-EG', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : ''}) ولكن التاريخ قد مضى. قام نظامنا الذكي بحساب أقرب موعد متاح لك مع الطبيب:`
+                                      : `The doctor previously proposed ${apt.scheduled_time ? new Date(apt.scheduled_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : ''}, which has already passed. Our smart engine calculated the nearest open slot for you:`}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Smart Suggested Slot Showcase */}
+                              <div className="p-3.5 bg-white/95 dark:bg-gray-900/95 backdrop-blur rounded-xl border-2 border-emerald-500/60 shadow-sm flex items-center justify-between gap-3">
+                                <div className="space-y-1">
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                                    <span className="animate-pulse">✨</span> {locale === 'ar' ? 'الموعد البديل الذكي الموصى به' : 'Smart Recommended Slot'}
+                                  </span>
+                                  <p className="text-sm font-black text-gray-900 dark:text-white flex items-center gap-2">
+                                    <span>📅</span> {smartSuggestion.displayString}
+                                  </p>
+                                </div>
+                                <span className="px-2.5 py-1 text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 rounded-lg shrink-0 border border-emerald-300 dark:border-emerald-700">
+                                  {locale === 'ar' ? 'متاح ✓' : 'Available ✓'}
+                                </span>
+                              </div>
+
+                              {/* Action Buttons */}
+                              <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                                {/* 1. Accept Smart Slot */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleAcceptSmartProposal(apt.id, smartSuggestion.isoString)}
+                                  className="flex-[2] bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black py-2.5 px-3 rounded-xl text-xs shadow-md shadow-emerald-500/25 flex items-center justify-center gap-1.5 transition-all hover:scale-[1.01]"
+                                >
+                                  <span>✨</span>
+                                  <span>{locale === 'ar' ? `الموافقة على الموعد المقترح (${smartSuggestion.shortTime})` : `Accept Suggested (${smartSuggestion.shortTime})`}</span>
+                                </button>
+
+                                {/* 2. Choose Different Slot */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const doc = doctors.find(d => d.id === apt.doctor_id) || allDoctors.find(d => d.id === apt.doctor_id);
+                                    setSelectedDoctor(doc || ({ id: apt.doctor_id, full_name: apt.doctor_name } as any));
+                                    setEditAppointmentId(apt.id);
+                                    setShowBooking(true);
+                                  }}
+                                  className="flex-1 bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 border border-blue-200 dark:border-blue-800 font-bold py-2.5 px-3 rounded-xl text-xs transition-colors flex items-center justify-center gap-1 shadow-sm"
+                                >
+                                  <span>🗓️</span>
+                                  <span>{locale === 'ar' ? 'اختيار موعد آخر' : 'Pick Other Time'}</span>
+                                </button>
+
+                                {/* 3. Reject / Cancel */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleProposalAction(apt.id, 'reject')}
+                                  className="bg-white dark:bg-gray-800 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 border border-red-200 dark:border-red-900 font-bold py-2.5 px-3 rounded-xl text-xs transition-colors flex items-center justify-center gap-1 shadow-sm"
+                                >
+                                  <span>🚫</span>
+                                  <span>{locale === 'ar' ? 'إلغاء' : 'Decline'}</span>
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        // Future proposed date: standard approval
+                        return (
+                          <div className="mt-4 p-4 bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-2xl flex flex-col gap-3 animate-in fade-in slide-in-from-top-2">
+                             <p className="text-xs font-bold text-purple-700 dark:text-purple-300 flex items-center gap-2">
+                               <span>📢</span> {tp('proposed_time_msg') || 'The doctor has proposed a new time for your appointment.'}
+                             </p>
+                             <div className="flex gap-2">
+                                <button 
+                                  onClick={() => handleProposalAction(apt.id, 'approve')}
+                                  className="flex-1 bg-purple-600 text-white font-bold py-2.5 rounded-xl text-xs shadow-lg shadow-purple-500/30 hover:bg-purple-700 transition-all"
+                                >
+                                  {tp('approve_new_time') || 'Approve New Time'}
+                                </button>
+                                <button 
+                                  onClick={() => {
+                                    const doc = doctors.find(d => d.id === apt.doctor_id) || allDoctors.find(d => d.id === apt.doctor_id);
+                                    setSelectedDoctor(doc || ({ id: apt.doctor_id, full_name: apt.doctor_name } as any));
+                                    setEditAppointmentId(apt.id);
+                                    setShowBooking(true);
+                                  }}
+                                  className="px-3 bg-white dark:bg-gray-800 text-blue-600 border border-blue-200 dark:border-blue-800 font-bold py-2.5 rounded-xl text-xs hover:bg-blue-50 transition-all"
+                                >
+                                  {locale === 'ar' ? 'تغيير' : 'Change'}
+                                </button>
+                                <button 
+                                  onClick={() => handleProposalAction(apt.id, 'reject')}
+                                  className="flex-1 bg-white dark:bg-gray-800 text-red-600 border border-red-200 dark:border-red-900 font-bold py-2.5 rounded-xl text-xs hover:bg-red-50 transition-all"
+                                >
+                                  {tp('reject_cancel') || 'Reject & Cancel'}
+                                </button>
+                             </div>
+                          </div>
+                        );
+                      })()}
                       
                       {/* Live Queue, Arrival Alert & Doctor Free/Busy Status */}
                       {isApproved && apt.appointment_type !== 'home_visit' && (() => {
@@ -837,18 +1112,42 @@ export default function PatientDashboard({
                         );
                       })()}
 
-                      <div className="flex flex-col gap-1 mt-3 text-sm text-gray-500">
-                        <div className="flex gap-2 items-center">
+                      <div className="flex flex-col gap-1.5 mt-3 text-sm text-gray-500">
+                        <div className="flex gap-2 items-center flex-wrap">
                           <span className="w-5 text-center">📅</span>
-                          <span className="font-medium text-gray-900 dark:text-gray-100">{apt.scheduled_time ? new Date(apt.scheduled_time).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'TBD'}</span>
+                          <span className={`font-medium ${isProposedPast ? 'line-through text-red-400' : 'text-gray-900 dark:text-gray-100'}`}>
+                            {apt.scheduled_time ? new Date(apt.scheduled_time).toLocaleString(locale === 'ar' ? 'ar-EG' : 'en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : 'TBD'}
+                          </span>
+                          {isProposedPast && (
+                            <span className="text-[10px] font-black bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 px-2 py-0.5 rounded-full">
+                              {locale === 'ar' ? 'منتهي الصلاحية' : 'Expired'}
+                            </span>
+                          )}
                         </div>
-                        <div className="flex gap-2 items-center">
+                        <div className="flex gap-2 items-center flex-wrap">
                            <span className="w-5 text-center">🏥</span>
-                           <span className="capitalize">{(apt.appointment_type || 'clinic_normal').replace(/_/g, ' ')}</span>
+                           {isFollowUp ? (
+                             <span className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                               <span>🔄</span>
+                               <span>{locale === 'ar' ? 'استشارة مجانية (متابعة أسبوعية)' : 'Free Follow-up / Checkup'}</span>
+                             </span>
+                           ) : (
+                             <span className="font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-1">
+                               <span>🏷️</span>
+                               <span>{locale === 'ar' ? 'كشف مدفوع' : 'Paid Visit'}</span>
+                               <span className="capitalize text-xs text-gray-500">({(apt.appointment_type || 'clinic_normal').replace(/_/g, ' ')})</span>
+                             </span>
+                           )}
                         </div>
                         <div className="flex gap-2 items-center">
                            <span className="w-5 text-center">💰</span>
-                           <span>{apt.fees} EGP</span>
+                           <span className="font-black text-gray-900 dark:text-gray-100">
+                             {isFollowUp ? (
+                               <span className="text-emerald-600 dark:text-emerald-400 font-black">{locale === 'ar' ? 'مجاناً (0 ج.م)' : 'FREE (0 EGP)'}</span>
+                             ) : (
+                               `${apt.fees || 200} EGP`
+                             )}
+                           </span>
                         </div>
                       </div>
                     </div>
@@ -934,92 +1233,7 @@ export default function PatientDashboard({
         </div>
       )}
 
-      {/* History & Logs Tab */}
-      {activeTab === 'history' && (
-        <div className="space-y-6">
-          <h3 className="text-sm font-black uppercase tracking-widest text-gray-400 px-2">Audit History & Past Visits</h3>
-          {pastAppointments.length === 0 && activeAppointments.length === 0 ? (
-            <div className="p-12 text-center text-gray-500 bg-white dark:bg-gray-900 rounded-3xl">No history found.</div>
-          ) : (
-            <div className="space-y-4">
-              {[...activeAppointments, ...pastAppointments].sort((a,b) => new Date(b.scheduled_time||0).getTime() - new Date(a.scheduled_time||0).getTime()).map(apt => {
-                const cfg = STATUS_CONFIG[apt.status || 'completed']
-                const isExpanded = expandedLogs === apt.id
-                return (
-                  <div key={apt.id} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden shadow-sm transition-all hover:border-gray-200 dark:hover:border-gray-700">
-                    <div 
-                      className="p-5 cursor-pointer flex flex-wrap gap-4 items-center justify-between"
-                      onClick={() => fetchAppointmentLogs(apt.id)}
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className={`w-12 h-12 rounded-full ${cfg.bg} flex items-center justify-center text-xl`}>{cfg.icon}</div>
-                        <div>
-                          <h4 className="font-bold">Dr. {apt.doctor_name}</h4>
-                          <p className="text-sm text-gray-500">
-                            {apt.scheduled_time ? new Date(apt.scheduled_time).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : 'TBD'} • {(apt.appointment_type || 'clinic_normal').replace(/_/g, ' ')}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-right">
-                          <span className={`text-xs font-black uppercase tracking-wider ${cfg.color}`}>{cfg.label}</span>
-                          {apt.status === 'cancelled' && apt.rejection_reason && (
-                            <p className="text-xs text-red-500 truncate max-w-[200px]" title={apt.rejection_reason}>{apt.rejection_reason}</p>
-                          )}
-                        </div>
-                        <span className="text-gray-300 font-bold">{isExpanded ? '▲' : '▼'}</span>
-                      </div>
-                    </div>
 
-                    {/* Expandable Logs Section */}
-                    {isExpanded && (
-                      <div className="bg-gray-50 dark:bg-gray-800/50 p-5 border-t border-gray-100 dark:border-gray-800">
-                        <h5 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-4">Audit Timeline</h5>
-                        {!appointmentLogs[apt.id] ? (
-                          <p className="text-sm text-gray-500 text-center py-4">Loading logs...</p>
-                        ) : appointmentLogs[apt.id].length === 0 ? (
-                          <p className="text-sm text-gray-500 text-center py-4">No audit logs found for this appointment.</p>
-                        ) : (
-                          <div className="space-y-4 relative before:absolute before:inset-0 before:ml-2.5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 dark:before:via-gray-700 before:to-transparent">
-                            {appointmentLogs[apt.id].map((log, i) => (
-                              <div key={log.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-                                <div className="flex items-center justify-center w-6 h-6 rounded-full border-4 border-white dark:border-gray-900 bg-blue-500 shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10 shadow-sm text-[8px] text-white">
-                                  {log.action === 'created' ? '➕' : log.action === 'rescheduled' ? '⏱️' : '📝'}
-                                </div>
-                                <div className="w-[calc(100%-2rem)] md:w-[calc(50%-1.5rem)] bg-white dark:bg-gray-900 p-3 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm">
-                                  <div className="flex justify-between items-center mb-1">
-                                    <span className="font-bold text-sm capitalize">{log.action.replace('_', ' ')}</span>
-                                    <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-md">{new Date(log.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                                  </div>
-                                  <p className="text-xs text-gray-500 mb-2">{log.details}</p>
-                                  <div className="flex justify-between items-end">
-                                    <div className="flex gap-2 items-center">
-                                      {log.previous_status && <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-500 rounded">{log.previous_status}</span>}
-                                      {log.new_status && (
-                                        <>
-                                          {log.previous_status && <span className="text-gray-300">→</span>}
-                                          <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 rounded">{log.new_status}</span>
-                                        </>
-                                      )}
-                                    </div>
-                                    <span className="text-[10px] items-center flex gap-1">
-                                      <span className="text-gray-400">by</span> <span className="font-bold truncate max-w-[80px]">{log.changed_by_name}</span>
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* My Doctors Tab */}
       {activeTab === 'doctors' && (
@@ -1388,64 +1602,14 @@ export default function PatientDashboard({
         </div>
       )}
 
-      {/* Prescriptions Tab */}
+      {/* Prescriptions Tab: 5 Daily Cups Timeline & Archives */}
       {activeTab === 'prescriptions' && (
-        <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
-          <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-800">
-            <h3 className="text-lg font-bold">My Prescriptions</h3>
-            <p className="text-sm text-gray-500">Official prescriptions issued to you by your doctor.</p>
-          </div>
-          {loadingPrescriptions ? (
-            <div className="py-20 text-center animate-pulse text-gray-400">Loading prescriptions...</div>
-          ) : prescriptions.length === 0 ? (
-            <div className="py-20 text-center space-y-3">
-              <div className="text-5xl">💊</div>
-              <p className="text-gray-400 font-medium">No prescriptions yet.</p>
-              <p className="text-sm text-gray-300">Prescriptions issued by your doctor will appear here.</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-100 dark:divide-gray-800">
-              {prescriptions.map(rx => (
-                <div key={rx.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-4 flex-1">
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-100 to-indigo-100 dark:from-purple-900/30 dark:to-indigo-900/30 text-purple-600 flex items-center justify-center shrink-0 text-2xl shadow-sm">💊</div>
-                      <div className="space-y-2 flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="font-bold text-lg">{rx.diagnosis || 'General Prescription'}</p>
-                          <span className="px-2 py-0.5 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 text-xs font-bold rounded-md">Rx</span>
-                        </div>
-                        {rx.symptoms && <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"><span className="font-bold text-gray-400 uppercase text-xs">Symptoms:</span> {rx.symptoms}</p>}
-                        {rx.medications?.length > 0 && (
-                          <div className="flex flex-wrap gap-2 pt-1">
-                            {rx.medications.map((m: any, idx: number) => (
-                              <span key={idx} className="px-3 py-1 bg-purple-50 dark:bg-purple-900/20 rounded-full text-xs font-bold border border-purple-100 dark:border-purple-900/30 text-purple-700 dark:text-purple-300">
-                                {m.name} {m.dosage ? `· ${m.dosage}` : ''}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        <div className="mt-4 flex gap-4 text-xs font-bold text-gray-400">
-                          <span className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">👨‍⚕️ Dr. {rx.doctor_name}</span>
-                          <span className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">📅 {rx.created_at ? new Date(rx.created_at).toLocaleDateString() : ''}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => setViewingPrescription(rx)}
-                      className="px-4 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/40 rounded-xl font-bold text-sm transition-all flex items-center gap-1.5 shadow-sm"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                      PDF
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <PrescriptionCupsTimeline
+          prescriptions={prescriptions}
+          loading={loadingPrescriptions}
+          patientName={patientName}
+          onViewPrescription={(rx) => setViewingPrescription(rx)}
+        />
       )}
 
       {/* Family Members Tab */}

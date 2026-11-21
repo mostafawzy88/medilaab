@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { useTranslations } from 'next-intl'
+import { useTranslations, useLocale } from 'next-intl'
 import { QRCodeSVG } from 'qrcode.react'
 import DoctorProfileModal from './DoctorProfileModal'
 
@@ -40,12 +40,14 @@ function format12Hour(timeStr?: string | null): string {
 
 export default function BookingModal({ onClose, onSuccess, initialDoctor, editAppointmentId, isStaff }: BookingModalProps) {
   const t = useTranslations('Dashboard')
+  const locale = useLocale()
   const [step, setStep] = useState(isStaff && !editAppointmentId ? 0 : 1)
   const [doctors, setDoctors] = useState<Doctor[]>([])
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>('')
   const [selectedDate, setSelectedDate] = useState<string>('')
   const [selectedTime, setSelectedTime] = useState<string>('')
   const [appointmentType, setAppointmentType] = useState<'clinic_normal' | 'clinic_urgent' | 'home_visit'>('clinic_normal')
+  const [isFollowUp, setIsFollowUp] = useState<boolean>(false)
   const [paymentChoice, setPaymentChoice] = useState<'prepay' | 'pay_at_visit'>('prepay')
   const [booking, setBooking] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -142,6 +144,9 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
         if (data.appointment_type) {
           setAppointmentType(data.appointment_type)
         }
+        if (data.notes?.includes('[FOLLOW_UP]') || Number(data.fees) === 0) {
+          setIsFollowUp(true)
+        }
         setStep(2)
       }
     }
@@ -230,9 +235,9 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
 
   const selectedDoctor = doctors.find(d => d.id === selectedDoctorId)
 
-  // Determine current fee
-  let currentFee = 350
-  if (selectedDoctor) {
+  // Determine current fee (0 for follow-up)
+  let currentFee = isFollowUp ? 0 : 350
+  if (selectedDoctor && !isFollowUp) {
     if (appointmentType === 'clinic_normal') currentFee = selectedDoctor.fees_normal || 350
     if (appointmentType === 'clinic_urgent') currentFee = selectedDoctor.fees_urgent || 500
     if (appointmentType === 'home_visit') currentFee = selectedDoctor.fees_home_visit || 1000
@@ -356,6 +361,11 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
 
     // Build combined notes
     const noteParts: string[] = []
+    if (isFollowUp) {
+      noteParts.push(`[VISIT_KIND: follow_up] [FREE_FOLLOW_UP]`)
+    } else {
+      noteParts.push(`[VISIT_KIND: paid_consultation]`)
+    }
     if (famMemberName) {
       noteParts.push(`[FOR: ${famMemberName}]`)
     }
@@ -414,10 +424,10 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
         doctor_id: selectedDoctor.id,
         scheduled_time: finalDate.toISOString(),
         queue_position: nextPosition,
-        fees: currentFee,
+        fees: isFollowUp ? 0 : currentFee,
         appointment_type: appointmentType,
         status: newStatus,
-        payment_status: paymentChoice === 'prepay' ? 'pending' : 'pending',
+        payment_status: isFollowUp ? 'paid' : (paymentChoice === 'prepay' ? 'pending' : 'pending'),
         notes: combinedNotes || null,
         family_member_id: selectedFamilyMemberId || null,
         family_member_name: famMemberName
@@ -594,38 +604,63 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
 
                   {selectedDoctor && (
                     <div className="space-y-3">
-                      <label className="text-xs font-black uppercase tracking-widest text-gray-500">Visit Type</label>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-black uppercase tracking-widest text-gray-500">Visit Type / نوع الكشف</label>
+                        {isFollowUp && (
+                          <span className="text-[11px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-300">
+                            {locale === 'ar' ? '✓ استشارة مجانية (0 ج.م)' : '✓ Free Follow-up / Checkup'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                         {selectedDoctor.fees_normal !== 0 && selectedDoctor.fees_normal !== null && (
                           <button 
-                            onClick={() => setAppointmentType('clinic_normal')}
-                            className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${appointmentType === 'clinic_normal' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-100 dark:border-gray-800 hover:border-blue-200'}`}
+                            type="button"
+                            onClick={() => { setIsFollowUp(false); setAppointmentType('clinic_normal'); }}
+                            className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${appointmentType === 'clinic_normal' && !isFollowUp ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 shadow-md shadow-blue-500/10' : 'border-gray-100 dark:border-gray-800 hover:border-blue-200'}`}
                           >
                             <span className="text-2xl mb-2">🏥</span>
-                            <p className="font-bold text-center">Clinic Visit</p>
+                            <p className="font-bold text-center">{locale === 'ar' ? 'كشف بالعيادة' : 'Clinic Visit'}</p>
                             <span className="font-black text-blue-600 mt-2">{selectedDoctor.fees_normal} EGP</span>
                           </button>
                         )}
                         {selectedDoctor.fees_urgent !== 0 && selectedDoctor.fees_urgent !== null && (
                           <button 
-                            onClick={() => setAppointmentType('clinic_urgent')}
-                            className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${appointmentType === 'clinic_urgent' ? 'border-red-600 bg-red-50 dark:bg-red-900/20' : 'border-gray-100 dark:border-gray-800 hover:border-red-200'}`}
+                            type="button"
+                            onClick={() => { setIsFollowUp(false); setAppointmentType('clinic_urgent'); }}
+                            className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${appointmentType === 'clinic_urgent' && !isFollowUp ? 'border-red-600 bg-red-50 dark:bg-red-900/20 shadow-md shadow-red-500/10' : 'border-gray-100 dark:border-gray-800 hover:border-red-200'}`}
                           >
                             <span className="text-2xl mb-2">⚡</span>
-                            <p className="font-bold text-center">Urgent Visit</p>
+                            <p className="font-bold text-center">{locale === 'ar' ? 'كشف مستعجل' : 'Urgent Visit'}</p>
                             <span className="font-black text-red-600 mt-2">{selectedDoctor.fees_urgent} EGP</span>
                           </button>
                         )}
                         {selectedDoctor.fees_home_visit !== 0 && selectedDoctor.fees_home_visit !== null && (
                           <button 
-                            onClick={() => setAppointmentType('home_visit')}
-                            className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${appointmentType === 'home_visit' ? 'border-teal-600 bg-teal-50 dark:bg-teal-900/20' : 'border-gray-100 dark:border-gray-800 hover:border-teal-200'}`}
+                            type="button"
+                            onClick={() => { setIsFollowUp(false); setAppointmentType('home_visit'); }}
+                            className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${appointmentType === 'home_visit' && !isFollowUp ? 'border-teal-600 bg-teal-50 dark:bg-teal-900/20 shadow-md shadow-teal-500/10' : 'border-gray-100 dark:border-gray-800 hover:border-teal-200'}`}
                           >
                             <span className="text-2xl mb-2">🏠</span>
-                            <p className="font-bold text-center">Home Visit</p>
+                            <p className="font-bold text-center">{locale === 'ar' ? 'زيارة منزلية' : 'Home Visit'}</p>
                             <span className="font-black text-teal-600 mt-2">{selectedDoctor.fees_home_visit} EGP</span>
                           </button>
                         )}
+
+                        {/* Free Follow-up / استشارة مجانية */}
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            setIsFollowUp(true);
+                            setAppointmentType('clinic_normal');
+                          }}
+                          className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${isFollowUp ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 shadow-md shadow-emerald-500/20' : 'border-gray-100 dark:border-gray-800 hover:border-emerald-200'}`}
+                        >
+                          <span className="text-2xl mb-2">🔄</span>
+                          <p className="font-bold text-center">{locale === 'ar' ? 'استشارة مجانية (متابعة)' : 'Free Follow-up'}</p>
+                          <span className="font-black text-emerald-600 mt-2">{locale === 'ar' ? 'مجاناً (0 ج.م)' : 'FREE (0 EGP)'}</span>
+                          <span className="text-[10px] text-gray-400 mt-1">{locale === 'ar' ? 'متابعة خلال أسبوع' : 'Checkup (7-14 Days)'}</span>
+                        </button>
                       </div>
                     </div>
                   )}
@@ -851,11 +886,17 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
                   <div className="flex gap-3 pt-4 border-t border-gray-100 dark:border-gray-800">
                     <button onClick={() => setStep(1)} className="flex-1 bg-gray-100 dark:bg-gray-800 font-bold py-4 rounded-2xl hover:bg-gray-200">Back</button>
                     <button 
-                      onClick={() => (editAppointmentId || (isStaff && paymentChoice === 'pay_at_visit')) ? handleBooking() : setStep(3)}
+                      onClick={() => (editAppointmentId || isFollowUp || (isStaff && paymentChoice === 'pay_at_visit')) ? handleBooking() : setStep(3)}
                       disabled={!selectedDate || !selectedTime || booking}
-                      className="flex-[2] bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl shadow-lg shadow-blue-500/20 disabled:opacity-50 flex justify-center items-center"
+                      className={`flex-[2] text-white font-black py-4 rounded-2xl shadow-lg transition-all disabled:opacity-50 flex justify-center items-center ${isFollowUp ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'}`}
                     >
-                      {editAppointmentId ? (booking ? 'Updating...' : 'Update & Confirm Appointment') : (isStaff ? 'Confirm Booking' : 'Next: Payment')}
+                      {booking 
+                        ? (locale === 'ar' ? 'جاري التأكيد...' : 'Confirming...') 
+                        : isFollowUp 
+                          ? (locale === 'ar' ? 'تأكيد حجز الاستشارة المجانية (0 ج.م)' : 'Confirm Free Follow-up (0 EGP)')
+                          : editAppointmentId 
+                            ? (locale === 'ar' ? 'تحديث وتأكيد الموعد' : 'Update & Confirm Appointment') 
+                            : (isStaff ? (locale === 'ar' ? 'تأكيد الحجز' : 'Confirm Booking') : (locale === 'ar' ? 'التالي: سداد الرسوم' : 'Next: Payment'))}
                     </button>
                   </div>
                 </div>

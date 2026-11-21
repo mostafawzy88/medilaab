@@ -384,7 +384,7 @@ export default function ClinicSchedule({
                               </p>
                               <p className="text-[10px] opacity-90 mt-0.5">
                                 {new Date(topAppt.scheduled_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })} •{' '}
-                                {topAppt.appointment_type === 'home_visit' ? 'Home Visit' : topAppt.status}
+                                {((topAppt.notes || '').includes('[FREE_FOLLOW_UP]') || Number(topAppt.fees) === 0) ? '🔄 Follow-up' : topAppt.appointment_type === 'home_visit' ? 'Home Visit' : topAppt.status}
                               </p>
                             </div>
                           )}
@@ -404,7 +404,7 @@ export default function ClinicSchedule({
                               </p>
                               <p className="text-[10px] opacity-90 mt-0.5">
                                 {new Date(bottomAppt.scheduled_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })} •{' '}
-                                {bottomAppt.appointment_type === 'home_visit' ? 'Home Visit' : bottomAppt.status}
+                                {((bottomAppt.notes || '').includes('[FREE_FOLLOW_UP]') || Number(bottomAppt.fees) === 0) ? '🔄 Follow-up' : bottomAppt.appointment_type === 'home_visit' ? 'Home Visit' : bottomAppt.status}
                               </p>
                             </div>
                           )}
@@ -425,9 +425,20 @@ export default function ClinicSchedule({
           <div className="bg-white dark:bg-gray-900 rounded-3xl max-w-md w-full p-6 border border-gray-100 dark:border-gray-800 shadow-2xl space-y-4">
             <div className="flex justify-between items-start">
               <div>
-                <span className="text-xs font-black uppercase tracking-wider text-blue-500">
-                  {selectedAppt.appointment_type?.replace(/_/g, ' ') || 'Clinic Visit'}
-                </span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-black uppercase tracking-wider text-blue-500">
+                    {selectedAppt.appointment_type?.replace(/_/g, ' ') || 'Clinic Visit'}
+                  </span>
+                  {((selectedAppt.notes || '').includes('[FREE_FOLLOW_UP]') || Number(selectedAppt.fees) === 0) ? (
+                    <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-300">
+                      🔄 Free Follow-up / استشارة مجانية
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-black bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 px-2 py-0.5 rounded-full border border-blue-300">
+                      🏷️ Paid Visit / كشف مدفوع
+                    </span>
+                  )}
+                </div>
                 <h3 className="text-xl font-black text-gray-900 dark:text-white mt-0.5">
                   {selectedAppt.patient?.full_name || selectedAppt.manual_patient?.full_name}
                 </h3>
@@ -469,7 +480,11 @@ export default function ClinicSchedule({
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-400">Fee:</span>
-                <span className="font-bold">{selectedAppt.fees || 0} EGP ({selectedAppt.payment_status || 'pending'})</span>
+                <span className="font-bold">
+                  {((selectedAppt.notes || '').includes('[FREE_FOLLOW_UP]') || Number(selectedAppt.fees) === 0)
+                    ? '0 EGP (🔄 Free Follow-up)'
+                    : `${selectedAppt.fees || 200} EGP (${selectedAppt.payment_status || 'pending'})`}
+                </span>
               </div>
             </div>
 
