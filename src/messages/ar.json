@@ -147,6 +147,23 @@
     "calculating": "جاري الحساب...",
     "medical_history": "التاريخ الطبي",
     "past_visits": "الزيارات السابقة",
-    "no_history": "ليس لديك سجل بزيارات سابقة."
+    "no_history": "ليس لديك سجل بزيارات سابقة.",
+    "checked_in": "تم تسجيل الوصول بالعيادة",
+    "doctor_notified": "تم إخطار الطبيب",
+    "doctor_notpaid": "غير مدفوع",
+    "doctor_on_break": "الطبيب في استراحة مؤقتة حالياً",
+    "doctor_busy": "الطبيب مع مريض حالياً",
+    "doctor_free": "الطبيب متاح ومستعد للمريض التالي",
+    "your_turn_number": "رقم دورك",
+    "now_serving": "الكشف الحالي",
+    "patient_ahead": "مريض قبلك في الطابور",
+    "patients_ahead": "مرضى قبلك في الطابور",
+    "i_have_arrived": "وصلت إلى العيادة",
+    "notifying_reception": "جاري إخطار الاستقبال...",
+    "enable_notifications": "تفعيل إشعارات الهاتف",
+    "notifications_active": "إشعارات الهاتف مفعّلة",
+    "test_notification": "تجربة إشعار",
+    "turn_alert": "تنبيه اقتراب الدور",
+    "med_reminder": "تذكير بموعد الدواء"
   }
 }

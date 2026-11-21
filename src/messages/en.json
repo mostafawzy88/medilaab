@@ -153,6 +153,23 @@
     "calculating": "Calculating...",
     "medical_history": "Medical History",
     "past_visits": "Past Visits",
-    "no_history": "You do not have any past visits on record."
+    "no_history": "You do not have any past visits on record.",
+    "checked_in": "Checked In at Clinic",
+    "doctor_notified": "Doctor Notified",
+    "doctor_notpaid": "Unpaid",
+    "doctor_on_break": "Doctor is currently on break / unavailable",
+    "doctor_busy": "Doctor is consulting with a patient",
+    "doctor_free": "Doctor is ready for next patient",
+    "your_turn_number": "Your Turn",
+    "now_serving": "Now Serving",
+    "patient_ahead": "patient ahead of you",
+    "patients_ahead": "patients ahead of you",
+    "i_have_arrived": "I Have Arrived at Clinic",
+    "notifying_reception": "Notifying Reception...",
+    "enable_notifications": "Enable Phone Notifications",
+    "notifications_active": "Phone Notifications Active",
+    "test_notification": "Test Alert",
+    "turn_alert": "Turn Alert",
+    "med_reminder": "Medication Reminder"
   }
 }

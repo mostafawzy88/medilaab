@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useTranslations, useLocale } from 'next-intl'
 import { useSearchParams } from 'next/navigation'
@@ -11,6 +11,8 @@ import DoctorProfileModal from './DoctorProfileModal'
 import FamilyMembersTab from './FamilyMembersTab'
 import PatientHistoryTab from './PatientHistoryTab'
 import PrescriptionCupsTimeline from './PrescriptionCupsTimeline'
+import NotificationPermissionBanner from './NotificationPermissionBanner'
+import { sendTurnAlertNotification } from '@/utils/notifications'
 import { getWhatsAppLink } from '@/utils/whatsapp'
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
 
@@ -200,6 +202,16 @@ export default function PatientDashboard({
   const t = useTranslations('Dashboard')
   const tp = useTranslations('Patient')
   const locale = useLocale()
+
+  const getSafePatientMsg = (key: string, fallbackEn: string, fallbackAr: string) => {
+    try {
+      const val = tp(key as any)
+      if (val && !val.startsWith('Patient.')) return val
+    } catch {}
+    return locale === 'ar' ? fallbackAr : fallbackEn
+  }
+
+  const notifiedTurnRef = useRef<Record<string, { calling?: boolean; next?: boolean }>>({})
   const [appointments, setAppointments] = useState(initialAppointments)
   const [showBooking, setShowBooking] = useState(false)
   const [editAppointmentId, setEditAppointmentId] = useState<string | null>(null)
@@ -361,6 +373,65 @@ export default function PatientDashboard({
       channels.forEach(ch => supabase.removeChannel(ch));
     };
   }, [appointments, doctors]);
+
+  // Push Notifications: Alert patient phone when doctor is calling now or when patient is next in line
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const isSameLocalDate = (d1?: string | null) => {
+      if (!d1) return false
+      const date1 = new Date(d1)
+      const now = new Date()
+      return date1.getFullYear() === now.getFullYear() &&
+             date1.getMonth() === now.getMonth() &&
+             date1.getDate() === now.getDate()
+    }
+
+    appointments.forEach(apt => {
+      if (!isSameLocalDate(apt.scheduled_time)) return
+      if (apt.status === 'completed' || apt.status === 'cancelled') return
+
+      const docStatus = liveDoctorData[apt.doctor_id]
+      const activeQueueToday = (docStatus?.queue || []).filter(q => q.status !== 'completed' && q.status !== 'cancelled')
+      const myIdx = activeQueueToday.findIndex(q => q.id === apt.id)
+
+      let patientsAhead = 0
+      if (myIdx >= 0) {
+        patientsAhead = myIdx
+      } else if (apt.scheduled_time) {
+        const aptDate = new Date(apt.scheduled_time).getTime()
+        patientsAhead = activeQueueToday.filter(q => q.scheduled_time && new Date(q.scheduled_time).getTime() < aptDate).length
+      }
+
+      const myTurnNumber = myIdx >= 0 ? (myIdx + 1) : ((apt.queue_position && apt.queue_position <= (activeQueueToday.length || 1)) ? apt.queue_position : 1)
+      const isCallingMeNow = apt.status === 'in_progress'
+
+      const alreadyNotified = notifiedTurnRef.current[apt.id] || {}
+
+      // 1. Doctor calling now
+      if (isCallingMeNow && !alreadyNotified.calling) {
+        notifiedTurnRef.current[apt.id] = { ...alreadyNotified, calling: true }
+        sendTurnAlertNotification({
+          doctorName: apt.doctor_name || 'Doctor',
+          turnNumber: myTurnNumber,
+          isCallingNow: true,
+          patientsAhead: 0,
+          locale,
+        })
+      }
+      // 2. Next in line alert
+      else if (!isCallingMeNow && patientsAhead <= 1 && !alreadyNotified.next) {
+        notifiedTurnRef.current[apt.id] = { ...alreadyNotified, next: true }
+        sendTurnAlertNotification({
+          doctorName: apt.doctor_name || 'Doctor',
+          turnNumber: myTurnNumber,
+          isCallingNow: false,
+          patientsAhead,
+          locale,
+        })
+      }
+    })
+  }, [appointments, liveDoctorData, locale]);
 
   // Handle patient arrival alert
   const handleMarkArrival = async (aptId: string) => {
@@ -650,6 +721,9 @@ export default function PatientDashboard({
       {/* Bookings View */}
       {activeTab === 'bookings' && (
         <div className="space-y-6">
+          {/* Phone Push Notifications Permission & Status Banner */}
+          <NotificationPermissionBanner />
+
           <div className="flex flex-wrap gap-4 justify-between items-center bg-white dark:bg-gray-900 p-4 rounded-3xl border border-gray-100 dark:border-gray-800">
             <div className="flex gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
                <button onClick={() => setViewMode('cards')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'cards' ? 'bg-white dark:bg-gray-700 shadow-sm' : 'text-gray-500'}`}>{tp('cards') || 'Cards'}</button>
@@ -1039,16 +1113,16 @@ export default function PatientDashboard({
                                 className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-500/20 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
                               >
                                 <span>📍</span>
-                                <span>{arrivingId === apt.id ? 'Notifying Reception...' : (tp('i_have_arrived') || 'I Have Arrived at Clinic / وصلت إلى العيادة')}</span>
+                                <span>{arrivingId === apt.id ? getSafePatientMsg('notifying_reception', 'Notifying Reception...', 'جاري إخطار الاستقبال...') : getSafePatientMsg('i_have_arrived', 'I Have Arrived at Clinic', 'وصلت إلى العيادة')}</span>
                               </button>
                             ) : (
                               <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between text-xs">
                                 <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-200 font-black">
                                   <span className="text-base">✅</span>
-                                  <span>{tp('checked_in') || 'Checked In at Clinic'} ({arrivalTime})</span>
+                                  <span>{getSafePatientMsg('checked_in', 'Checked In at Clinic', 'تم تسجيل الوصول بالعيادة')} ({arrivalTime})</span>
                                 </div>
                                 <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-200 dark:bg-emerald-800 text-emerald-900 dark:text-emerald-100">
-                                  {tp('doctor_notified') || 'Doctor Notified'}
+                                  {getSafePatientMsg('doctor_notified', 'Doctor Notified', 'تم إخطار الطبيب')}
                                 </span>
                               </div>
                             )}
@@ -1063,10 +1137,10 @@ export default function PatientDashboard({
                                   </span>
                                   <span className={docStatus?.is_unavailable ? 'text-rose-600 dark:text-rose-400 font-black' : ''}>
                                     {docStatus?.is_unavailable
-                                      ? (tp('doctor_on_break') || '🔴 Doctor is currently on break / unavailable')
+                                      ? getSafePatientMsg('doctor_on_break', 'Doctor is currently on break / unavailable', 'الطبيب في استراحة مؤقتة حالياً')
                                       : docStatus?.is_in_consultation 
-                                        ? (tp('doctor_busy') || '🟡 Doctor is consulting with a patient') 
-                                        : (tp('doctor_free') || '🟢 Doctor is ready for next patient')}
+                                        ? getSafePatientMsg('doctor_busy', 'Doctor is consulting with a patient', 'الطبيب مع مريض حالياً') 
+                                        : getSafePatientMsg('doctor_free', 'Doctor is ready for next patient', 'الطبيب متاح ومستعد للمريض التالي')}
                                   </span>
                                 </div>
                                 <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300">
@@ -1077,11 +1151,11 @@ export default function PatientDashboard({
                               {/* Queue numbers */}
                               <div className="grid grid-cols-2 gap-2 text-center pt-1">
                                 <div className="bg-white/80 dark:bg-gray-800/80 p-2 rounded-xl border border-blue-100 dark:border-blue-900/30">
-                                  <p className="text-[10px] uppercase font-black text-gray-400">{tp('your_turn_number') || 'Your Turn'}</p>
+                                  <p className="text-[10px] uppercase font-black text-gray-400">{getSafePatientMsg('your_turn_number', 'Your Turn', 'رقم دورك')}</p>
                                   <p className="text-lg font-black text-blue-600">Q{myTurnNumber}</p>
                                 </div>
                                 <div className="bg-white/80 dark:bg-gray-800/80 p-2 rounded-xl border border-blue-100 dark:border-blue-900/30">
-                                  <p className="text-[10px] uppercase font-black text-gray-400">{tp('now_serving') || 'Now Serving'}</p>
+                                  <p className="text-[10px] uppercase font-black text-gray-400">{getSafePatientMsg('now_serving', 'Now Serving', 'الكشف الحالي')}</p>
                                   <p className="text-lg font-black text-gray-800 dark:text-gray-200">
                                     {isCallingMeNow ? `Q${myTurnNumber}` : (currentServing > 0 ? `Q${currentServing}` : (docStatus?.is_in_consultation ? 'In Room' : 'Ready'))}
                                   </p>
@@ -1100,7 +1174,7 @@ export default function PatientDashboard({
                                   </span>
                                 ) : (
                                   <span className="text-gray-600 dark:text-gray-300 flex items-center gap-1">
-                                    <span>👥</span> {patientsAhead} {patientsAhead === 1 ? (tp('patient_ahead') || 'patient ahead of you') : (tp('patients_ahead') || 'patients ahead of you')}
+                                    <span>👥</span> {patientsAhead} {patientsAhead === 1 ? getSafePatientMsg('patient_ahead', 'patient ahead of you', 'مريض قبلك في الطابور') : getSafePatientMsg('patients_ahead', 'patients ahead of you', 'مرضى قبلك في الطابور')}
                                   </span>
                                 )}
                                 <span className="text-gray-500 text-[11px]">

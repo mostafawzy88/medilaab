@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useLocale } from 'next-intl'
+import NotificationPermissionBanner from './NotificationPermissionBanner'
+import { sendMedicationReminderNotification } from '@/utils/notifications'
 
 // ─── TYPES ──────────────────────────────────────────────────────────────────
 export type CupSlot = 'morning' | 'midday' | 'evening' | 'night' | 'bedtime'
@@ -423,6 +425,71 @@ export default function PrescriptionCupsTimeline({
     return list
   }, [hasRealPills, parsedDoctorPills, customPills, showDemo])
 
+  // Reminder test state
+  const [testingReminder, setTestingReminder] = useState(false)
+  const [reminderSent, setReminderSent] = useState(false)
+
+  const handleTriggerTestReminder = async () => {
+    setTestingReminder(true)
+    const currentDef = CUP_DEFINITIONS.find(d => d.slot === activeSlot) || CUP_DEFINITIONS[0]
+    const slotPills = allActivePills.filter(p => p.slot === currentDef.slot)
+    const names = slotPills.length > 0 ? slotPills.map(p => p.name) : ['Amoxicillin 500mg', 'Panadol Extra']
+    const instructions = slotPills[0]?.instructions || (isAr ? 'بعد الأكل مع كوب ماء' : 'Take after meal with a full glass of water')
+
+    const res = await sendMedicationReminderNotification({
+      slotTitle: isAr ? currentDef.titleAr : currentDef.titleEn,
+      pillNames: names,
+      instructions,
+      locale,
+    })
+
+    if (res) {
+      setReminderSent(true)
+      setTimeout(() => setReminderSent(false), 4000)
+    }
+    setTestingReminder(false)
+  }
+
+  // Automatic Background Medication Reminder based on scheduled cup hours
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const checkMedicationTime = () => {
+      const now = new Date()
+      const currentHour = now.getHours()
+      const todayStr = now.toISOString().slice(0, 10)
+
+      const matchingCup = CUP_DEFINITIONS.find(def => {
+        const [start, end] = def.hourRange
+        if (start < end) {
+          return currentHour >= start && currentHour < end
+        } else {
+          return currentHour >= start || currentHour < end
+        }
+      })
+
+      if (!matchingCup) return
+
+      const key = `medilab_notif_med_${matchingCup.slot}_${todayStr}`
+      if (localStorage.getItem(key)) return
+
+      const untakenSlotPills = allActivePills.filter(p => p.slot === matchingCup.slot && !takenPills[p.id])
+      if (untakenSlotPills.length > 0) {
+        localStorage.setItem(key, '1')
+        sendMedicationReminderNotification({
+          slotTitle: isAr ? matchingCup.titleAr : matchingCup.titleEn,
+          pillNames: untakenSlotPills.map(p => p.name),
+          instructions: untakenSlotPills[0]?.instructions,
+          locale,
+        })
+      }
+    }
+
+    checkMedicationTime()
+    const interval = setInterval(checkMedicationTime, 60000)
+    return () => clearInterval(interval)
+  }, [allActivePills, takenPills, isAr, locale])
+
   // Count adherence
   const totalPillsCount = allActivePills.length
   const takenCount = allActivePills.filter(p => takenPills[p.id]).length
@@ -491,6 +558,20 @@ export default function PrescriptionCupsTimeline({
                   {takenCount} of {totalPillsCount} {isAr ? 'جرعة تم تناولها' : 'doses taken'}
                 </p>
               </div>
+            </div>
+
+            {/* Notification controls */}
+            <div className="flex flex-col gap-2 shrink-0">
+              <NotificationPermissionBanner compact />
+              <button
+                type="button"
+                onClick={handleTriggerTestReminder}
+                disabled={testingReminder}
+                className="px-3.5 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border border-purple-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm active:scale-95"
+              >
+                <span>🔔</span>
+                <span>{reminderSent ? (isAr ? '✓ تم إرسال التنبيه!' : '✓ Alert Sent!') : (isAr ? 'تجربة إشعار الدواء' : 'Test Pill Reminder')}</span>
+              </button>
             </div>
 
             <button
@@ -682,9 +763,20 @@ export default function PrescriptionCupsTimeline({
                     </div>
                   </div>
 
-                  <span className="text-xs font-black uppercase tracking-wider text-cyan-300 bg-cyan-950/40 px-3 py-1.5 rounded-xl border border-cyan-500/30">
-                    {activeSlotPills.filter(p => takenPills[p.id]).length} / {activeSlotPills.length} {isAr ? 'تم تناولها' : 'taken'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleTriggerTestReminder}
+                      disabled={testingReminder}
+                      className="text-xs font-bold text-cyan-300 hover:text-cyan-200 bg-cyan-950/50 hover:bg-cyan-900/60 px-3 py-1.5 rounded-xl border border-cyan-500/30 flex items-center gap-1.5 transition-all shadow-sm"
+                    >
+                      <span>🔔</span>
+                      <span>{reminderSent ? (isAr ? '✓ تم الإرسال!' : '✓ Alert Sent!') : (isAr ? 'تنبيه الهاتف' : 'Test Reminder')}</span>
+                    </button>
+                    <span className="text-xs font-black uppercase tracking-wider text-cyan-300 bg-cyan-950/40 px-3 py-1.5 rounded-xl border border-cyan-500/30">
+                      {activeSlotPills.filter(p => takenPills[p.id]).length} / {activeSlotPills.length} {isAr ? 'تم تناولها' : 'taken'}
+                    </span>
+                  </div>
                 </div>
 
                 {activeSlotPills.length === 0 ? (
