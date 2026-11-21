@@ -5,6 +5,7 @@ import { createClient } from '@/utils/supabase/client'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import { getFormIcon, inferFormFromName } from './PrescriptionModal'
+import PharmacyForwardModal from './PharmacyForwardModal'
 
 type PrescriptionViewerModalProps = {
   prescription: any
@@ -19,6 +20,64 @@ export default function PrescriptionViewerModal({
 }: PrescriptionViewerModalProps) {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
   const [doctorInfo, setDoctorInfo] = useState<any>(null)
+  const [showPharmacyModal, setShowPharmacyModal] = useState(false)
+  const [takenMeds, setTakenMeds] = useState<Record<string, string>>({})
+  const [patientId, setPatientId] = useState<string>('')
+
+  useEffect(() => {
+    try {
+      const todayKey = `medilab_taken_${new Date().toISOString().slice(0, 10)}`
+      const saved = localStorage.getItem(todayKey)
+      if (saved) setTakenMeds(JSON.parse(saved))
+    } catch {}
+
+    const getPatient = async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) setPatientId(user.id)
+    }
+    getPatient()
+  }, [])
+
+  const handleToggleTakenMed = async (medName: string, idx: number) => {
+    const key = `rx-${prescription.id}-${idx}`
+    const isTaken = !!takenMeds[key]
+    const nowISO = new Date().toISOString()
+    const todayStr = nowISO.slice(0, 10)
+
+    setTakenMeds(prev => {
+      const next = { ...prev }
+      if (isTaken) {
+        delete next[key]
+      } else {
+        next[key] = nowISO
+      }
+      try {
+        localStorage.setItem(`medilab_taken_${todayStr}`, JSON.stringify(next))
+      } catch {}
+      return next
+    })
+
+    if (!isTaken && patientId) {
+      try {
+        await fetch('/api/adherence', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            patient_id: patientId,
+            prescription_id: prescription.id,
+            medication_name: medName,
+            slot: 'morning',
+            taken_at: nowISO,
+            scheduled_date: todayStr,
+            confirmed_by: 'patient',
+          })
+        })
+      } catch (err) {
+        console.warn('Adherence log notice:', err)
+      }
+    }
+  }
 
   useEffect(() => {
     const fetchDoctor = async () => {
@@ -172,9 +231,17 @@ export default function PrescriptionViewerModal({
       <div className="bg-gray-100 dark:bg-gray-950 rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-gray-800">
 
         {/* Action Bar */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md sticky top-0 z-10">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md sticky top-0 z-10 flex-wrap gap-2">
           <h2 className="text-sm font-bold text-gray-700 dark:text-gray-300">Prescription Preview</h2>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap items-center">
+            <button
+              onClick={() => setShowPharmacyModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-semibold text-xs sm:text-sm transition-all shadow-md"
+              title="Forward prescription to partner pharmacy via WhatsApp"
+            >
+              <span>📦</span>
+              <span>Order from Pharmacy</span>
+            </button>
             <button
               onClick={handleDownloadPdf}
               disabled={isGeneratingPdf}
@@ -248,22 +315,38 @@ export default function PrescriptionViewerModal({
               )}
               {meds.map((med: any, idx: number) => {
                 const form = med.form || inferFormFromName(med.name)
+                const key = `rx-${prescription.id}-${idx}`
+                const isTaken = !!takenMeds[key]
                 return (
                   <div key={idx} className="flex items-start justify-between gap-4 py-4 border-b border-gray-50 last:border-0">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <span className="text-base">{getFormIcon(form)}</span>
-                        <p className="font-bold text-gray-900">{med.name}</p>
+                        <p className={`font-bold ${isTaken ? 'line-through text-gray-400' : 'text-gray-900'}`}>{med.name}</p>
                         <span className="text-[9px] uppercase font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
                           {form}
                         </span>
                       </div>
                       {med.dosage && <p className="text-xs text-blue-600 font-semibold mt-0.5">Dosage: {med.dosage}</p>}
                     </div>
-                    <div className="flex-1 text-right" dir="auto">
-                      <p className="inline-block bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-sm text-gray-700 font-medium leading-snug text-left min-w-[160px]">
-                        {med.instructions}
-                      </p>
+                    <div className="flex flex-col items-end gap-2 text-right">
+                      {med.instructions && (
+                        <p className="inline-block bg-gray-50 border border-gray-100 rounded-xl px-3 py-1.5 text-xs text-gray-700 font-medium leading-snug text-left min-w-[140px]" dir="auto">
+                          {med.instructions}
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleToggleTakenMed(med.name, idx)}
+                        className={`px-3 py-1 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                          isTaken
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                            : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
+                        }`}
+                      >
+                        <span>{isTaken ? '✓' : '💊'}</span>
+                        <span>{isTaken ? 'Taken (تم التناول)' : 'I Took This Dose'}</span>
+                      </button>
                     </div>
                   </div>
                 )
@@ -279,6 +362,15 @@ export default function PrescriptionViewerModal({
         </div>
 
       </div>
+
+      {showPharmacyModal && (
+        <PharmacyForwardModal
+          prescription={prescription}
+          patientName={patientName}
+          onClose={() => setShowPharmacyModal(false)}
+          onDownloadPdf={handleDownloadPdf}
+        />
+      )}
     </div>
   )
 }

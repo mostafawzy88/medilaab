@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import PrescriptionViewerModal from './PrescriptionViewerModal'
-import PrescriptionModal, { getFormIcon, getFormLabel, inferFormFromName, MedicationFormType } from './PrescriptionModal'
+import PrescriptionModal, { getFormIcon, getFormLabel, inferFormFromName, parseMedicationFormAndDosage, MedicationFormType } from './PrescriptionModal'
 import { getWhatsAppLink } from '@/utils/whatsapp'
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
 
@@ -110,10 +110,14 @@ function PatientDetailModal({
           .eq('doctor_id', doctorId)
           .order('name')
         if (data) {
-          setDoctorFavs(data.map(m => ({
-            ...m,
-            form: m.form || inferFormFromName(m.name)
-          })))
+          setDoctorFavs(data.map(m => {
+            const { cleanDosage, form } = parseMedicationFormAndDosage(m.default_dosage, m.name, m.form)
+            return {
+              ...m,
+              default_dosage: cleanDosage,
+              form
+            }
+          }))
         }
       } catch (e) {
         console.warn('Could not fetch doctor favorites:', e)
@@ -253,17 +257,25 @@ function PatientDetailModal({
 
       if (saveToDoctorFavs) {
         try {
+          const cleanDosage = newMedDosage
+            .replace(/\[FORM:[a-zA-Z_]+\]/gi, '')
+            .replace(/\[(pill|drinking|cream|injection|drops|spray|other)\]/gi, '')
+            .trim()
           const payload: any = {
             doctor_id: doctorId,
             name: newMedName.trim(),
-            default_dosage: newMedDosage.trim(),
+            default_dosage: cleanDosage ? `${cleanDosage} [FORM:${newMedForm}]` : `[FORM:${newMedForm}]`,
             common_symptoms: newMedDiagnosis.trim(),
             form: newMedForm
           }
-          const { error: favErr } = await supabase.from('doctor_medications').insert(payload)
-          if (favErr && favErr.message?.includes('form')) {
+          try {
+            const { error: favErr } = await supabase.from('doctor_medications').insert(payload)
+            if (favErr) {
+              delete payload.form
+              await supabase.from('doctor_medications').insert(payload)
+            }
+          } catch {
             delete payload.form
-            payload.default_dosage = `${newMedDosage.trim()} [${newMedForm}]`
             await supabase.from('doctor_medications').insert(payload)
           }
         } catch (err) {

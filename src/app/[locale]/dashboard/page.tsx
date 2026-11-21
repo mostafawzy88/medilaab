@@ -12,6 +12,7 @@ import NurseAssignmentView from '@/components/NurseAssignmentView';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
 import SubscriptionRenewal from '@/components/SubscriptionRenewal';
+import DashboardHeader from '@/components/DashboardHeader';
 
 export default async function DashboardPage({ 
   params,
@@ -181,6 +182,7 @@ export default async function DashboardPage({
   let portalContent = null;
   let portalTitle = '';
   let portalSubtitle = '';
+  let supervisorDoctorName: string | null = null;
 
   if (role === 'patient') {
     if (tab === 'prescriptions') {
@@ -350,6 +352,8 @@ export default async function DashboardPage({
       .eq('id', supervisorId)
       .single();
 
+    supervisorDoctorName = supervisorDoctor?.full_name || null;
+
     if (tab === 'schedule') {
       portalTitle = locale === 'ar' ? 'جدول مواعيد العيادة' : 'Clinic Schedule';
       portalSubtitle = supervisorDoctor?.full_name 
@@ -425,14 +429,13 @@ export default async function DashboardPage({
              <LogoutButton />
           </div>
 
-          <div className="mb-10">
-            <h1 className="text-3xl font-black text-gray-900 dark:text-white mb-2">{portalTitle}</h1>
-            <p className="text-gray-500 dark:text-gray-400">
-              {portalSubtitle || (role === 'patient' 
-                ? t('manage_patient') || 'Manage your appointments and payments seamlessly.' 
-                : t('manage_admin') || 'Manage your clinic flow securely.')}
-            </p>
-          </div>
+          {/* Dynamic Client Tab Header */}
+          <DashboardHeader 
+            role={role} 
+            fullName={fullName} 
+            supervisorName={supervisorDoctorName}
+            initialTab={tab}
+          />
 
           <div className="mx-auto w-full">
             {portalContent}

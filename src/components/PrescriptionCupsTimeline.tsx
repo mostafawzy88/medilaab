@@ -6,6 +6,7 @@ import { createClient } from '@/utils/supabase/client'
 import NotificationPermissionBanner from './NotificationPermissionBanner'
 import { sendMedicationReminderNotification } from '@/utils/notifications'
 import { getFormIcon, inferFormFromName, MedicationFormType } from './PrescriptionModal'
+import PharmacyForwardModal from './PharmacyForwardModal'
 
 // ─── TYPES ──────────────────────────────────────────────────────────────────
 export type CupSlot = 'morning' | 'midday' | 'evening' | 'night' | 'bedtime'
@@ -169,11 +170,13 @@ function PillVisual({
   isTaken,
   takenAt,
   onToggleTaken,
+  isAr = false
 }: {
   pill: PillItem
   isTaken: boolean
   takenAt?: string | null
   onToggleTaken: () => void
+  isAr?: boolean
 }) {
   const getPillGraphic = () => {
     switch (pill.colorType) {
@@ -284,17 +287,22 @@ function PillVisual({
         )}
       </div>
 
-      {/* Taken check indicator */}
+      {/* Taken check indicator & button */}
       <button
         type="button"
-        className={`w-6 h-6 rounded-full border flex items-center justify-center transition-all shrink-0 ${
+        onClick={(e) => {
+          e.stopPropagation()
+          onToggleTaken()
+        }}
+        className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shrink-0 ${
           isTaken
-            ? 'bg-emerald-500 border-emerald-400 text-white shadow-md shadow-emerald-500/40'
-            : 'border-white/30 text-transparent hover:border-white/60'
+            ? 'bg-emerald-500 border border-emerald-400 text-white shadow-md shadow-emerald-500/40'
+            : 'bg-white/10 hover:bg-emerald-600 text-gray-200 hover:text-white border border-white/20'
         }`}
-        title={isTaken ? 'Mark as not taken' : 'Mark as taken'}
+        title={isTaken ? 'Click to undo' : 'Confirm dose taken'}
       >
-        <span className="text-xs font-black">✓</span>
+        <span>✓</span>
+        <span>{isTaken ? (isAr ? 'تم التناول' : 'Taken') : (isAr ? 'سجل التناول' : 'Take Dose')}</span>
       </button>
     </div>
   )
@@ -329,6 +337,8 @@ export default function PrescriptionCupsTimeline({
   const [customSlot, setCustomSlot] = useState<CupSlot>('morning')
   const [customInstructions, setCustomInstructions] = useState('')
   const [viewMode, setViewMode] = useState<'cups' | 'categories'>('cups')
+  const [toastMsg, setToastMsg] = useState<string | null>(null)
+  const [forwardingRx, setForwardingRx] = useState<any | null>(null)
 
   // Determine current time and auto-select active cup
   useEffect(() => {
@@ -389,21 +399,33 @@ export default function PrescriptionCupsTimeline({
       return next
     })
 
-    // Insert into Supabase if patientId is available
-    if (!isCurrentlyTaken && targetPill && patientId) {
-      const supabase = createClient()
-      supabase.from('medication_adherence_logs').insert({
-        patient_id: patientId,
-        prescription_id: targetPill.sourceRxId || null,
-        medication_name: targetPill.name,
-        slot: targetPill.slot,
-        taken_at: nowISO,
-        scheduled_date: todayStr,
-        confirmed_by: 'patient',
-        notes: targetPill.dosage || null
-      }).then(({ error }) => {
-        if (error) console.warn('Supabase adherence log notice:', error.message)
+    // Insert into Supabase via API route (/api/adherence) to bypass client RLS
+    if (!isCurrentlyTaken && targetPill) {
+      fetch('/api/adherence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patient_id: patientId || null,
+          prescription_id: targetPill.sourceRxId || null,
+          medication_name: targetPill.name,
+          slot: targetPill.slot,
+          taken_at: nowISO,
+          scheduled_date: todayStr,
+          confirmed_by: 'patient',
+          notes: targetPill.dosage || null
+        })
       })
+        .then(async (res) => {
+          if (res.ok) {
+            setToastMsg(isAr ? `✓ تم تأكيد تناول: ${targetPill.name}` : `✓ Dose confirmed: ${targetPill.name}`)
+            setTimeout(() => setToastMsg(null), 3500)
+          } else {
+            console.warn('Adherence log returned non-ok status')
+          }
+        })
+        .catch((err) => {
+          console.warn('Adherence log fetch error:', err)
+        })
     }
   }
 
@@ -906,6 +928,7 @@ export default function PrescriptionCupsTimeline({
                             isTaken={isTaken}
                             takenAt={takenAt}
                             onToggleTaken={() => toggleTaken(pill.id)}
+                            isAr={isAr}
                           />
                         )
                       })}
@@ -1097,13 +1120,24 @@ export default function PrescriptionCupsTimeline({
                   </div>
                 </div>
 
-                <button
-                  onClick={() => onViewPrescription?.(rx)}
-                  className="px-5 py-2.5 rounded-2xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-300 font-bold text-xs transition-all shadow-sm flex items-center gap-1.5 shrink-0"
-                >
-                  <span>📄</span>
-                  <span>{isAr ? 'عرض وتحميل الروشتة PDF' : 'View & Download PDF'}</span>
-                </button>
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                  <button
+                    onClick={() => onViewPrescription?.(rx)}
+                    className="px-5 py-2.5 rounded-2xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-300 font-bold text-xs transition-all shadow-sm flex items-center gap-1.5"
+                  >
+                    <span>📄</span>
+                    <span>{isAr ? 'عرض وتحميل الروشتة PDF' : 'View & Download PDF'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setForwardingRx(rx)}
+                    className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 text-white font-bold text-xs transition-all shadow-md shadow-emerald-600/30 flex items-center gap-1.5"
+                  >
+                    <span>📦</span>
+                    <span>{isAr ? 'طلب من الصيدلية' : 'Order via Pharmacy'}</span>
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -1205,6 +1239,23 @@ export default function PrescriptionCupsTimeline({
             </form>
           </div>
         </div>
+      )}
+      {/* Toast Notification */}
+      {toastMsg && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-bottom-3 font-bold border border-emerald-400">
+          <span className="text-xl">✅</span>
+          <span className="text-sm">{toastMsg}</span>
+        </div>
+      )}
+
+      {/* Pharmacy Partner Order Modal */}
+      {forwardingRx && (
+        <PharmacyForwardModal
+          isOpen={!!forwardingRx}
+          onClose={() => setForwardingRx(null)}
+          prescription={forwardingRx}
+          patientName={patientName}
+        />
       )}
     </div>
   )

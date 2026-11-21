@@ -12,6 +12,8 @@ import FamilyMembersTab from './FamilyMembersTab'
 import PatientHistoryTab from './PatientHistoryTab'
 import PrescriptionCupsTimeline from './PrescriptionCupsTimeline'
 import NotificationPermissionBanner from './NotificationPermissionBanner'
+import PharmacyForwardModal from './PharmacyForwardModal'
+import DoctorReviewModal from './DoctorReviewModal'
 import { sendTurnAlertNotification } from '@/utils/notifications'
 import { getWhatsAppLink } from '@/utils/whatsapp'
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
@@ -220,6 +222,22 @@ export default function PatientDashboard({
   const [viewingPrescription, setViewingPrescription] = useState<any | null>(null)
   const [patientName, setPatientName] = useState('Patient')
   const [patientUserId, setPatientUserId] = useState<string>('')
+
+  // CSAT Automated Satisfaction prompt state
+  const [pendingCsatApt, setPendingCsatApt] = useState<AppointmentProps | null>(null)
+  const [csatRating, setCsatRating] = useState<number>(5)
+  const [csatHoverRating, setCsatHoverRating] = useState<number>(0)
+  const [csatComment, setCsatComment] = useState<string>('')
+  const [csatTags, setCsatTags] = useState<string[]>([])
+  const [csatSubmitting, setCsatSubmitting] = useState<boolean>(false)
+  const [csatSubmitted, setCsatSubmitted] = useState<boolean>(false)
+  const [csatModalApt, setCsatModalApt] = useState<AppointmentProps | null>(null)
+
+  // Direct Pharmacy Forwarding state
+  const [forwardingRx, setForwardingRx] = useState<any | null>(null)
+
+  // Direct Pill check-in state on Overview
+  const [overviewTakenMeds, setOverviewTakenMeds] = useState<Record<string, string>>({})
 
   useEffect(() => {
     const getPatientAuth = async () => {
@@ -673,9 +691,9 @@ export default function PatientDashboard({
     fetchCerts()
   }, [activeTab])
 
-  // Fetch patient prescriptions
+  // Fetch patient prescriptions (needed on both Overview and Prescriptions tabs)
   useEffect(() => {
-    if (activeTab !== 'prescriptions') return
+    if (activeTab !== 'prescriptions' && activeTab !== 'overview') return
     const fetchPrescriptions = async () => {
       setLoadingPrescriptions(true)
       const supabase = createClient()
@@ -705,6 +723,126 @@ export default function PatientDashboard({
     }
     fetchPrescriptions()
   }, [activeTab])
+
+  // Load today's taken medication logs from localStorage
+  useEffect(() => {
+    try {
+      const todayKey = `medilab_taken_${new Date().toISOString().slice(0, 10)}`
+      const saved = localStorage.getItem(todayKey)
+      if (saved) {
+        setOverviewTakenMeds(JSON.parse(saved))
+      }
+    } catch {}
+  }, [])
+
+  // Check for completed visits that need an automated CSAT rating prompt
+  useEffect(() => {
+    const checkUnreviewedVisits = async () => {
+      const completed = appointments.filter(a => a.status === 'completed')
+      if (completed.length === 0) return
+
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      try {
+        const { data: reviews } = await supabase
+          .from('doctor_reviews')
+          .select('appointment_id')
+          .eq('patient_id', user.id)
+
+        const reviewedIds = new Set((reviews || []).map((r: any) => r.appointment_id).filter(Boolean))
+
+        // Find the most recent completed visit without a review and not dismissed
+        const candidate = completed.find(a => {
+          if (reviewedIds.has(a.id)) return false
+          const isDismissed = localStorage.getItem(`medilab_csat_dismissed_${a.id}`)
+          return !isDismissed
+        })
+
+        if (candidate) {
+          setPendingCsatApt(candidate)
+        }
+      } catch (err) {
+        console.warn('CSAT check notice:', err)
+      }
+    }
+
+    checkUnreviewedVisits()
+  }, [appointments])
+
+  // Handle quick CSAT submission
+  const handleQuickSubmitCsat = async (starScore: number) => {
+    if (!pendingCsatApt) return
+    setCsatSubmitting(true)
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      setCsatSubmitting(false)
+      return
+    }
+
+    try {
+      await supabase.from('doctor_reviews').insert({
+        doctor_id: pendingCsatApt.doctor_id,
+        patient_id: user.id,
+        appointment_id: pendingCsatApt.id,
+        rating: starScore,
+        review_text: csatComment.trim() || null,
+        tags: csatTags
+      })
+      setCsatSubmitted(true)
+      localStorage.setItem(`medilab_csat_dismissed_${pendingCsatApt.id}`, 'true')
+      setTimeout(() => setPendingCsatApt(null), 3500)
+    } catch (err) {
+      console.warn('CSAT submit error:', err)
+    } finally {
+      setCsatSubmitting(false)
+    }
+  }
+
+  // Handle quick Overview Pill Check-in
+  const handleOverviewTakeDose = async (medName: string, slotName: string, rxId?: string) => {
+    const key = `${medName}_${slotName}`
+    const isAlreadyTaken = !!overviewTakenMeds[key]
+    const nowISO = new Date().toISOString()
+    const todayStr = nowISO.slice(0, 10)
+
+    setOverviewTakenMeds(prev => {
+      const next = { ...prev }
+      if (isAlreadyTaken) {
+        delete next[key]
+      } else {
+        next[key] = nowISO
+      }
+      try {
+        localStorage.setItem(`medilab_taken_${todayStr}`, JSON.stringify(next))
+      } catch {}
+      return next
+    })
+
+    if (!isAlreadyTaken) {
+      try {
+        await fetch('/api/adherence', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            patient_id: patientUserId || null,
+            prescription_id: rxId || null,
+            medication_name: medName,
+            slot: slotName,
+            taken_at: nowISO,
+            scheduled_date: todayStr,
+            confirmed_by: 'patient',
+            notes: 'Checked-in via Patient Overview Dashboard'
+          })
+        })
+      } catch (err) {
+        console.warn('Adherence log fetch error:', err)
+      }
+    }
+  }
 
   // Separate active from past
   const activeAppointments = appointments.filter(a => ['waiting', 'scheduled', 'in_progress', 'proposed'].includes(a.status || ''))
@@ -1261,6 +1399,134 @@ export default function PatientDashboard({
           {/* Phone Push Notifications Permission & Status Banner */}
           <NotificationPermissionBanner />
 
+          {/* Automated Patient Satisfaction Score (CSAT) Banner */}
+          {pendingCsatApt && (
+            <div className="bg-gradient-to-r from-amber-500/15 via-purple-500/10 to-indigo-500/15 border-2 border-amber-400/40 rounded-3xl p-6 shadow-xl relative overflow-hidden animate-in fade-in slide-in-from-top-4">
+              <div className="flex items-center justify-between gap-4 pb-3 border-b border-amber-300/20">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-2 rounded-2xl bg-amber-500/20 text-amber-300 text-lg">⭐</span>
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">
+                      {locale === 'ar' ? 'مؤشر رضا المريض (CSAT)' : 'Patient Satisfaction Score'}
+                    </span>
+                    <h3 className="text-base sm:text-lg font-black text-gray-950 dark:text-white">
+                      {locale === 'ar'
+                        ? `كيف كانت تجربتك في كشف د. ${pendingCsatApt.doctor_name}؟`
+                        : `How was your consultation with Dr. ${pendingCsatApt.doctor_name}?`}
+                    </h3>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    localStorage.setItem(`medilab_csat_dismissed_${pendingCsatApt.id}`, 'true')
+                    setPendingCsatApt(null)
+                  }}
+                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white flex items-center justify-center text-xs transition-colors shrink-0"
+                  title="Dismiss"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {csatSubmitted ? (
+                <div className="pt-4 flex items-center gap-3 text-emerald-400 font-bold text-sm">
+                  <span className="text-xl">✅</span>
+                  <span>{locale === 'ar' ? 'شكراً لتقييمك! تم حفظ التقييم بنجاح وتعزيز مؤشر الطبيب.' : 'Thank you! Your satisfaction rating was submitted successfully.'}</span>
+                </div>
+              ) : (
+                <div className="pt-4 space-y-4">
+                  {/* Star Rating Selector */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-gray-700 dark:text-gray-300 mr-2">
+                      {locale === 'ar' ? 'تقييم الزيارة:' : 'Rate Consultation:'}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onMouseEnter={() => setCsatHoverRating(star)}
+                          onMouseLeave={() => setCsatHoverRating(0)}
+                          onClick={() => setCsatRating(star)}
+                          className="text-2xl sm:text-3xl transition-transform hover:scale-125 focus:outline-none"
+                        >
+                          <span className={(csatHoverRating || csatRating) >= star ? 'text-amber-400' : 'text-gray-400 dark:text-gray-600'}>
+                            ★
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    <span className="text-xs font-black text-amber-500 dark:text-amber-300 ml-2">
+                      {csatRating === 5 ? (locale === 'ar' ? 'ممتاز جداً 🌟' : 'Exceptional 🌟') :
+                       csatRating === 4 ? (locale === 'ar' ? 'جيد جداً 👍' : 'Very Good 👍') :
+                       csatRating === 3 ? (locale === 'ar' ? 'مقبول' : 'Good') :
+                       csatRating === 2 ? (locale === 'ar' ? 'دون التوقعات' : 'Fair') :
+                       (locale === 'ar' ? 'غير راضٍ' : 'Needs Improvement')}
+                    </span>
+                  </div>
+
+                  {/* Quick Compliment Tags */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {[
+                      { tag: '🎯 Accurate Diagnosis', ar: 'تشخيص دقيق' },
+                      { tag: '⏱️ Low Wait Time', ar: 'وقت انتظار قليل' },
+                      { tag: '💬 Clear Explanation', ar: 'شرح وافٍ للعلاج' },
+                      { tag: '👂 Attentive Listener', ar: 'استماع باهتمام' },
+                      { tag: '👶 Great with Kids', ar: 'تعامل رائع مع الأطفال' }
+                    ].map(item => {
+                      const isSelected = csatTags.includes(item.tag)
+                      return (
+                        <button
+                          key={item.tag}
+                          type="button"
+                          onClick={() => {
+                            setCsatTags(prev => isSelected ? prev.filter(t => t !== item.tag) : [...prev, item.tag])
+                          }}
+                          className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                            isSelected
+                              ? 'bg-amber-400 text-slate-950 shadow-md font-black'
+                              : 'bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 text-gray-700 dark:text-gray-300'
+                          }`}
+                        >
+                          {locale === 'ar' ? item.ar : item.tag}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {/* Comment & Submit Button */}
+                  <div className="flex flex-col sm:flex-row items-center gap-3">
+                    <input
+                      type="text"
+                      value={csatComment}
+                      onChange={(e) => setCsatComment(e.target.value)}
+                      placeholder={locale === 'ar' ? 'أضف تعليقاً إضافياً للطبيب (اختياري)...' : 'Add an optional note or compliment...'}
+                      className="w-full flex-1 px-4 py-2.5 rounded-2xl bg-white dark:bg-black/40 border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white placeholder-gray-400 text-xs focus:outline-none focus:border-amber-400"
+                    />
+
+                    <button
+                      type="button"
+                      disabled={csatSubmitting}
+                      onClick={() => handleQuickSubmitCsat(csatRating)}
+                      className="w-full sm:w-auto px-6 py-2.5 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 hover:brightness-110 active:scale-95 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 transition-all shrink-0 flex items-center justify-center gap-2"
+                    >
+                      {csatSubmitting ? (
+                        <span>{locale === 'ar' ? 'جارٍ الإرسال...' : 'Submitting...'}</span>
+                      ) : (
+                        <>
+                          <span>⭐</span>
+                          <span>{locale === 'ar' ? 'إرسال التقييم' : 'Submit CSAT Rating'}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Hero Welcome & Quick Stats Banner */}
           <div className="bg-gradient-to-r from-blue-900/40 via-indigo-950/40 to-slate-900/60 border border-blue-500/20 rounded-3xl p-6 sm:p-8 backdrop-blur-xl shadow-xl relative overflow-hidden">
             <div className="absolute -top-24 -right-24 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -1668,6 +1934,56 @@ export default function PatientDashboard({
                 </div>
               ))}
             </div>
+
+            {/* Quick 1-Click Pill Check-in Checklist */}
+            {prescriptions.length > 0 && prescriptions[0].medications?.length > 0 && (
+              <div className="pt-4 border-t border-gray-100 dark:border-gray-800 space-y-2">
+                <div className="flex items-center justify-between text-xs font-black text-gray-500 dark:text-gray-400">
+                  <span className="flex items-center gap-1.5">
+                    <span>⚡</span>
+                    <span>{locale === 'ar' ? 'تسجيل أدوية اليوم بنقرة واحدة:' : "Today's Quick Medication Check-in:"}</span>
+                  </span>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
+                    {locale === 'ar' ? 'يتم حفظ الجرعة فوراً وتحديث التزامك' : 'Instantly logged to adherence history'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                  {prescriptions[0].medications.slice(0, 6).map((med: any, mIdx: number) => {
+                    const key = `${med.name}_morning`
+                    const isTaken = !!overviewTakenMeds[key] || !!overviewTakenMeds[`${med.name}_dose`]
+                    return (
+                      <div
+                        key={mIdx}
+                        className={`p-3 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
+                          isTaken
+                            ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-800 dark:text-emerald-200'
+                            : 'bg-gray-50 dark:bg-gray-800/40 border-gray-100 dark:border-gray-800 text-gray-900 dark:text-white'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <p className="font-black text-xs truncate">{med.name}</p>
+                          <p className="text-[10px] text-gray-500 truncate">{med.dosage || '1 dose'}</p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOverviewTakeDose(med.name, 'morning', prescriptions[0].id)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1 shrink-0 transition-all ${
+                            isTaken
+                              ? 'bg-emerald-500 text-white shadow-sm'
+                              : 'bg-white dark:bg-gray-700 hover:bg-emerald-600 hover:text-white text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600'
+                          }`}
+                        >
+                          <span>✓</span>
+                          <span>{isTaken ? (locale === 'ar' ? 'تم التناول' : 'Taken') : (locale === 'ar' ? 'تناول' : 'Take')}</span>
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Section: Linked Doctors Quick Grid */}
@@ -1745,13 +2061,22 @@ export default function PatientDashboard({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={() => setViewingPrescription(prescriptions[0])}
                   className="px-4 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 dark:hover:bg-purple-900/60 rounded-xl text-xs font-black transition-colors"
                 >
                   {locale === 'ar' ? 'عرض الروشتة و PDF' : 'View Rx & PDF'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setForwardingRx(prescriptions[0])}
+                  className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1.5"
+                >
+                  <span>📦</span>
+                  <span>{locale === 'ar' ? 'طلب من الصيدلية' : 'Order via Pharmacy'}</span>
                 </button>
               </div>
             </div>
@@ -2271,6 +2596,33 @@ export default function PatientDashboard({
             setSelectedDoctor(doc);
             setEditAppointmentId(null);
             setShowBooking(true);
+          }}
+        />
+      )}
+
+      {/* Pharmacy Partner Integration Modal */}
+      {forwardingRx && (
+        <PharmacyForwardModal
+          isOpen={!!forwardingRx}
+          onClose={() => setForwardingRx(null)}
+          prescription={forwardingRx}
+          patientName={patientName}
+        />
+      )}
+
+      {/* CSAT Doctor Review Modal */}
+      {csatModalApt && (
+        <DoctorReviewModal
+          doctorId={csatModalApt.doctor_id}
+          doctorName={csatModalApt.doctor_name}
+          appointmentId={csatModalApt.id}
+          onClose={() => setCsatModalApt(null)}
+          onSuccess={() => {
+            setCsatModalApt(null)
+            setCsatSubmitted(true)
+            if (pendingCsatApt?.id === csatModalApt.id) {
+              setPendingCsatApt(null)
+            }
           }}
         />
       )}

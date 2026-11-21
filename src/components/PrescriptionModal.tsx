@@ -63,6 +63,37 @@ export function inferFormFromName(name: string): MedicationFormType {
   return 'pill'
 }
 
+export function parseMedicationFormAndDosage(
+  rawDosage?: string | null,
+  rawName?: string | null,
+  explicitForm?: string | null
+): { cleanDosage: string; form: MedicationFormType } {
+  const dosageStr = (rawDosage || '').trim()
+
+  const formTagMatch = dosageStr.match(/\[FORM:([a-zA-Z_]+)\]/i)
+  const bracketFormMatch = dosageStr.match(/\[(pill|drinking|cream|injection|drops|spray|other)\]/i)
+
+  const extractedForm = formTagMatch?.[1]?.toLowerCase() || bracketFormMatch?.[1]?.toLowerCase()
+
+  const validForms: MedicationFormType[] = ['pill', 'drinking', 'cream', 'injection', 'drops', 'spray', 'other']
+
+  let finalForm: MedicationFormType = 'pill'
+  if (explicitForm && validForms.includes(explicitForm as MedicationFormType)) {
+    finalForm = explicitForm as MedicationFormType
+  } else if (extractedForm && validForms.includes(extractedForm as MedicationFormType)) {
+    finalForm = extractedForm as MedicationFormType
+  } else if (rawName) {
+    finalForm = inferFormFromName(rawName)
+  }
+
+  const cleanDosage = dosageStr
+    .replace(/\[FORM:[a-zA-Z_]+\]/gi, '')
+    .replace(/\[(pill|drinking|cream|injection|drops|spray|other)\]/gi, '')
+    .trim()
+
+  return { cleanDosage, form: finalForm }
+}
+
 export default function PrescriptionModal({ 
   appointmentId, 
   patientId, 
@@ -114,10 +145,14 @@ export default function PrescriptionModal({
           .order('name')
 
         if (!error && data && isMounted) {
-          const parsed = data.map(m => ({
-            ...m,
-            form: m.form || inferFormFromName(m.name)
-          }))
+          const parsed = data.map(m => {
+            const { cleanDosage, form } = parseMedicationFormAndDosage(m.default_dosage, m.name, m.form)
+            return {
+              ...m,
+              default_dosage: cleanDosage,
+              form
+            }
+          })
           setFavoriteMeds(parsed)
         }
       } catch (err) {
@@ -281,18 +316,25 @@ export default function PrescriptionModal({
     const medsToSaveToFavs = validMeds.filter(m => m.saveToFavorites)
     for (const med of medsToSaveToFavs) {
       try {
+        const cleanDosage = (med.dosage || '')
+          .replace(/\[FORM:[a-zA-Z_]+\]/gi, '')
+          .replace(/\[(pill|drinking|cream|injection|drops|spray|other)\]/gi, '')
+          .trim()
         const payload: any = {
           doctor_id: user.id,
           name: med.name.trim(),
-          default_dosage: med.dosage.trim(),
+          default_dosage: cleanDosage ? `${cleanDosage} [FORM:${med.form || 'pill'}]` : `[FORM:${med.form || 'pill'}]`,
           common_symptoms: symptoms || diagnosis || '',
           form: med.form || 'pill'
         }
-        const { error: favErr } = await supabase.from('doctor_medications').insert(payload)
-        if (favErr && favErr.message?.includes('form')) {
-          // Fallback if form column does not exist yet
+        try {
+          const { error: favErr } = await supabase.from('doctor_medications').insert(payload)
+          if (favErr) {
+            delete payload.form
+            await supabase.from('doctor_medications').insert(payload)
+          }
+        } catch {
           delete payload.form
-          payload.default_dosage = `${med.dosage} [${med.form}]`
           await supabase.from('doctor_medications').insert(payload)
         }
       } catch (err) {

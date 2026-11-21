@@ -5,7 +5,7 @@ import { createClient } from '@/utils/supabase/client'
 import { useTranslations, useLocale } from 'next-intl'
 import { useSearchParams, useRouter } from 'next/navigation'
 import DoctorOverview from './DoctorOverview'
-import PrescriptionModal, { getFormIcon, inferFormFromName } from './PrescriptionModal'
+import PrescriptionModal, { getFormIcon, inferFormFromName, parseMedicationFormAndDosage } from './PrescriptionModal'
 import BookingModal from './BookingModal'
 import ClinicSchedule from './ClinicSchedule'
 import PatientsTab from './PatientsTab'
@@ -330,10 +330,14 @@ export default function DoctorDashboard({
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
       const { data } = await supabase.from('doctor_medications').select('*').eq('doctor_id', user.id).order('name')
-      const parsed = (data || []).map(m => ({
-        ...m,
-        form: m.form || inferFormFromName(m.name)
-      }))
+      const parsed = (data || []).map(m => {
+        const { cleanDosage, form } = parseMedicationFormAndDosage(m.default_dosage, m.name, m.form)
+        return {
+          ...m,
+          default_dosage: cleanDosage,
+          form
+        }
+      })
       setMeds(parsed)
     }
     setLoadingMeds(false)
@@ -345,34 +349,46 @@ export default function DoctorDashboard({
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
+    const cleanDosage = (newMed.dosage || '')
+      .replace(/\[FORM:[a-zA-Z_]+\]/gi, '')
+      .replace(/\[(pill|drinking|cream|injection|drops|spray|other)\]/gi, '')
+      .trim()
+    const chosenForm = newMed.form || 'pill'
+    const encodedDosage = cleanDosage ? `${cleanDosage} [FORM:${chosenForm}]` : `[FORM:${chosenForm}]`
+
     if (editingMedId) {
       const updatePayload: any = {
-        name: newMed.name,
-        default_dosage: newMed.dosage,
+        name: newMed.name.trim(),
+        default_dosage: encodedDosage,
         common_symptoms: newMed.symptoms,
-        form: newMed.form || 'pill'
       }
-      const { error: upErr } = await supabase.from('doctor_medications')
-        .update(updatePayload)
-        .eq('id', editingMedId)
-      if (upErr && upErr.message?.includes('form')) {
-        delete updatePayload.form
-        updatePayload.default_dosage = `${newMed.dosage} [${newMed.form}]`
+      try {
+        const { error: upErr } = await supabase.from('doctor_medications')
+          .update({ ...updatePayload, form: chosenForm })
+          .eq('id', editingMedId)
+        if (upErr) {
+          await supabase.from('doctor_medications').update(updatePayload).eq('id', editingMedId)
+        }
+      } catch {
         await supabase.from('doctor_medications').update(updatePayload).eq('id', editingMedId)
       }
       setEditingMedId(null)
     } else {
       const insertPayload: any = {
         doctor_id: user.id,
-        name: newMed.name,
-        default_dosage: newMed.dosage,
+        name: newMed.name.trim(),
+        default_dosage: encodedDosage,
         common_symptoms: newMed.symptoms,
-        form: newMed.form || 'pill'
       }
-      const { error: inErr } = await supabase.from('doctor_medications').insert(insertPayload)
-      if (inErr && inErr.message?.includes('form')) {
-        delete insertPayload.form
-        insertPayload.default_dosage = `${newMed.dosage} [${newMed.form}]`
+      try {
+        const { error: inErr } = await supabase.from('doctor_medications').insert({
+          ...insertPayload,
+          form: chosenForm
+        })
+        if (inErr) {
+          await supabase.from('doctor_medications').insert(insertPayload)
+        }
+      } catch {
         await supabase.from('doctor_medications').insert(insertPayload)
       }
     }
@@ -1001,7 +1017,7 @@ export default function DoctorDashboard({
                         setNewMed(prev => ({
                           ...prev,
                           name: val,
-                          form: prev.form === 'pill' ? inferFormFromName(val) : prev.form
+                          form: (!editingMedId && prev.form === 'pill') ? inferFormFromName(val) : prev.form
                         }))
                       }}
                       className="rounded-xl px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500"

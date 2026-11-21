@@ -28,6 +28,7 @@ export default function DoctorAnalytics({ doctorId }: { doctorId: string }) {
   const locale = useLocale()
   const [loading, setLoading] = useState(true)
   const [appointments, setAppointments] = useState<AppointmentItem[]>([])
+  const [reviews, setReviews] = useState<any[]>([])
 
   // Filters
   const [dateRangePreset, setDateRangePreset] = useState<'today' | 'week' | 'month' | 'last30' | 'year' | 'all' | 'custom'>('month')
@@ -78,8 +79,46 @@ export default function DoctorAnalytics({ doctorId }: { doctorId: string }) {
       setAppointments(mapped)
     }
 
+    // Fetch patient satisfaction reviews (CSAT)
+    try {
+      const { data: revData } = await supabase
+        .from('doctor_reviews')
+        .select('id, rating, review_text, tags, created_at')
+        .eq('doctor_id', doctorId)
+
+      if (revData) {
+        setReviews(revData)
+      }
+    } catch (err) {
+      console.warn('DoctorAnalytics CSAT fetch notice:', err)
+    }
+
     setLoading(false)
   }
+
+  // Calculate CSAT Metrics
+  const csatMetrics = useMemo(() => {
+    if (!reviews || reviews.length === 0) {
+      return {
+        count: 0,
+        averageRating: 5.0,
+        csatPercentage: 100,
+        positiveCount: 0
+      }
+    }
+    const count = reviews.length
+    const totalScore = reviews.reduce((acc, r) => acc + (Number(r.rating) || 5), 0)
+    const averageRating = Number((totalScore / count).toFixed(1))
+    const positiveCount = reviews.filter(r => (Number(r.rating) || 0) >= 4).length
+    const csatPercentage = Math.round((positiveCount / count) * 100)
+
+    return {
+      count,
+      averageRating,
+      csatPercentage,
+      positiveCount
+    }
+  }, [reviews])
 
   // Calculate Date Bounds
   const dateBounds = useMemo(() => {
@@ -552,28 +591,35 @@ export default function DoctorAnalytics({ doctorId }: { doctorId: string }) {
           </div>
         </div>
 
-        {/* Card 3: Patient Retention */}
+        {/* Card 3: Patient Loyalty & CSAT */}
         <div
           onClick={() => router.push(`/${locale}/dashboard?tab=patients`)}
-          title="Click to view patient records & loyalty"
+          title="Click to view patient records, satisfaction & loyalty"
           className="bg-white dark:bg-gray-900 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm relative overflow-hidden cursor-pointer hover:shadow-lg hover:border-purple-400 dark:hover:border-purple-600 hover:-translate-y-0.5 transition-all group"
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] font-black uppercase tracking-widest text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
-              Patient Loyalty
+              Patient Loyalty & CSAT
               <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs">↗</span>
             </span>
-            <span className="text-xl group-hover:scale-110 transition-transform">🔄</span>
+            <span className="text-xl group-hover:scale-110 transition-transform">⭐</span>
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-black text-gray-900 dark:text-white">
-              {metrics.retentionRate}%
-            </span>
-            <span className="text-xs font-bold text-purple-600 font-black">Returning</span>
+          <div className="flex items-baseline justify-between gap-2">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-3xl font-black text-gray-900 dark:text-white">
+                {csatMetrics.averageRating}
+              </span>
+              <span className="text-amber-500 font-bold text-sm">★</span>
+              <span className="text-[11px] font-bold text-gray-400">({csatMetrics.csatPercentage}%)</span>
+            </div>
+            <div className="text-right">
+              <span className="text-xl font-black text-purple-600 dark:text-purple-400 block">{metrics.retentionRate}%</span>
+              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Retention</span>
+            </div>
           </div>
           <div className="mt-3 flex items-center justify-between text-[11px] font-bold text-gray-500 dark:text-gray-400 pt-3 border-t border-gray-100 dark:border-gray-800">
-            <span>{metrics.returningPatientsCount} Repeat Visitors</span>
-            <span className="text-purple-600 font-black flex items-center gap-1">View Patients →</span>
+            <span>{csatMetrics.count} Reviews ({metrics.returningPatientsCount} Repeat)</span>
+            <span className="text-purple-600 font-black flex items-center gap-1">View Details →</span>
           </div>
         </div>
 
