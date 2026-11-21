@@ -219,6 +219,18 @@ export default function PatientDashboard({
   const [loadingPrescriptions, setLoadingPrescriptions] = useState(false)
   const [viewingPrescription, setViewingPrescription] = useState<any | null>(null)
   const [patientName, setPatientName] = useState('Patient')
+  const [patientUserId, setPatientUserId] = useState<string>('')
+
+  useEffect(() => {
+    const getPatientAuth = async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        setPatientUserId(user.id)
+      }
+    }
+    getPatientAuth()
+  }, [])
   
   const searchParams = useSearchParams()
   const activeTab = searchParams.get('tab') || 'bookings'
@@ -1702,6 +1714,7 @@ export default function PatientDashboard({
           prescriptions={prescriptions}
           loading={loadingPrescriptions}
           patientName={patientName}
+          patientId={patientUserId}
           onViewPrescription={(rx) => setViewingPrescription(rx)}
         />
       )}

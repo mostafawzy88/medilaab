@@ -14,6 +14,8 @@ import DoctorHistoryTab from './DoctorHistoryTab'
 import DoctorStaffTab from './DoctorStaffTab'
 import QueueRemovalModal from './QueueRemovalModal'
 import MedicationManagerModal from './MedicationManagerModal'
+import FollowUpModal from './FollowUpModal'
+import MedicationAdherenceReport from './MedicationAdherenceReport'
 import { getWhatsAppLink } from '@/utils/whatsapp'
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon'
 
@@ -85,6 +87,8 @@ export default function DoctorDashboard({
   const [currentTime, setCurrentTime] = useState(new Date())
   const [rejectingId, setRejectingId] = useState<string | null>(null)
   const [rejectionReason, setRejectionReason] = useState('')
+  const [followUpApt, setFollowUpApt] = useState<Appointment | null>(null)
+  const [adherencePatient, setAdherencePatient] = useState<{ id: string; name: string } | null>(null)
 
   // Live ticking clock for doctor
   useEffect(() => {
@@ -307,7 +311,8 @@ export default function DoctorDashboard({
         clinic_urgent: appts.filter((a: any) => a.appointment_type === 'clinic_urgent').length,
         home_visit: appts.filter((a: any) => a.appointment_type === 'home_visit').length,
       }
-      setStats({ totalRevenue, patientCount, byType })
+      const free_follow_ups = appts.filter((a: any) => (a.notes || '').includes('[FREE_FOLLOW_UP]')).length
+      setStats({ totalRevenue, patientCount, byType, free_follow_ups })
     }
     setLoadingStats(false)
   }
@@ -562,13 +567,44 @@ export default function DoctorDashboard({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {activeQueue.map((apt, idx) => {
-                    const arrivalTime = parseArrivalTime(apt.notes)
-                    const isArrived = !!arrivalTime
-                    const ticketNum = (apt.queue_position && apt.queue_position <= activeQueue.length) ? apt.queue_position : (idx + 1)
-                    return (
-                    <tr key={apt.id} className="hover:bg-gray-50/50">
-                      <td className="p-4 font-black text-gray-400">Q{ticketNum}</td>
+                  {(() => {
+                    const prioritizedQueue = [...activeQueue].sort((a, b) => {
+                      if (a.status === 'in_progress' && b.status !== 'in_progress') return -1;
+                      if (b.status === 'in_progress' && a.status !== 'in_progress') return 1;
+                      return 0;
+                    });
+                    return prioritizedQueue.map((apt, idx) => {
+                      const arrivalTime = parseArrivalTime(apt.notes)
+                      const isArrived = !!arrivalTime
+                      const ticketNum = (apt.queue_position && apt.queue_position <= activeQueue.length) ? apt.queue_position : (idx + 1)
+                      const isInProgress = apt.status === 'in_progress'
+                      return (
+                      <tr
+                        key={apt.id}
+                        className={`transition-all ${
+                          isInProgress
+                            ? 'bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-transparent dark:from-emerald-950/60 dark:via-teal-950/40 dark:to-transparent border-l-4 border-l-emerald-500 shadow-md ring-1 ring-emerald-500/30'
+                            : 'hover:bg-gray-50/50 dark:hover:bg-gray-800/40 border-l-4 border-l-transparent'
+                        }`}
+                      >
+                        <td className="p-4">
+                          {isInProgress ? (
+                            <div className="flex flex-col gap-1 items-start">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-black text-emerald-600 dark:text-emerald-400 text-sm">Q{ticketNum}</span>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500 text-white animate-pulse shadow-sm">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
+                                  {locale === 'ar' ? 'بالعيادة الآن' : 'IN ROOM'}
+                                </span>
+                              </div>
+                              <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                                {locale === 'ar' ? 'الكشف جاري' : 'Current Patient'}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="font-black text-gray-400">Q{ticketNum}</span>
+                          )}
+                        </td>
                       <td className="p-4">
                         <div className="font-bold text-gray-900 dark:text-white flex items-center gap-2 flex-wrap">
                           <span>{apt.patient?.full_name || apt.manual_patient?.full_name}</span>
@@ -709,9 +745,16 @@ export default function DoctorDashboard({
                       </td>
                       <td className="p-4">
                         <div className="flex flex-col gap-1">
-                          <span className={`px-2 py-1 rounded-full text-xs font-bold leading-none w-max ${apt.status === 'in_progress' ? 'bg-gradient-to-r from-[var(--color-ml-blue)] to-[var(--color-ml-green)] text-white' : 'bg-green-100 text-green-700'}`}>
-                            {apt.status === 'in_progress' ? 'In Progress' : 'Scheduled'}
-                          </span>
+                          {isInProgress ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-emerald-500 text-white shadow-sm shadow-emerald-500/30 animate-pulse w-max">
+                              <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>
+                              {locale === 'ar' ? 'الكشف جاري الآن' : 'In Progress (In Room)'}
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-full text-xs font-bold leading-none w-max bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                              {locale === 'ar' ? 'مجدول بالانتظار' : 'Scheduled'}
+                            </span>
+                          )}
                           {(() => {
                             const isClaimed = apt.payment_status === 'paid_by_patient' || !!apt.payment_reference || (apt.notes || '').includes('[PAID_BY_PATIENT');
                             return (
@@ -767,10 +810,26 @@ export default function DoctorDashboard({
                           ) : (
                             <>
                               {apt.patient_id && (
-                                <button onClick={() => fetchPatientHistory(apt.patient_id!)} className="text-blue-600 hover:text-blue-700 font-bold px-3 py-1.5 rounded-lg text-xs transition-colors">History</button>
+                                <>
+                                  <button onClick={() => fetchPatientHistory(apt.patient_id!)} className="text-blue-600 hover:text-blue-700 font-bold px-3 py-1.5 rounded-lg text-xs transition-colors">History</button>
+                                  <button
+                                    onClick={() => setAdherencePatient({ id: apt.patient_id!, name: apt.patient?.full_name || 'Patient' })}
+                                    className="bg-violet-50 text-violet-700 hover:bg-violet-100 dark:bg-violet-950/40 dark:text-violet-300 font-bold px-2.5 py-1.5 rounded-lg text-xs transition-colors border border-violet-200 dark:border-violet-800"
+                                    title="Medication Adherence Report"
+                                  >
+                                    💊 {locale === 'ar' ? 'الالتزام' : 'Adherence'}
+                                  </button>
+                                </>
                               )}
                               <button onClick={() => { setEditingApt(apt); setShowBooking(true); }} className="bg-amber-100 text-amber-700 font-bold px-3 py-1.5 rounded-lg text-xs hover:bg-amber-200 transition-colors">Reschedule</button>
                               <button onClick={() => handleCallNext(apt.id, apt.patient?.full_name || apt.manual_patient?.full_name || 'Patient', ticketNum)} className="bg-amber-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs hover:bg-amber-600 transition-colors">Recall</button>
+                              <button
+                                onClick={() => setFollowUpApt(apt)}
+                                className="bg-cyan-50 text-cyan-700 hover:bg-cyan-100 dark:bg-cyan-950/40 dark:text-cyan-300 font-bold px-2.5 py-1.5 rounded-lg text-xs transition-colors border border-cyan-200 dark:border-cyan-800"
+                                title="Schedule free follow-up visit"
+                              >
+                                📅 {locale === 'ar' ? 'متابعة' : 'Follow-Up'}
+                              </button>
                               <button onClick={() => setActivePrescription(apt)} className="bg-purple-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-purple-500/20">{t('write_prescription')}</button>
                               <button onClick={() => handleComplete(apt.id)} className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-emerald-500/20">{t('mark_completed')}</button>
                             </>
@@ -778,7 +837,9 @@ export default function DoctorDashboard({
                         </div>
                       </td>
                     </tr>
-                  )})}
+                    );
+                  });
+                })()}
                 </tbody>
               </table>
             )
@@ -1146,6 +1207,26 @@ export default function DoctorDashboard({
             const supabase = createClient()
             await refetchQueue(supabase)
           }}
+        />
+      )}
+
+      {/* Modal: Schedule Free Follow-Up Visit */}
+      {followUpApt && (
+        <FollowUpModal
+          doctorId={doctorId}
+          doctorName={doctorName}
+          appointment={followUpApt}
+          onClose={() => setFollowUpApt(null)}
+          onSuccess={() => setFollowUpApt(null)}
+        />
+      )}
+
+      {/* Modal: Medication Adherence Report */}
+      {adherencePatient && (
+        <MedicationAdherenceReport
+          patientId={adherencePatient.id}
+          patientName={adherencePatient.name}
+          onClose={() => setAdherencePatient(null)}
         />
       )}
     </div>

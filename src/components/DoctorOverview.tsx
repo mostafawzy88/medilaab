@@ -146,6 +146,7 @@ export default function DoctorOverview({
   const todayPaidRevenue = todayAppointments
     .filter(a => a.payment_status === 'paid')
     .reduce((acc, a) => acc + (Number(a.fees) || 0), 0)
+  const todayFollowUps = todayAppointments.filter(a => (a.notes || '').includes('[FREE_FOLLOW_UP]') || Number(a.fees) === 0).length
 
   const parseArrivalTime = (notes?: string | null) => {
     if (!notes) return null
@@ -469,10 +470,18 @@ export default function DoctorOverview({
             <h3 className="text-3xl font-black mt-1 text-gray-900 dark:text-white">
               {todayExpectedRevenue} <span className="text-sm font-bold text-gray-400">EGP</span>
             </h3>
-            <div className="mt-2 flex items-center gap-2 text-xs font-bold text-gray-500">
+            <div className="mt-2 flex items-center gap-2 text-xs font-bold text-gray-500 flex-wrap">
               <span className="text-emerald-600 font-bold">{todayPaidRevenue} EGP Paid</span>
               <span>•</span>
               <span className="text-amber-600">{todayExpectedRevenue - todayPaidRevenue} EGP Pending</span>
+              {todayFollowUps > 0 && (
+                <>
+                  <span>•</span>
+                  <span className="text-cyan-600 dark:text-cyan-400 font-bold">
+                    🔄 {todayFollowUps} {locale === 'ar' ? 'استشارة مجانية' : 'Free Follow-up(s)'}
+                  </span>
+                </>
+              )}
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800 text-[11px] font-bold text-emerald-600 flex items-center justify-between">

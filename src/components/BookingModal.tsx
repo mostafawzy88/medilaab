@@ -739,20 +739,22 @@ export default function BookingModal({ onClose, onSuccess, initialDoctor, editAp
                           </button>
                         )}
 
-                        {/* Free Follow-up / استشارة مجانية */}
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            setIsFollowUp(true);
-                            setAppointmentType('clinic_normal');
-                          }}
-                          className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${isFollowUp ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 shadow-md shadow-emerald-500/20' : 'border-gray-100 dark:border-gray-800 hover:border-emerald-200'}`}
-                        >
-                          <span className="text-2xl mb-2">🔄</span>
-                          <p className="font-bold text-center">{locale === 'ar' ? 'استشارة مجانية (متابعة)' : 'Free Follow-up'}</p>
-                          <span className="font-black text-emerald-600 mt-2">{locale === 'ar' ? 'مجاناً (0 ج.م)' : 'FREE (0 EGP)'}</span>
-                          <span className="text-[10px] text-gray-400 mt-1">{locale === 'ar' ? 'متابعة خلال أسبوع' : 'Checkup (7-14 Days)'}</span>
-                        </button>
+                        {/* Free Follow-up / استشارة مجانية - Staff only (Doctors and Nurses) */}
+                        {isStaff && (
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              setIsFollowUp(true);
+                              setAppointmentType('clinic_normal');
+                            }}
+                            className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${isFollowUp ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 shadow-md shadow-emerald-500/20' : 'border-gray-100 dark:border-gray-800 hover:border-emerald-200'}`}
+                          >
+                            <span className="text-2xl mb-2">🔄</span>
+                            <p className="font-bold text-center">{locale === 'ar' ? 'استشارة مجانية (متابعة)' : 'Free Follow-up'}</p>
+                            <span className="font-black text-emerald-600 mt-2">{locale === 'ar' ? 'مجاناً (0 ج.م)' : 'FREE (0 EGP)'}</span>
+                            <span className="text-[10px] text-gray-400 mt-1">{locale === 'ar' ? 'متابعة من الطبيب/التمريض' : 'Staff Authorized'}</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}

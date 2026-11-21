@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useLocale } from 'next-intl'
+import { createClient } from '@/utils/supabase/client'
 import NotificationPermissionBanner from './NotificationPermissionBanner'
 import { sendMedicationReminderNotification } from '@/utils/notifications'
 
@@ -164,10 +165,12 @@ const DEMO_PILLS: PillItem[] = [
 function PillVisual({
   pill,
   isTaken,
+  takenAt,
   onToggleTaken,
 }: {
   pill: PillItem
   isTaken: boolean
+  takenAt?: string | null
   onToggleTaken: () => void
 }) {
   const getPillGraphic = () => {
@@ -261,6 +264,16 @@ function PillVisual({
             {pill.instructions}
           </p>
         )}
+        {isTaken && (
+          <p className="text-[10px] font-black text-emerald-400 mt-1 flex items-center gap-1">
+            <span>✓</span>
+            <span>
+              {takenAt
+                ? `Taken at ${new Date(takenAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`
+                : 'Confirmed Taken'}
+            </span>
+          </p>
+        )}
       </div>
 
       {/* Taken check indicator */}
@@ -284,18 +297,20 @@ export default function PrescriptionCupsTimeline({
   prescriptions = [],
   loading = false,
   patientName = 'Patient',
+  patientId,
   onViewPrescription,
 }: {
   prescriptions?: any[]
   loading?: boolean
   patientName?: string
+  patientId?: string
   onViewPrescription?: (rx: any) => void
 }) {
   const locale = useLocale()
   const isAr = locale === 'ar'
 
   const [activeSlot, setActiveSlot] = useState<CupSlot>('morning')
-  const [takenPills, setTakenPills] = useState<Record<string, boolean>>({})
+  const [takenPills, setTakenPills] = useState<Record<string, string | boolean>>({})
   const [useSampleRoutine, setUseSampleRoutine] = useState(false)
   const [showAddCustomModal, setShowAddCustomModal] = useState(false)
   const [customPills, setCustomPills] = useState<PillItem[]>([])
@@ -330,16 +345,57 @@ export default function PrescriptionCupsTimeline({
   }, [])
 
   const toggleTaken = (pillId: string) => {
+    const targetPill = allActivePills.find(p => p.id === pillId)
+    const isCurrentlyTaken = !!takenPills[pillId]
+    const nowISO = new Date().toISOString()
+    const todayStr = nowISO.slice(0, 10)
+
     setTakenPills(prev => {
-      const next = { ...prev, [pillId]: !prev[pillId] }
-      try {
-        const todayKey = `medilab_taken_${new Date().toISOString().slice(0, 10)}`
-        localStorage.setItem(todayKey, JSON.stringify(next))
-      } catch {
-        // ignore
+      const next = { ...prev }
+      if (isCurrentlyTaken) {
+        delete next[pillId]
+      } else {
+        next[pillId] = nowISO
       }
+
+      try {
+        const todayKey = `medilab_taken_${todayStr}`
+        localStorage.setItem(todayKey, JSON.stringify(next))
+
+        if (!isCurrentlyTaken && targetPill) {
+          const logsKey = `medilab_adherence_logs_${patientId || 'patient'}`
+          const existingLogs = JSON.parse(localStorage.getItem(logsKey) || '[]')
+          existingLogs.push({
+            id: `log-${Date.now()}`,
+            medication_name: targetPill.name,
+            slot: targetPill.slot,
+            taken_at: nowISO,
+            scheduled_date: todayStr,
+            notes: targetPill.dosage || null
+          })
+          localStorage.setItem(logsKey, JSON.stringify(existingLogs.slice(-100)))
+        }
+      } catch {}
+
       return next
     })
+
+    // Insert into Supabase if patientId is available
+    if (!isCurrentlyTaken && targetPill && patientId) {
+      const supabase = createClient()
+      supabase.from('medication_adherence_logs').insert({
+        patient_id: patientId,
+        prescription_id: targetPill.sourceRxId || null,
+        medication_name: targetPill.name,
+        slot: targetPill.slot,
+        taken_at: nowISO,
+        scheduled_date: todayStr,
+        confirmed_by: 'patient',
+        notes: targetPill.dosage || null
+      }).then(({ error }) => {
+        if (error) console.warn('Supabase adherence log notice:', error.message)
+      })
+    }
   }
 
   // Parse pills from official doctor prescriptions
@@ -793,12 +849,15 @@ export default function PrescriptionCupsTimeline({
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {activeSlotPills.map(pill => {
-                      const isTaken = !!takenPills[pill.id]
+                      const takenVal = takenPills[pill.id]
+                      const isTaken = !!takenVal
+                      const takenAt = typeof takenVal === 'string' ? takenVal : null
                       return (
                         <PillVisual
                           key={pill.id}
                           pill={pill}
                           isTaken={isTaken}
+                          takenAt={takenAt}
                           onToggleTaken={() => toggleTaken(pill.id)}
                         />
                       )

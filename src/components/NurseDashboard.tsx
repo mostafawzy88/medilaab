@@ -11,6 +11,7 @@ import PatientsTab from './PatientsTab'
 import QueueRemovalModal from './QueueRemovalModal'
 import MedicationManagerModal from './MedicationManagerModal'
 import TriageVitalsModal from './TriageVitalsModal'
+import FollowUpModal from './FollowUpModal'
 
   type Appointment = {
   id: string
@@ -58,6 +59,7 @@ export default function NurseDashboard({
   const [editingApt, setEditingApt] = useState<Appointment | null>(null)
   const [removingApt, setRemovingApt] = useState<Appointment | null>(null)
   const [triageApt, setTriageApt] = useState<Appointment | null>(null)
+  const [followUpApt, setFollowUpApt] = useState<Appointment | null>(null)
   const [medsPatient, setMedsPatient] = useState<{
     patientId: string | null
     manualPatientId?: string | null
@@ -259,19 +261,43 @@ export default function NurseDashboard({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {queue.map((apt) => (
-                    <tr key={apt.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors group">
-                      <td className="p-4">
-                        <button
-                          type="button"
-                          onClick={() => setTriageApt(apt)}
-                          className="px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 font-black text-xs border border-teal-200 dark:border-teal-800 flex items-center gap-1 transition-all hover:scale-105"
-                          title={locale === 'ar' ? 'تعديل رقم الدور أو العلامات الحيوية' : 'Edit Queue # & Triage Vitals'}
-                        >
-                          <span>Q#{apt.queue_position || '—'}</span>
-                          <span className="text-[10px] text-teal-500">✏️</span>
-                        </button>
-                      </td>
+                  {(() => {
+                    const prioritizedQueue = [...queue].sort((a, b) => {
+                      if (a.status === 'in_progress' && b.status !== 'in_progress') return -1;
+                      if (b.status === 'in_progress' && a.status !== 'in_progress') return 1;
+                      return 0;
+                    });
+                    return prioritizedQueue.map((apt) => {
+                      const isInProgress = apt.status === 'in_progress';
+                      return (
+                      <tr
+                        key={apt.id}
+                        className={`transition-all ${
+                          isInProgress
+                            ? 'bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-transparent dark:from-emerald-950/60 dark:via-teal-950/40 dark:to-transparent border-l-4 border-l-emerald-500 shadow-md ring-1 ring-emerald-500/30'
+                            : 'hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors group border-l-4 border-l-transparent'
+                        }`}
+                      >
+                        <td className="p-4">
+                          <button
+                            type="button"
+                            onClick={() => setTriageApt(apt)}
+                            className={`px-2.5 py-1 rounded-lg font-black text-xs border flex items-center gap-1 transition-all hover:scale-105 ${
+                              isInProgress
+                                ? 'bg-emerald-500 text-white border-emerald-400 shadow-sm animate-pulse'
+                                : 'bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800'
+                            }`}
+                            title={locale === 'ar' ? 'تعديل رقم الدور أو العلامات الحيوية' : 'Edit Queue # & Triage Vitals'}
+                          >
+                            <span>Q#{apt.queue_position || '—'}</span>
+                            {isInProgress && (
+                              <span className="text-[10px] bg-white text-emerald-800 px-1 rounded-full font-black ml-1">
+                                {locale === 'ar' ? 'بالعيادة' : 'IN ROOM'}
+                              </span>
+                            )}
+                            <span className="text-[10px] text-teal-500">✏️</span>
+                          </button>
+                        </td>
                       <td className="p-4 font-semibold text-gray-900 dark:text-gray-100">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-teal-500 to-green-400 text-white flex items-center justify-center text-xs font-bold shrink-0">
@@ -357,11 +383,11 @@ export default function NurseDashboard({
                       <td className="p-4">
                         <div className="flex flex-col gap-1 items-start">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold capitalize
-                            ${apt.status === 'in_progress' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300' : 
+                            ${apt.status === 'in_progress' ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/30 animate-pulse' : 
                               apt.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' :
                               apt.status === 'scheduled' || apt.status === 'waiting' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300' : 
                               'bg-gray-100 text-gray-800'}`}>
-                            {apt.status.replace('_', ' ')}
+                            {apt.status === 'in_progress' ? (locale === 'ar' ? 'الكشف جاري الآن' : 'In Progress (In Room)') : apt.status.replace('_', ' ')}
                           </span>
 
                           <div className="flex items-center gap-1.5 flex-wrap">
@@ -440,15 +466,25 @@ export default function NurseDashboard({
                             {t('view_prescription')}
                           </button>
                         ) : apt.status === 'in_progress' ? (
-                          <button
-                            type="button"
-                            onClick={() => handleMarkCompleted(apt.id)}
-                            className="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm"
-                            title="Mark appointment completed"
-                          >
-                            <span>✅</span>
-                            <span>{locale === 'ar' ? 'إنهاء الكشف' : 'Complete'}</span>
-                          </button>
+                          <div className="inline-flex gap-1.5 justify-end items-center">
+                            <button
+                              type="button"
+                              onClick={() => setFollowUpApt(apt)}
+                              className="bg-cyan-50 text-cyan-700 hover:bg-cyan-100 dark:bg-cyan-950/40 dark:text-cyan-300 font-bold px-2.5 py-1.5 rounded-lg text-xs transition-colors border border-cyan-200 dark:border-cyan-800"
+                              title="Schedule free follow-up visit"
+                            >
+                              📅 {locale === 'ar' ? 'متابعة' : 'Follow-Up'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleMarkCompleted(apt.id)}
+                              className="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm"
+                              title="Mark appointment completed"
+                            >
+                              <span>✅</span>
+                              <span>{locale === 'ar' ? 'إنهاء الكشف' : 'Complete'}</span>
+                            </button>
+                          </div>
                         ) : (apt.status === 'waiting' || apt.status === 'scheduled') ? (
                           <div className="inline-flex gap-1.5 justify-end">
                             {/* Mark Arrived in waiting room */}
@@ -493,7 +529,9 @@ export default function NurseDashboard({
                         )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  });
+                })()}
                 </tbody>
               </table>
             )}
@@ -567,6 +605,21 @@ export default function NurseDashboard({
           onClose={() => setMedsPatient(null)}
           onUpdated={async () => {
             setMedsPatient(null)
+            const supabase = createClient()
+            await refetchQueue(supabase)
+          }}
+        />
+      )}
+
+      {/* Modal: Schedule Free Follow-Up Visit */}
+      {followUpApt && (
+        <FollowUpModal
+          doctorId={followUpApt.doctor_id || supervisorId || ''}
+          doctorName={supervisorDoctor?.full_name || 'Doctor'}
+          appointment={followUpApt}
+          onClose={() => setFollowUpApt(null)}
+          onSuccess={async () => {
+            setFollowUpApt(null)
             const supabase = createClient()
             await refetchQueue(supabase)
           }}
